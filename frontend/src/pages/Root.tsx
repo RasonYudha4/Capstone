@@ -3,9 +3,9 @@ import { useAuth } from '../context/AuthContext'
 import type { Role } from '../context/types'
 
 const redirectMap: Record<Role, string> = {
-    'admin': '/admin',
-    'master-admin': '/master-admin',
-    'user': '/user',
+    1: '/master-admin',
+    2: '/admin',
+    3: '/user',
 }
 
 export default function Root() {

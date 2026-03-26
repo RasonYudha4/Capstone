@@ -16,16 +16,6 @@ export default function AuthGuard({ allowedRoles }: AuthGuardProps) {
         return <Navigate to="/login" state={{ from: location }} replace />
     }
 
-    // Root redirect based on role
-    if (!allowedRoles) {
-        const redirectMap: Record<Role, string> = {
-            'admin': '/admin',
-            'master-admin': '/master-admin',
-            'user': '/user',
-        }
-        return <Navigate to={redirectMap[user.role]} replace />
-    }
-
     if (!allowedRoles.includes(user.role)) {
         return <Navigate to="/unauthorized" replace />
     }

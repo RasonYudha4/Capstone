@@ -20,7 +20,7 @@ export const router = createBrowserRouter([
     { path: '/login', element: wrap(Login) },
 
     {
-        element: <AuthGuard allowedRoles={['admin']} />,
+        element: <AuthGuard allowedRoles={[2]} />,
         children: [
             {
                 element: <AdminLayout />,
@@ -33,7 +33,7 @@ export const router = createBrowserRouter([
 
     // Master Admin
     {
-        element: <AuthGuard allowedRoles={['master-admin']} />,
+        element: <AuthGuard allowedRoles={[1]} />,
         children: [
             {
                 element: <MasterAdminLayout />,
@@ -46,7 +46,7 @@ export const router = createBrowserRouter([
 
     // User
     {
-        element: <AuthGuard allowedRoles={['user']} />,
+        element: <AuthGuard allowedRoles={[3]} />,
         children: [
             {
                 element: <UserLayout />,
