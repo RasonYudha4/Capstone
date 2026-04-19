@@ -1,7 +1,7 @@
 import { createBrowserRouter } from 'react-router'
 import { lazy } from 'react'
 import AuthGuard from '../cores/AuthGuard'
-import wrap from '../helpers/component-wrapper-helper'
+import wrap from '../lib/component-wrapper-helper'
 import Root from '../pages/Root'
 import AppLayout from '../pages/AppLayout'
 
@@ -9,6 +9,9 @@ const Login = lazy(() => import('../pages/auth/Login'))
 const Dashboard = lazy(() => import('../pages/Dashboard'))
 const Unauthorized = lazy(() => import('../pages/Unauthorized'))
 const NotFound = lazy(() => import('../pages/Notfound'))
+const Storage = lazy(() => import('../pages/admin/Storage'))
+const Admins = lazy(() => import('../pages/admin/master-admin/Admins'))
+const Activity = lazy(() => import('../pages/admin/master-admin/ActivityLog'))
 
 export const router = createBrowserRouter([
     { path: '/', element: <Root /> },
@@ -16,7 +19,7 @@ export const router = createBrowserRouter([
 
     // All authenticated routes share ONE layout
     {
-        element: <AuthGuard allowedRoles={['staff', 'admin', 'master-admin']} />,
+        // element: <AuthGuard allowedRoles={['staff', 'admin', 'master-admin']} />,
         children: [
             {
                 element: <AppLayout />,
@@ -28,7 +31,7 @@ export const router = createBrowserRouter([
                     {
                         element: <AuthGuard allowedRoles={['admin', 'master-admin']} />,
                         children: [
-                            // { path: '/admin/users',    element: wrap(AdminUsers) },
+                            { path: '/storage', element: wrap(Storage) },
                         ],
                     },
 
@@ -36,8 +39,8 @@ export const router = createBrowserRouter([
                     {
                         element: <AuthGuard allowedRoles={['master-admin']} />,
                         children: [
-                            // { path: '/master-admin/roles',  element: wrap(MasterRoles) },
-                            // { path: '/master-admin/admins', element: wrap(MasterAdmins) },
+                            { path: '/admins', element: wrap(Admins) },
+                            { path: '/activity-log', element: wrap(Activity) }
                         ],
                     },
                 ],
