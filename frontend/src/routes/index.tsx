@@ -1,17 +1,12 @@
 import { createBrowserRouter } from 'react-router'
 import { lazy } from 'react'
-import AuthGuard from '../guards/AuthGuard'
+import AuthGuard from '../cores/AuthGuard'
 import wrap from '../helpers/component-wrapper-helper'
-
-import AdminLayout from '../layouts/AdminLayout'
-import MasterAdminLayout from '../layouts/MasterAdminLayout'
-import UserLayout from '../layouts/UserLayout'
 import Root from '../pages/Root'
+import AppLayout from '../pages/AppLayout'
 
 const Login = lazy(() => import('../pages/auth/Login'))
-const AdminDashboard = lazy(() => import('../pages/admin/Dashboard'))
-const MasterDashboard = lazy(() => import('../pages/master-admin/Dashboard'))
-const UserDashboard = lazy(() => import('../pages/user/Dashboard'))
+const Dashboard = lazy(() => import('../pages/Dashboard'))
 const Unauthorized = lazy(() => import('../pages/Unauthorized'))
 const NotFound = lazy(() => import('../pages/Notfound'))
 
@@ -19,42 +14,35 @@ export const router = createBrowserRouter([
     { path: '/', element: <Root /> },
     { path: '/login', element: wrap(Login) },
 
+    // All authenticated routes share ONE layout
     {
-        element: <AuthGuard allowedRoles={[2]} />,
+        element: <AuthGuard allowedRoles={['staff', 'admin', 'master-admin']} />,
         children: [
             {
-                element: <AdminLayout />,
+                element: <AppLayout />,
                 children: [
-                    { path: '/admin', element: wrap(AdminDashboard) },
-                ]
-            }
-        ]
-    },
+                    // Accessible by all roles
+                    { path: '/dashboard', element: wrap(Dashboard) },
 
-    // Master Admin
-    {
-        element: <AuthGuard allowedRoles={[1]} />,
-        children: [
-            {
-                element: <MasterAdminLayout />,
-                children: [
-                    { path: '/master-admin', element: wrap(MasterDashboard) },
-                ]
-            }
-        ]
-    },
+                    // Admin + master-admin only
+                    {
+                        element: <AuthGuard allowedRoles={['admin', 'master-admin']} />,
+                        children: [
+                            // { path: '/admin/users',    element: wrap(AdminUsers) },
+                        ],
+                    },
 
-    // User
-    {
-        element: <AuthGuard allowedRoles={[3]} />,
-        children: [
-            {
-                element: <UserLayout />,
-                children: [
-                    { path: '/user', element: wrap(UserDashboard) },
-                ]
-            }
-        ]
+                    // Master-admin only
+                    {
+                        element: <AuthGuard allowedRoles={['master-admin']} />,
+                        children: [
+                            // { path: '/master-admin/roles',  element: wrap(MasterRoles) },
+                            // { path: '/master-admin/admins', element: wrap(MasterAdmins) },
+                        ],
+                    },
+                ],
+            },
+        ],
     },
 
     { path: '/unauthorized', element: wrap(Unauthorized) },

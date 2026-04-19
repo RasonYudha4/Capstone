@@ -1,10 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router'
-import { useAuth } from '../context/AuthContext'
-import type { Role } from '../context/types'
-
-interface AuthGuardProps {
-    allowedRoles: Role[]
-}
+import { useAuth } from './AuthContext'
+import type { AuthGuardProps } from './types'
 
 export default function AuthGuard({ allowedRoles }: AuthGuardProps) {
     const { user, loading } = useAuth()

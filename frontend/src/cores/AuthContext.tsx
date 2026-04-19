@@ -1,12 +1,5 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
-import type { User } from './types'
-
-interface AuthContextType {
-    user: User | null
-    loading: boolean
-    login: (userData: User) => void
-    logout: () => void
-}
+import type { AuthContextType, User } from './types'
 
 const AuthContext = createContext<AuthContextType | null>(null)
 

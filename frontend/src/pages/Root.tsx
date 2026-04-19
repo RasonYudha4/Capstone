@@ -1,11 +1,11 @@
 import { Navigate } from 'react-router'
-import { useAuth } from '../context/AuthContext'
-import type { Role } from '../context/types'
+import { useAuth } from '../cores/AuthContext'
+import type { Role } from '../cores/types'
 
 const redirectMap: Record<Role, string> = {
-    1: '/master-admin',
-    2: '/admin',
-    3: '/user',
+    "master-admin": '/master-admin',
+    "admin": '/admin',
+    "staff": '/user',
 }
 
 export default function Root() {
