@@ -3,7 +3,7 @@ CREATE TYPE audit_type AS ENUM ('insert', 'open', 'update','delete','error');
 CREATE TYPE audit_source AS ENUM ('client', 'system');
 
 CREATE TABLE IF NOT EXISTS groups (
-    group_id UUID PRIMARY KEY,
+    group_id UUID PRIMARY KEY ,
     group_name VARCHAR(255),
     created_at TIMESTAMP,
     updated_at TIMESTAMP
@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS document_types (
 );
 
 CREATE TABLE IF NOT EXISTS documents (
-    document_id UUID PRIMARY KEY,
+    document_id UUID PRIMARY KEY ,
     assessment_id UUID,
     filename VARCHAR(255),
     filepath VARCHAR(255),
