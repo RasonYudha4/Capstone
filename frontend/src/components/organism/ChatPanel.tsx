@@ -57,7 +57,7 @@ export default function ChatPanel({ onClose }: ChatPanelProps) {
                 onClose={onClose}
                 className="bg-[#6B5FAE] rounded-t-2xl"
             />
-            <ScrollArea className="flex-1">
+            <ScrollArea className="h-90">
                 <div className="flex flex-col gap-4 p-4">
                     {messages.map((msg) => (
                         <MessageBubble key={msg.id} message={msg} />

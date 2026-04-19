@@ -19,7 +19,7 @@ export const router = createBrowserRouter([
 
     // All authenticated routes share ONE layout
     {
-        // element: <AuthGuard allowedRoles={['staff', 'admin', 'master-admin']} />,
+        element: <AuthGuard allowedRoles={['staff', 'admin', 'master-admin']} />,
         children: [
             {
                 element: <AppLayout />,
