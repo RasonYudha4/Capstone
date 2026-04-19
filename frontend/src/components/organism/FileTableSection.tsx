@@ -11,6 +11,7 @@ import {
 import BreadcrumbNav, { type BreadcrumbSegment } from '../atoms/BreadcrumbNav'
 import FileTableRow, { type FileRecord } from '../molecules/FileTableRow'
 import UploadModal from './UploadModal'
+import FileDetailModal from './FiledetailModal'
 
 // TODO: replace with actual data from API
 const mockFiles: FileRecord[] = [
@@ -48,6 +49,7 @@ export default function FileTableSection() {
     const [standar, setStandar] = useState('Standar 1')
     const [elemen, setElemen] = useState('Elemen Penilaian 1')
     const [uploadOpen, setUploadOpen] = useState(false)
+    const [selectedFile, setSelectedFile] = useState<FileRecord | null>(null)
 
     const segments: BreadcrumbSegment[] = [
         { selected: kelompok, options: kelompokOptions, onChange: (v) => setKelompok(kelompokOptions.find(o => o.value === v)?.label ?? v) },
@@ -58,6 +60,13 @@ export default function FileTableSection() {
     return (
         <section className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
             <UploadModal open={uploadOpen} onOpenChange={setUploadOpen} />
+            <FileDetailModal
+                file={selectedFile}
+                open={!!selectedFile}
+                onOpenChange={(open) => { if (!open) setSelectedFile(null) }}
+                onReject={(file, catatan) => console.log('Rejected', file.id, catatan)}
+                onUpdate={(file, catatan) => console.log('Updated', file.id, catatan)}
+            />
 
             {/* Toolbar */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
@@ -87,7 +96,7 @@ export default function FileTableSection() {
                             </TableHeader>
                             <TableBody>
                                 {mockFiles.map((file) => (
-                                    <FileTableRow key={file.id} file={file} />
+                                    <FileTableRow key={file.id} file={file} onClick={() => setSelectedFile(file)} />
                                 ))}
                             </TableBody>
                         </Table>

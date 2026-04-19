@@ -21,6 +21,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import FileDropzone from '../atoms/FileDropzone'
+import { useState } from 'react'
+import ConfirmDialog from '../molecules/ConfirmDialog'
 
 const uploadSchema = z.object({
     kelompokKerja: z.string().min(1, 'Wajib dipilih'),
@@ -59,9 +61,22 @@ export default function UploadModal({ open, onOpenChange }: UploadModalProps) {
 
     const selectedFile = watch('file')
 
+    const [confirmOpen, setConfirmOpen] = useState(false)
+    const [pendingData, setPendingData] = useState<UploadFormValues | null>(null)
+
     const onSubmit = async (data: UploadFormValues) => {
         // TODO: plug in actual upload API call
         console.log('Upload submitted:', data)
+        setPendingData(data)
+        setConfirmOpen(true)
+    }
+
+    const onConfirmSubmit = async () => {
+        if (!pendingData) return
+        // TODO: plug in actual upload API call
+        console.log('Upload submitted:', pendingData)
+        setConfirmOpen(false)
+        setPendingData(null)
         reset()
         onOpenChange(false)
     }
@@ -74,6 +89,15 @@ export default function UploadModal({ open, onOpenChange }: UploadModalProps) {
     return (
         <Dialog open={open} onOpenChange={handleClose}>
             <DialogContent className="max-w-3xl rounded-3xl bg-gray-50 p-8 gap-0 max-h-[90vh] min-w-175 [&>button]:hidden">
+                <ConfirmDialog
+                    open={confirmOpen}
+                    onOpenChange={setConfirmOpen}
+                    title="Unggah Berkas?"
+                    description="Pastikan semua data yang diisi sudah benar sebelum mengunggah berkas ini."
+                    confirmLabel="Ya, Kirim"
+                    variant="default"
+                    onConfirm={onConfirmSubmit}
+                />
                 {/* Header */}
                 <DialogHeader className="mb-4">
                     <div className="flex items-start justify-between">

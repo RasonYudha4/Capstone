@@ -29,8 +29,8 @@ export default function FileDropzone({ onFileSelect, file }: FileDropzoneProps) 
             onDragLeave={() => setIsDragging(false)}
             onDrop={handleDrop}
             className={`w-full h-full min-h-50 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-3 cursor-pointer transition-colors ${isDragging
-                    ? 'border-[#6B5FAE] bg-[#6B5FAE]/5'
-                    : 'border-gray-300 bg-gray-50 hover:border-[#6B5FAE] hover:bg-[#6B5FAE]/5'
+                    ? 'border-white bg-white/10'
+                    : 'border-white/30 bg-transparent hover:border-white/60 hover:bg-white/10'
                 }`}
         >
             <input ref={inputRef} type="file" className="hidden" onChange={handleChange} />
