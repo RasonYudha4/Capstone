@@ -1,0 +1,2 @@
+INSERT INTO documents (document_id,assessment_id,filename,filepath,document_type_id,status,created_at,updated_at,created_by,group_id,service_id,standard_id) VALUES
+('9269058a-7cc4-4615-9a15-951d32fbbe88','90b331d8-c334-474f-9b24-cc303ad8b537','tesfile','google.com','9162b206-8947-48ab-9cac-26b4ba2ef153','approve','2024-05-16 11:00:00.123456+00','2024-05-16 11:00:00.123456+00','bc6adda6-bfe6-4a6c-a637-35dd4ba4e562','90b331d8-c334-474f-9b24-cc303ad8b537','4c6aca5b-527e-4cae-bf0c-1b44c8ad8c43','563f2272-77c2-4445-883c-2a1c65fb82f8')

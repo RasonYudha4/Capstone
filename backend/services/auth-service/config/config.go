@@ -23,5 +23,5 @@ const (
 
 	// DefaultRole is the role assigned to every authenticated user for now.
 	// This will be replaced with a proper role system once the database is integrated.
-	DefaultRole = "admin"
+	DefaultRole = "master-admin"
 )
