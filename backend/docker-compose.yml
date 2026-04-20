@@ -1,0 +1,116 @@
+services:
+
+  postgres:
+    image: postgres:17
+    container_name: postgre
+    environment:
+      POSTGRES_USER: capstone
+      POSTGRES_PASSWORD: capstoneboi
+      POSTGRES_DB: capstone_db
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "1"
+    ports:
+      - "5432:5432"
+    volumes:
+      - C:\Users\LENOVO\Downloads\test\test\data_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U capstone -d capstone_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - server
+   
+  minio:
+    image: quay.io/minio/aistor/minio
+    container_name: object-storage
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "1"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+      - MINIO_DEFAULT_BUCKETS=test1
+      - MINIO_SERVER_URL=http://host.docker.internal:9090
+    ports:
+      - "9000:9000"
+      - "9100:9100"
+    volumes:
+      - C:\Users\LENOVO\Downloads\test\test\data:/mnt/data
+      - C:\Users\LENOVO\Downloads\test\test\minio.license:/etc/minio/minio.license
+    command: server /mnt/data --console-address ":9100" --license /etc/minio/minio.license
+    networks:
+      - server
+
+  document-service:
+    build:
+      context: ./services/document-service
+      dockerfile: Dockerfile
+    container_name: document-service
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "1"
+    environment:
+      SLEEP_BEFORE_START: 10
+      DB_URL: postgresql://capstone:capstoneboi@postgres:5432/capstone_db?sslmode=disable
+      ENDPOINT: minio:9000
+      ACCESS_KEY: SRtY0aixaO1f5er952kL
+      SECRET_KEY: bLhjW3B8R1Y05vNs2T1pn5fI7cAP7eUgZuCbMnis
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    networks:
+      - server
+
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: auth-service
+    deploy:
+      resources:
+        limits:
+          memory: 216m
+          cpus: "1"
+    environment:
+      SLEEP_BEFORE_START: 10
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    networks:
+      - server
+      
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: "0.5"
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: capstone@gmail.com
+      PGADMIN_DEFAULT_PASSWORD: capstoneboi
+    ports:
+      - "9090:80"
+    volumes:
+      - C:\Users\LENOVO\Downloads\test\test\pgadmin:/opt/cloudbeaver/workspace
+    networks:
+      - server
+
+networks:
+  server:
+    driver: bridge
