@@ -9,7 +9,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// JWTService handles creation and (future) validation of JSON Web Tokens.
+// JWTService handles creation and validation of JSON Web Tokens.
 type JWTService struct {
 	secretKey []byte
 }
@@ -24,28 +24,30 @@ func NewJWTService() *JWTService {
 // Claims defines the JWT payload.
 // Embedding jwt.RegisteredClaims gives us standard fields (exp, iat, iss, etc.).
 type Claims struct {
-	Email string `json:"email"`
-	Role  string `json:"role"`
+	UserID string `json:"user_id"`
+	Email  string `json:"email"`
+	Role   string `json:"role"`
 	jwt.RegisteredClaims
 }
 
-// GenerateToken creates a signed JWT for the given email.
-// The token includes the user's email, their role, and an expiration timestamp.
-func (s *JWTService) GenerateToken(email string) (string, error) {
+// GenerateToken creates a signed JWT for the given user.
+// The token includes the user's ID, email, role, and an expiration timestamp.
+func (s *JWTService) GenerateToken(userID, email, role string) (string, error) {
 	now := time.Now()
 	expiresAt := now.Add(config.JWTExpiration)
 
 	claims := &Claims{
-		Email: email,
-		Role:  config.DefaultRole,
+		UserID: userID,
+		Email:  email,
+		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
-			// Subject identifies the principal (the user).
-			Subject: email,
-			// IssuedAt records when the token was created.
+			// the principal (the user).
+			Subject: userID,
+			// records when the token was created.
 			IssuedAt: jwt.NewNumericDate(now),
-			// ExpiresAt marks when the token becomes invalid.
+			// marks when the token becomes invalid.
 			ExpiresAt: jwt.NewNumericDate(expiresAt),
-			// Issuer identifies which service minted this token.
+			// identifies which service minted this token.
 			Issuer: "auth-service",
 		},
 	}
@@ -60,4 +62,31 @@ func (s *JWTService) GenerateToken(email string) (string, error) {
 	}
 
 	return signedToken, nil
+}
+
+// ValidateToken parses a raw JWT string, verifies its signature and expiration,
+// and returns the embedded claims if everything checks out.
+func (s *JWTService) ValidateToken(tokenString string) (*Claims, error) {
+	claims := &Claims{}
+
+	// Parse the token and validate the signature using our secret key.
+	// The key function also verifies that the signing method is HMAC,
+	// preventing algorithm-switching attacks (e.g. "none" or RSA → HMAC).
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (any, error) {
+		// Ensure the signing method is what we expect.
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return s.secretKey, nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("invalid token: %w", err)
+	}
+
+	if !token.Valid {
+		return nil, fmt.Errorf("token validation failed")
+	}
+
+	return claims, nil
 }
