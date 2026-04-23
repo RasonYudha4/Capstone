@@ -7,15 +7,14 @@ import (
 	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
-var MinioClient *minio.Client
-func InitMinio(){
-	var err error
+
+func InitMinio()(*minio.Client, error){
 	endpoint  := os.Getenv("ENDPOINT")
 	accessKey := os.Getenv("ACCESS_KEY")
 	secretKey := os.Getenv("SECRET_KEY")
 	useSSL 	  := false
 
-	MinioClient, err = minio.New(endpoint, &minio.Options{
+	MinioClient, err := minio.New(endpoint, &minio.Options{
 		Creds: credentials.NewStaticV4(accessKey, secretKey, ""),
 		Secure: useSSL,
 	})
@@ -24,4 +23,5 @@ func InitMinio(){
 	}
 
 	log.Println("Minio client Init")
+	return MinioClient, nil
 }

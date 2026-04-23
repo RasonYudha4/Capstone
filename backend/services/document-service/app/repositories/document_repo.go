@@ -1,21 +1,26 @@
 package repositories
 
 import (
-	"capstone/app/core/db"
-	"capstone/app/core/objectStorage"
 	"capstone/app/schemas"
 
-	"strings"
 	"context"
 	"log"
 	"time"
-	"fmt"
 
-	"github.com/gin-gonic/gin"
+
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/minio/minio-go/v7"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+type DocumentRepo struct{
+	db *pgxpool.Pool
+}
+
+func NewDocumentRepo(db *pgxpool.Pool) *DocumentRepo{
+	return &DocumentRepo{
+		db: db,
+	}
+}
 
 const baseQuery = `
 	SELECT 
@@ -31,10 +36,9 @@ const baseQuery = `
 	JOIN users u ON d.created_by = u.user_id
 	`
 
-func fetchingData(query string, args ...any)([]schemas.DocumentResponse, error){
-	rows, err := db.DB.Query(context.Background(), query, args...)
+func(s *DocumentRepo) fetchingData(query string, args ...any)([]schemas.DocumentResponse, error){
+	rows, err := s.db.Query(context.Background(), query, args...)
 	if err != nil{
-		log.Print("Error fetching data from db: ",err)
 		return nil, err
 	}
 
@@ -59,55 +63,53 @@ func fetchingData(query string, args ...any)([]schemas.DocumentResponse, error){
 		}
 		documents = append(documents, doc)
 	}
-	if len(documents) == 0 {
-		return nil, pgx.ErrNoRows
-	}
+	
 	return documents, nil
 }
 
-func GetDocuments(limit, offset int)([]schemas.DocumentResponse,error)  {
+func(s *DocumentRepo) GetDocuments(limit, offset int)([]schemas.DocumentResponse,error)  {
 	query := baseQuery + "ORDER BY d.updated_at DESC LIMIT $1 OFFSET $2"
-	return fetchingData(query, limit, offset)
+	return s.fetchingData(query, limit, offset)
 }
 
-func Get_document_by_status(status string, limit, offset int)([]schemas.DocumentResponse,error){
+func(s *DocumentRepo) Get_document_by_status(status string, limit, offset int)([]schemas.DocumentResponse,error){
 	query := baseQuery + "WHERE d.status = $1 ORDER BY d.updated_at DESC LIMIT $2 OFFSET $3"
-	return fetchingData(query, status,limit,offset)
+	return s.fetchingData(query, status,limit,offset)
 }
 
-func Get_document_by_type(typeId uuid.UUID, limit,offset int)([]schemas.DocumentResponse,error){
+func(s *DocumentRepo) Get_document_by_type(typeId uuid.UUID, limit,offset int)([]schemas.DocumentResponse,error){
 	query := baseQuery + "WHERE d.document_type_id = $1 ORDER BY d.updated_at DESC LIMIT $2 OFFSET $3"
-	return fetchingData(query, typeId,limit,offset)
+	return s.fetchingData(query, typeId,limit,offset)
 }
 
-func Get_document_by_group(groupId uuid.UUID,limit,offset int)([]schemas.DocumentResponse,error){
+func(s *DocumentRepo) Get_document_by_group(groupId uuid.UUID,limit,offset int)([]schemas.DocumentResponse,error){
 	query := baseQuery + "WHERE d.group_id = $1 ORDER BY d.updated_at DESC LIMIT $2 OFFSET $3"
-	return fetchingData(query, groupId, limit,offset)
+	return s.fetchingData(query, groupId, limit,offset)
 }
 
-func Get_document_by_service(serviceId uuid.UUID,limit,offset int)([]schemas.DocumentResponse,error){
+func(s *DocumentRepo) Get_document_by_service(serviceId uuid.UUID,limit,offset int)([]schemas.DocumentResponse,error){
 	query := baseQuery + "WHERE d.service_id = $1 ORDER BY d.updated_at DESC LIMIT $2 OFFSET $3"
-	return fetchingData(query,serviceId, limit, offset)
+	return s.fetchingData(query,serviceId, limit, offset)
 }
 
-func Get_document_by_standard(standardId uuid.UUID,limit,offset int)([]schemas.DocumentResponse,error){
+func(s *DocumentRepo) Get_document_by_standard(standardId uuid.UUID,limit,offset int)([]schemas.DocumentResponse,error){
 	query := baseQuery + "WHERE d.standard_id = $1 ORDER BY d.updated_at DESC LIMIT $2 OFFSET $3"
-	return fetchingData(query, standardId, limit,offset)
+	return s.fetchingData(query, standardId, limit,offset)
 }
 
-func Get_document_by_assessment(assessmentId uuid.UUID,limit,offset int)([]schemas.DocumentResponse,error){
+func(s *DocumentRepo) Get_document_by_assessment(assessmentId uuid.UUID,limit,offset int)([]schemas.DocumentResponse,error){
 	query := baseQuery + "WHERE d.assessment_id = $1 ORDER BY d.updated_at DESC LIMIT $2 OFFSET $3"
-	return fetchingData(query, assessmentId,limit,offset)
+	return s.fetchingData(query, assessmentId,limit,offset)
 }
 
-func Get_document_by_createdBy(createdById uuid.UUID,limit,offset int)([]schemas.DocumentResponse,error){
+func(s *DocumentRepo) Get_document_by_createdBy(createdById uuid.UUID,limit,offset int)([]schemas.DocumentResponse,error){
 	query := baseQuery + "WHERE d.created_by = $1 ORDER BY d.updated_at DESC LIMIT $2 OFFSET $3"
-	return fetchingData(query, createdById,limit,offset)
+	return s.fetchingData(query, createdById,limit,offset)
 }
 
-func Get_document_by_id(id uuid.UUID)(schemas.DocumentResponse, error){
+func(s *DocumentRepo) Get_document_by_id(id uuid.UUID)(schemas.DocumentResponse, error){
 	var document schemas.DocumentResponse
-	err := db.DB.QueryRow(context.Background(),`
+	err := s.db.QueryRow(context.Background(),`
 	Select 
 		d.document_id,
 		d.filename,
@@ -135,94 +137,77 @@ func Get_document_by_id(id uuid.UUID)(schemas.DocumentResponse, error){
 	return document, nil
 }
 
-
-func Create_document(r *gin.Context) (schemas.UploadResult,error){
-	if err := r.Request.ParseMultipartForm(10 << 20); err != nil {
-		log.Print("Error parsing")
-		return schemas.UploadResult{}, nil
-	}
-
-	var documentRequest schemas.DocumentRequest
-	if err := r.ShouldBind(&documentRequest); err != nil {
-		log.Print("Error receive data", err )
-		return schemas.UploadResult{}, nil
-	}
-
-	src, err := r.FormFile("uploadedFile")
-	if err != nil {
-		log.Print("Error receive file", err)
-		return schemas.UploadResult{}, nil
-	}
-
-	file, err := src.Open()
-	if err != nil {
-		log.Print("Error open file", err)
-		return schemas.UploadResult{}, nil
-	}
-	defer file.Close()
-
-	s := strings.Fields(src.Filename)
-	formattedFileName := strings.Join(s,"_")
-	bucketName := "testing"
-	objectName := formattedFileName
-	_, err = objectStorage.MinioClient.PutObject(context.Background(), bucketName, objectName,file,src.Size, minio.PutObjectOptions{
-		ContentType: src.Header.Get("Content-type"),
-		ContentDisposition: "inline",
-	})
-
-	if err != nil{
-		log.Print(err)
-		return schemas.UploadResult{}, nil
-	}
-	log.Print("Success Upload to document file to bucket")
-
-	filePath := fmt.Sprintf("http://localhost:9000/testing/%s", formattedFileName)
-
-	insertQuery := `
+func (s *DocumentRepo) Create_document(assessmeentId,documentTypeId,createdById,groupId,standardId,serviceId uuid.UUID, filename, filepath string)(string ,error){
+	var document_id string
+	err := s.db.QueryRow(context.Background(), `
 	INSERT INTO documents
-		(document_id,assessment_id, filename, filepath, document_type_id, status, created_at, updated_at, created_by, group_id, service_id, standard_id) VALUES
-		($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)	
-	`
-	document_id := uuid.New()
-	assessmentId, err := uuid.Parse(documentRequest.AssessmentId)
-	documentTypeId, err := uuid.Parse(documentRequest.DocumentTypeId)
-	userId, err := uuid.Parse(documentRequest.UserId)
-	GroupId, err := uuid.Parse(documentRequest.GroupId)
-	serviceId, err := uuid.Parse(documentRequest.ServicesId)
-	standardId, err := uuid.Parse(documentRequest.StandardId)
+	(assessment_id,filename,filepath,document_type_id,status,created_at,updated_at,created_by,group_id,service_id,standard_id) 
+	VALUES
+	($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING document_id`,assessmeentId,filename,filepath,documentTypeId,"pending",time.Now(),time.Now(),createdById,groupId,serviceId,standardId).Scan(&document_id)
 
-	_, err = db.DB.Exec(context.Background(),insertQuery,document_id.String(), assessmentId, documentRequest.FileName,filePath, documentTypeId, "pending",time.Now(), time.Now(),userId, GroupId, serviceId, standardId)
 	if err != nil{
-		log.Print("Eror wok: ",err )
-		return schemas.UploadResult{}, nil
+		log.Print("Error insert to db: ", err)
+		return "",err
 	}
-	
-	url, err := objectStorage.MinioClient.PresignedGetObject(
-    context.Background(),
-    "testing",
-    formattedFileName,
-    time.Hour * 1,
-    nil,
-	)
-		
-	log.Print(url)
-	result := schemas.UploadResult{
-		Status: true,
-		Message: "Upload successfull",
-		FileName: src.Filename,
-		FileSize: src.Size,
+
+	return document_id, nil
+}
+
+func (s *DocumentRepo)Update_document(documentId, assessmentId, documentTypeId,createdById, groupId,StandardId, serviceId uuid.UUID, filename, filepath string)(int64, error){
+	updateQuery := `
+	UPDATE documents SET
+		assessment_id = $1,
+		filename = $2,
+		filepath = $3,
+		document_type_id = $4,
+		updated_at =$5,
+		group_id = $6,
+		service_id = $7, 
+		standard_id = $8
+	WHERE document_id = $9
+		AND created_by = $10
+		`
+
+	result, err := s.db.Exec(context.Background(), updateQuery, 
+	assessmentId,filename,filepath, documentTypeId,time.Now() ,groupId, serviceId, StandardId, documentId, createdById)
+	if err != nil{
+		log.Print("hidup jokowi: ", err)
+		return 0, err
 	}
-	return result, nil
+	log.Print("mana ERRORNYA: ", result)
+	log.Print("berapa row wok:",result.RowsAffected())
+	return result.RowsAffected(), nil
 }
 
-func Update_document(r *gin.Context)(schemas.UpdateResponse, error){
+func (s *DocumentRepo) Delete_document(documentId, userId uuid.UUID)(int64, error){
+	deleteQuery := `
+	DELETE FROM documents 
+		WHERE document_id = $1
+			AND created_by = $2`
 
+	result, err := s.db.Exec(context.Background(), deleteQuery, documentId, userId)
+	if err != nil {
+		log.Print("error delet ", err)
+		return 0, nil
+	}
 
-
-	return schemas.UpdateResponse{}, nil
+	return result.RowsAffected(), nil
 }
 
-func approval_document(){
 
+func(s *DocumentRepo) Approval_document(documentId, userId uuid.UUID,status string)(int64, error){
+	updateStatusQuery:= `
+	UPDATE documents SET
+		status = $1
+			WHERE document_id = $3
+				AND created_by = $4
+	` 
+
+	result,err := s.db.Exec(context.Background(),updateStatusQuery, status, documentId, userId)
+	if err != nil{
+		log.Print("Error update status", err)
+		return 0, nil
+	}
+
+	return result.RowsAffected(),nil
 }
-

@@ -1,16 +1,17 @@
 CREATE TYPE user_role AS ENUM ('master-admin', 'admin', 'staff');
-CREATE TYPE audit_type AS ENUM ('insert', 'open', 'update','delete','error');
+CREATE TYPE audit_type AS ENUM ('audit', 'activity');
+CREATE TYPE action_type AS ENUM ('insert', 'open', 'update','delete','error');
 CREATE TYPE audit_source AS ENUM ('client', 'system');
 
 CREATE TABLE IF NOT EXISTS groups (
-    group_id UUID PRIMARY KEY ,
+    group_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     group_name VARCHAR(255),
     created_at TIMESTAMP,
     updated_at TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS users (
-    user_id UUID PRIMARY KEY,
+    user_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     group_id UUID,
     email VARCHAR(255),
     verified BOOLEAN,
@@ -22,7 +23,7 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE TABLE IF NOT EXISTS services (
-    service_id UUID PRIMARY KEY,
+    service_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     group_id UUID,
     service_code VARCHAR(20),
     description VARCHAR(255),
@@ -32,7 +33,7 @@ CREATE TABLE IF NOT EXISTS services (
 );
 
 CREATE TABLE IF NOT EXISTS standard (
-    standard_id UUID PRIMARY KEY,
+    standard_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     service_id UUID,
     standard_code VARCHAR(20),
     description VARCHAR(255),
@@ -42,7 +43,7 @@ CREATE TABLE IF NOT EXISTS standard (
 );
 
 CREATE TABLE IF NOT EXISTS assessment (
-    assessment_id UUID PRIMARY KEY,
+    assessment_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     standard_id UUID,
     assessment_code VARCHAR(20),
     description VARCHAR(255),
@@ -52,7 +53,7 @@ CREATE TABLE IF NOT EXISTS assessment (
 );
 
 CREATE TABLE IF NOT EXISTS document_types (
-    document_type_id UUID PRIMARY KEY,
+    document_type_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(255),
     description VARCHAR(255),
     created_at TIMESTAMP,
@@ -60,7 +61,7 @@ CREATE TABLE IF NOT EXISTS document_types (
 );
 
 CREATE TABLE IF NOT EXISTS documents (
-    document_id UUID PRIMARY KEY ,
+    document_id UUID PRIMARY KEY DEFAULT gen_random_uuid() ,
     assessment_id UUID,
     filename VARCHAR(255),
     filepath VARCHAR(255),
@@ -81,9 +82,9 @@ CREATE TABLE IF NOT EXISTS documents (
 );
 
 CREATE TABLE IF NOT EXISTS audit (
-    audit_id UUID PRIMARY KEY,
+    audit_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     type audit_type,
-    action VARCHAR(20),
+    action action_type,
     user_id UUID,
     document_id UUID,
     source audit_source,
@@ -94,7 +95,7 @@ CREATE TABLE IF NOT EXISTS audit (
 );
 
 CREATE TABLE IF NOT EXISTS notifications (
-    notification_id UUID PRIMARY KEY,
+    notification_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     message VARCHAR(255),
     read BOOLEAN,
     user_id UUID,

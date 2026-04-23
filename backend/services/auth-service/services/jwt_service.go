@@ -24,6 +24,7 @@ func NewJWTService() *JWTService {
 // Claims defines the JWT payload.
 // Embedding jwt.RegisteredClaims gives us standard fields (exp, iat, iss, etc.).
 type Claims struct {
+	UserId string `json:"user_id"`
 	Email string `json:"email"`
 	Role  string `json:"role"`
 	jwt.RegisteredClaims
@@ -36,6 +37,7 @@ func (s *JWTService) GenerateToken(email string) (string, error) {
 	expiresAt := now.Add(config.JWTExpiration)
 
 	claims := &Claims{
+		UserId: "bc6adda6-bfe6-4a6c-a637-35dd4ba4e562",
 		Email: email,
 		Role:  config.DefaultRole,
 		RegisteredClaims: jwt.RegisteredClaims{

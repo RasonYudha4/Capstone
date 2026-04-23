@@ -36,8 +36,6 @@ services:
     environment:
       - MINIO_ROOT_USER=minioadmin
       - MINIO_ROOT_PASSWORD=minioadmin
-      - MINIO_DEFAULT_BUCKETS=test1
-      - MINIO_SERVER_URL=http://host.docker.internal:9090
     ports:
       - "9000:9000"
       - "9100:9100"
@@ -62,6 +60,7 @@ services:
       SLEEP_BEFORE_START: 10
       DB_URL: postgresql://capstone:capstoneboi@postgres:5432/capstone_db?sslmode=disable
       ENDPOINT: minio:9000
+      BUCKET_URL: http://minio:9000/testing/%s
       ACCESS_KEY: SRtY0aixaO1f5er952kL
       SECRET_KEY: bLhjW3B8R1Y05vNs2T1pn5fI7cAP7eUgZuCbMnis
     depends_on:
@@ -105,11 +104,53 @@ services:
       PGADMIN_DEFAULT_EMAIL: capstone@gmail.com
       PGADMIN_DEFAULT_PASSWORD: capstoneboi
     ports:
-      - "9090:80"
+      - "9080:80"
     volumes:
       - C:\Users\LENOVO\Downloads\test\test\pgadmin:/opt/cloudbeaver/workspace
     networks:
       - server
+
+#  grafana:
+#    image: grafana/grafana:latest
+#    container_name: grafana
+#    ports:
+#      - "3001:3000"
+#    volumes:
+#      - D:\capstone\grafana:/var/lib/grafana
+#    networks:
+#      - server
+
+#  prometheus:
+#    image: prom/prometheus
+#    container_name: prometheus
+#    restart: unless-stopped
+#    ports:
+#      - "9090:9090"
+#    volumes:
+#      - D:\capstone\prometheus\prometheus.yml:/etc/prometheus/prometheus.yml
+#      - D:\capstone\prometheus\prometheus-data:/prometheus
+#    command:
+#      - "--config.file=/etc/prometheus/prometheus.yml"
+#    networks:
+#      - server
+
+#  node_exporter:
+#    image: quay.io/prometheus/node-exporter:latest
+#    container_name: node_exporter
+#    restart: unless-stopped
+#    volumes:
+#      - D:/capstone/node_exporter/proc:/host/proc:ro
+#      - D:/capstone/node_exporter/sys:/host/sys:ro
+#      - D:/capstone/node_exporter:/rootfs:ro
+#    command:
+#      - '--path.procfs=/host/proc'
+#      - '--path.rootfs=/rootfs'
+#      - '--path.sysfs=/host/sys'
+#      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+#    ports:
+#      - "9101:9100"
+#    networks:
+#      - server
 
 networks:
   server:
