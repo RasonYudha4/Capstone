@@ -6,7 +6,10 @@ export const loginSchema = z.object({
 });
 
 export const otpSchema = z.object({
-    otp: z.string().min(6, "Please enter the complete 6-digit code"),
+    otp: z
+        .string()
+        .length(6, "Please enter the complete 6-digit code")
+        .regex(/^\d+$/, "OTP must contain digits only"),
 });
 
 export type LoginFormValues = z.infer<typeof loginSchema>;

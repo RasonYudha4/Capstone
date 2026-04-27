@@ -20,7 +20,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
-import FileDropzone from '../atoms/FileDropzone'
+import FileDropzone from '../molecules/FileDropzone'
 import { useState } from 'react'
 import ConfirmDialog from '../molecules/ConfirmDialog'
 

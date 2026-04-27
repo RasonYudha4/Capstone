@@ -11,5 +11,5 @@ export default function Dashboard() {
 
     if (role === 'master-admin') return <MasterAdminDashboard />
     if (role === 'admin') return <AdminDashboard />
-    return <StaffDashboard />
+    return <MasterAdminDashboard />
 }

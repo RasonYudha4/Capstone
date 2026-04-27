@@ -8,7 +8,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table'
-import BreadcrumbNav, { type BreadcrumbSegment } from '../atoms/BreadcrumbNav'
+import BreadcrumbNav, { type BreadcrumbSegment } from '../molecules/BreadcrumbNav'
 import FileTableRow, { type FileRecord } from '../molecules/FileTableRow'
 import UploadModal from './UploadModal'
 import FileDetailModal from './FiledetailModal'
