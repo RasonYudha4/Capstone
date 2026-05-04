@@ -12,8 +12,15 @@ const (
 	// In production, load this from an environment variable (e.g. JWT_SECRET).
 	JWTSecret = "super-secret-key-change-in-production"
 
-	// how long a JWT token remains valid after issuance.
-	JWTExpiration = 1 * time.Hour
+	// Token Lifetimes
+
+	// how long an access token (JWT) remains valid.
+	// short-lived to limit damage if stolen.
+	AccessTokenExpiry = 15 * time.Minute
+
+	// how long a refresh token remains valid.
+	// long-lived to obtain new access tokens without re-login.
+	RefreshTokenExpiry = 7 * 24 * time.Hour // 7 days
 
 	// how long an OTP code remains valid after generation.
 	OTPExpiration = 5 * time.Minute
@@ -21,28 +28,37 @@ const (
 	// number of digits in a generated OTP code.
 	OTPLength = 6
 
-	// DefaultRole is the role assigned to every authenticated user for now.
-	// This will be replaced with a proper role system once the database is integrated.
-	DefaultRole = "master-admin"
 	// maximum failed OTP verification attempts before the code is invalidated.
 	OTPMaxAttempts = 3
 
 	// bcrypt cost factor for password hashing.
-	// 10 is a good balance between security and speed.
 	BcryptCost = 10
 
-	// --- RBAC Roles ---
-	// Role hierarchy (least → most privileged): staff < admin < master_admin.
+	// Account Lockout
+
+	// before the account is temporarily locked.
+	MaxLoginAttempts = 5
+
+	// how long an account stays locked after max failed attempts.
+	LockDuration = 15 * time.Minute
+
+	// Password Policy
+
+	// minimum password length for new passwords.
+	PasswordMinLength = 8
+
+	// RBAC Roles
+	// must match the user_role ENUM defined in the database migration.
+	// Role hierarchy (least → most privileged): staff < admin < master-admin.
 
 	RoleStaff       = "staff"
 	RoleAdmin       = "admin"
-	RoleMasterAdmin = "master_admin"
+	RoleMasterAdmin = "master-admin"
 
-	// Gin context key where the authenticated user's
+	// context key where the authenticated user's
 	// claims are stored after passing through the JWT middleware.
 	ContextKeyUser = "authenticated_user"
 
-	// PostgreSQL connection string.
-	// In production, load from DATABASE_URL environment variable.
-	DatabaseURL = "postgres://postgres:postgres@localhost:5432/hospital_auth?sslmode=disable"
+	// load from DATABASE_URL environment variable.
+	DatabaseURL = "postgresql://capstone:capstoneboi@127.0.0.1:5432/capstone_db?sslmode=disable"
 )

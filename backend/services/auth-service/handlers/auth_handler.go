@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
+	"time"
 
 	"auth-service/config"
 	"auth-service/models"
@@ -10,43 +12,41 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// AuthHandler groups the HTTP handlers for authentication endpoints.
-// Dependencies (User, OTP, and JWT services) are injected through the constructor,
-// which makes testing straightforward.
+// groups the HTTP handlers for authentication endpoints.
 type AuthHandler struct {
-	userService *services.UserService
-	otpService  *services.OTPService
-	jwtService  *services.JWTService
+	userService    *services.UserService
+	otpService     *services.OTPService
+	jwtService     *services.JWTService
+	refreshService *services.RefreshService
+	auditService   *services.AuditService
 }
 
-// NewAuthHandler creates an AuthHandler with all required services.
+// creates an AuthHandler with all required services.
 func NewAuthHandler(
 	userService *services.UserService,
 	otpService *services.OTPService,
 	jwtService *services.JWTService,
+	refreshService *services.RefreshService,
+	auditService *services.AuditService,
 ) *AuthHandler {
 	return &AuthHandler{
-		userService: userService,
-		otpService:  otpService,
-		jwtService:  jwtService,
+		userService:    userService,
+		otpService:     otpService,
+		jwtService:     jwtService,
+		refreshService: refreshService,
+		auditService:   auditService,
 	}
 }
 
-// =====================================================================
 //  POST /auth/login
-// =====================================================================
 
-// Login handles email + password authentication.
-//
-// Flow:
-//  1. Parse & validate the request body (email + password).
-//  2. Verify credentials against the database (bcrypt comparison).
-//  3. If role is "user"         → issue JWT immediately (no OTP).
-//  4. If role is "admin" or "master_admin" → generate OTP, return requires_otp: true.
+// login handles email + password authentication
+// - account lockout after MaxLoginAttempts failed attempts
+// - audit logging for login success, failure, and lockout
+// - refresh token issued alongside access token (for staff)
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req models.LoginRequest
 
-	// Bind and validate the JSON body.
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.APIResponse{
 			Success: false,
@@ -55,8 +55,8 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	// Authenticate with email + password.
-	user, err := h.userService.Authenticate(req.Email, req.Password)
+	// look up the user first (to check lockout before bcrypt).
+	user, err := h.userService.GetByEmail(req.Email)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
@@ -65,8 +65,9 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	// Generic error message — never reveal whether the email exists.
 	if user == nil {
+		// audit: failed login (unknown email).
+		h.auditService.Log("error", "login_fail", nil, "client")
 		c.JSON(http.StatusUnauthorized, models.APIResponse{
 			Success: false,
 			Message: "Invalid email or password.",
@@ -74,32 +75,87 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	// --- Role-based login branching ---
+	// phase 2: account lockout check
+	if user.IsLocked() {
+		remaining := time.Until(*user.LockedUntil).Round(time.Second)
+		h.auditService.Log("error", "login_locked", &user.UserID, "client")
+		c.JSON(http.StatusTooManyRequests, models.APIResponse{
+			Success: false,
+			Message: fmt.Sprintf("Account is locked. Try again in %s.", remaining),
+		})
+		return
+	}
 
-	// For "staff" role: credentials alone are sufficient.
-	if user.Role == config.RoleStaff {
-		token, err := h.jwtService.GenerateToken(user.ID, user.Email, user.Role)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, models.APIResponse{
+	// if lock has expired, reset the counter.
+	if user.LockedUntil != nil && !user.IsLocked() {
+		_ = h.userService.ResetFailedAttempts(user.UserID)
+	}
+
+	// verify password.
+	authenticated, err := h.userService.Authenticate(req.Email, req.Password)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Message: "Internal server error.",
+		})
+		return
+	}
+
+	if authenticated == nil {
+		// wrong password, increment failed attempts.
+		count, _ := h.userService.IncrementFailedAttempts(user.UserID)
+		h.auditService.Log("error", "login_fail", &user.UserID, "client")
+
+		if count >= config.MaxLoginAttempts {
+			_ = h.userService.LockAccount(user.UserID)
+			_ = h.refreshService.RevokeAllUserTokens(user.UserID)
+			h.auditService.Log("error", "lockout", &user.UserID, "system")
+			c.JSON(http.StatusTooManyRequests, models.APIResponse{
 				Success: false,
-				Message: "Failed to generate token.",
+				Message: fmt.Sprintf("Account locked for %s due to too many failed attempts.", config.LockDuration),
 			})
 			return
 		}
 
+		remaining := config.MaxLoginAttempts - count
+		c.JSON(http.StatusUnauthorized, models.APIResponse{
+			Success: false,
+			Message: fmt.Sprintf("Invalid email or password. %d attempt(s) remaining.", remaining),
+		})
+		return
+	}
+
+	// password correct, reset failed attempts.
+	_ = h.userService.ResetFailedAttempts(user.UserID)
+
+	// role-based login branching
+
+	// for "staff" role: issue tokens immediately.
+	if user.Role == config.RoleStaff {
+		accessToken, refreshToken, err := h.issueTokens(user)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, models.APIResponse{
+				Success: false,
+				Message: "Failed to generate tokens.",
+			})
+			return
+		}
+
+		h.auditService.Log("insert", "login", &user.UserID, "client")
 		c.JSON(http.StatusOK, models.APIResponse{
 			Success: true,
 			Message: "Login successful.",
 			Data: models.LoginResponse{
-				RequiresOTP: false,
-				Token:       token,
-				ExpiresIn:   config.JWTExpiration.String(),
+				RequiresOTP:  false,
+				AccessToken:  accessToken,
+				RefreshToken: refreshToken,
+				ExpiresIn:    config.AccessTokenExpiry.String(),
 			},
 		})
 		return
 	}
 
-	// For "admin" and "master_admin": require OTP as a second factor.
+	// for "admin" and "master-admin", require OTP as a second factor.
 	_, err = h.otpService.GenerateAndStore(user.Email, "login")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
@@ -118,17 +174,10 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	})
 }
 
-// =====================================================================
-//  POST /auth/verify-otp
-// =====================================================================
+// POST /auth/verify-otp
 
-// VerifyOTP handles the second step of admin/master_admin login.
-//
-// Flow:
-//  1. Parse & validate the request body (email + 6-digit OTP).
-//  2. Check the OTP against the in-memory store (expiry, attempts, code match).
-//  3. If valid → look up user, generate JWT, return token.
-//  4. If invalid → return descriptive error.
+// verifyotp handles the second step of admin/master-admin login.
+// issues both access and refresh tokens, with audit logging.
 func (h *AuthHandler) VerifyOTP(c *gin.Context) {
 	var req models.OTPVerifyRequest
 
@@ -140,7 +189,6 @@ func (h *AuthHandler) VerifyOTP(c *gin.Context) {
 		return
 	}
 
-	// Verify the OTP against the in-memory store.
 	valid, errMsg, err := h.otpService.Verify(req.Email, req.OTP)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
@@ -158,7 +206,7 @@ func (h *AuthHandler) VerifyOTP(c *gin.Context) {
 		return
 	}
 
-	// OTP is valid — look up the user and issue a JWT.
+	// OTP is valid, look up user and issue tokens.
 	user, err := h.userService.GetByEmail(req.Email)
 	if err != nil || user == nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
@@ -168,33 +216,161 @@ func (h *AuthHandler) VerifyOTP(c *gin.Context) {
 		return
 	}
 
-	token, err := h.jwtService.GenerateToken(user.ID, user.Email, user.Role)
+	accessToken, refreshToken, err := h.issueTokens(user)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
-			Message: "Failed to generate authentication token.",
+			Message: "Failed to generate tokens.",
 		})
 		return
 	}
 
+	h.auditService.Log("insert", "login", &user.UserID, "client")
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
 		Message: "Login successful.",
 		Data: models.TokenResponse{
-			Token:     token,
-			ExpiresIn: config.JWTExpiration.String(),
+			AccessToken:  accessToken,
+			RefreshToken: refreshToken,
+			ExpiresIn:    config.AccessTokenExpiry.String(),
 		},
 	})
 }
 
-// =====================================================================
-//  GET /auth/me
-// =====================================================================
+// POST /auth/resend-otp
 
-// Me returns the authenticated user's profile information.
-// Requires a valid JWT (enforced by the JWTAuth middleware).
+// resendotp generates a new OTP for users who already passed password verification.
+// users don't need to re-enter their password.
+// security:
+// - only works if an OTP was already requested via /auth/login (password was verified).
+// - overwrites the previous OTP (the old one becomes invalid).
+// - does NOT reveal whether the email exists (generic error on failure).
+func (h *AuthHandler) ResendOTP(c *gin.Context) {
+	var req models.ResendOTPRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Message: "Invalid request: " + err.Error(),
+		})
+		return
+	}
+
+	// only allow resend if an OTP login was already initiated.
+	if !h.otpService.HasPending(req.Email) {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Message: "No pending OTP for this email. Please log in first.",
+		})
+		return
+	}
+
+	// generate a fresh OTP (overwrites the old one).
+	_, err := h.otpService.GenerateAndStore(req.Email, "login")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Message: "Failed to generate OTP.",
+		})
+		return
+	}
+
+	h.auditService.Log("update", "otp_resend", nil, "client")
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Message: "A new OTP has been sent to your email.",
+	})
+}
+
+// POST /auth/refresh
+
+// refresh issues a new access token using a valid refresh token.
+func (h *AuthHandler) Refresh(c *gin.Context) {
+	var req models.RefreshRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Message: "Invalid request: " + err.Error(),
+		})
+		return
+	}
+
+	// validate the refresh token.
+	userID, err := h.refreshService.ValidateToken(req.RefreshToken)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, models.APIResponse{
+			Success: false,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	// get user details for the new access token.
+	user, err := h.userService.GetByID(userID)
+	if err != nil || user == nil {
+		c.JSON(http.StatusUnauthorized, models.APIResponse{
+			Success: false,
+			Message: "User not found.",
+		})
+		return
+	}
+
+	// generate a new access token.
+	accessToken, err := h.jwtService.GenerateToken(user.UserID, user.Email, user.Role)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Message: "Failed to generate access token.",
+		})
+		return
+	}
+
+	h.auditService.Log("update", "token_refresh", &user.UserID, "client")
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Message: "Token refreshed.",
+		Data: models.RefreshResponse{
+			AccessToken: accessToken,
+			ExpiresIn:   config.AccessTokenExpiry.String(),
+		},
+	})
+}
+
+// POST /auth/logout
+
+// logout revokes a refresh token so it can no longer be used.
+func (h *AuthHandler) Logout(c *gin.Context) {
+	var req models.LogoutRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Message: "Invalid request: " + err.Error(),
+		})
+		return
+	}
+
+	userID, err := h.refreshService.RevokeToken(req.RefreshToken)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	h.auditService.Log("delete", "logout", &userID, "client")
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Message: "Logged out successfully.",
+	})
+}
+
+// GET /auth/me
+
+// me returns the authenticated user's profile information.
 func (h *AuthHandler) Me(c *gin.Context) {
-	// Extract claims set by the JWTAuth middleware.
 	value, exists := c.Get(config.ContextKeyUser)
 	if !exists {
 		c.JSON(http.StatusUnauthorized, models.APIResponse{
@@ -206,7 +382,6 @@ func (h *AuthHandler) Me(c *gin.Context) {
 
 	claims := value.(*services.Claims)
 
-	// Fetch full user details from the database.
 	user, err := h.userService.GetByID(claims.UserID)
 	if err != nil || user == nil {
 		c.JSON(http.StatusNotFound, models.APIResponse{
@@ -216,14 +391,35 @@ func (h *AuthHandler) Me(c *gin.Context) {
 		return
 	}
 
+	resp := models.UserResponse{
+		UserID: user.UserID,
+		Email:  user.Email,
+		Role:   user.Role,
+	}
+	if user.GroupID != nil {
+		resp.GroupID = *user.GroupID
+	}
+
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
 		Message: "User info retrieved.",
-		Data: models.UserResponse{
-			ID:    user.ID,
-			Email: user.Email,
-			Name:  user.Name,
-			Role:  user.Role,
-		},
+		Data:    resp,
 	})
+}
+
+// helpers
+
+// generates both an access token (JWT) and a refresh token.
+func (h *AuthHandler) issueTokens(user *models.User) (accessToken, refreshToken string, err error) {
+	accessToken, err = h.jwtService.GenerateToken(user.UserID, user.Email, user.Role)
+	if err != nil {
+		return "", "", fmt.Errorf("generate access token: %w", err)
+	}
+
+	refreshToken, err = h.refreshService.CreateToken(user.UserID)
+	if err != nil {
+		return "", "", fmt.Errorf("generate refresh token: %w", err)
+	}
+
+	return accessToken, refreshToken, nil
 }

@@ -12,70 +12,75 @@ import (
 )
 
 func main() {
-	// ── Database ──────────────────────────────────────────────────────
+	// database
 	services.InitDB()
 	defer services.DB.Close()
 
-	// ── Services ─────────────────────────────────────────────────────
+	// services
 	userService := services.NewUserService(services.DB)
 	otpService := services.NewOTPService()
 	jwtService := services.NewJWTService()
+	refreshService := services.NewRefreshService(services.DB) // Phase 2
+	auditService := services.NewAuditService(services.DB)     // Phase 2
 
-	// Seed sample users for development/testing.
-	// In production, remove this and use a migration tool.
-	if err := userService.SeedUsers(); err != nil {
-		log.Fatalf("❌ Failed to seed users: %v", err)
+	// set passwords on existing seed users 
+	if err := userService.SeedPasswords(); err != nil {
+		log.Fatalf("❌ Failed to seed passwords: %v", err)
 	}
 
-	// ── Handlers ─────────────────────────────────────────────────────
-	authHandler := handlers.NewAuthHandler(userService, otpService, jwtService)
+	// handlers
+	authHandler := handlers.NewAuthHandler(
+		userService, otpService, jwtService, refreshService, auditService,
+	)
 	documentHandler := handlers.NewDocumentHandler()
 
-	// ── Router ───────────────────────────────────────────────────────
+	// router
 	router := gin.Default()
 
-	// PUBLIC ROUTES — no authentication required.
+	// public routes
 	auth := router.Group("/auth")
 	{
-		// Step 1: email + password login.
-		// Returns JWT directly for "user" role.
-		// Returns requires_otp: true for "admin" and "master_admin".
+		// email + password login (staff → JWT, admin → OTP required).
 		auth.POST("/login", authHandler.Login)
 
-		// Step 2: OTP verification (only for admin / master_admin).
-		// Completes the two-step login and returns a JWT.
+		// otp verification (completes admin/master-admin login).
 		auth.POST("/verify-otp", authHandler.VerifyOTP)
+
+		// resend OTP (only if login was already initiated via /auth/login).
+		auth.POST("/resend-otp", authHandler.ResendOTP)
+
+		// get a new access token using a refresh token.
+		auth.POST("/refresh", authHandler.Refresh)
+
+		// revoke a refresh token (logout).
+		auth.POST("/logout", authHandler.Logout)
 	}
 
-	// PROTECTED ROUTES — JWT authentication required.
-	// All routes in this group pass through the JWTAuth middleware first.
-	// The middleware validates the Bearer token and injects the user's claims
-	// into the Gin context, making them available to all downstream handlers.
+	// protected routes
 	protected := router.Group("/")
 	protected.Use(middleware.JWTAuth(jwtService))
 	{
-		// Current user profile — accessible by ALL authenticated roles.
+		// current user profile — accessible by ALL authenticated roles.
 		protected.GET("/auth/me", authHandler.Me)
 
-		// Document listing — accessible by ALL authenticated roles.
+		// document listing — accessible by ALL authenticated roles.
 		protected.GET("/documents", documentHandler.ListDocuments)
 
-		// Document upload — only "admin" and "master_admin" can upload.
+		// document upload — only "admin" and "master-admin" can upload.
 		protected.POST("/upload",
 			middleware.RequireRoles(config.RoleAdmin, config.RoleMasterAdmin),
 			documentHandler.UploadDocument,
 		)
 
-		// Document approval — only "master_admin" can approve.
-		// This is the most restricted endpoint in the system.
+		// document approval — only "master-admin" can approve.
 		protected.POST("/approve",
 			middleware.RequireRoles(config.RoleMasterAdmin),
 			documentHandler.ApproveDocument,
 		)
 	}
 
-	// ── Start Server ─────────────────────────────────────────────────
-	log.Printf("🚀 Auth service starting on port %s", config.ServerPort)
+	// start server
+	log.Printf("Auth service starting on port %s", config.ServerPort)
 	if err := router.Run(config.ServerPort); err != nil {
 		log.Fatalf("❌ Failed to start server: %v", err)
 	}

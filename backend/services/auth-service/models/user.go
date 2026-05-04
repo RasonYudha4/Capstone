@@ -2,14 +2,22 @@ package models
 
 import "time"
 
-// User represents a user record in the database.
-// PasswordHash is excluded from JSON responses via the "-" tag.
+// represents a row in the `users` table.
 type User struct {
-	ID           string    `json:"id"`
-	Email        string    `json:"email"`
-	Name         string    `json:"name"`
-	PasswordHash string    `json:"-"`
-	Role         string    `json:"role"`
-	IsActive     bool      `json:"is_active"`
-	CreatedAt    time.Time `json:"created_at"`
+	UserID           string     `json:"user_id"`
+	GroupID          *string    `json:"group_id"`           // nullable UUID FK → groups
+	Email            string     `json:"email"`
+	Verified         bool       `json:"verified"`
+	Role             string     `json:"role"`               // user_role ENUM: 'staff', 'admin', 'master-admin'
+	VerificationCode *string    `json:"-"`                  // hidden from JSON
+	PasswordHash     *string    `json:"-"`                  // hidden from JSON (Phase 1)
+	FailedAttempts   int        `json:"-"`                  // Phase 2: failed login counter
+	LockedUntil      *time.Time `json:"-"`                  // Phase 2: account lock expiry
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+}
+
+// returns true if the account is currently locked.
+func (u *User) IsLocked() bool {
+	return u.LockedUntil != nil && time.Now().Before(*u.LockedUntil)
 }
