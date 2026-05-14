@@ -1,30 +1,69 @@
 package models
 
-// --- Request DTOs ---
+// Request DTOs
 
-// OTPRequest is the JSON body for POST /auth/request-otp.
-type OTPRequest struct {
-	Email string `json:"email" binding:"required,email"`
+// JSON body for POST /auth/login.
+type LoginRequest struct {
+	Email    string `json:"email"    binding:"required,email"`
+	Password string `json:"password" binding:"required"`
 }
 
-// OTPVerifyRequest is the JSON body for POST /auth/verify-otp.
+// for POST /auth/verify-otp.
 type OTPVerifyRequest struct {
 	Email string `json:"email" binding:"required,email"`
 	OTP   string `json:"otp"   binding:"required,len=6"`
 }
 
-// --- Response DTOs ---
+// for POST /auth/refresh.
+type RefreshRequest struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
+}
 
-// APIResponse is a generic envelope for all JSON responses.
-// Using a consistent shape makes life easier for frontend consumers.
+// for POST /auth/logout.
+type LogoutRequest struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
+}
+
+// for POST /auth/resend-otp.
+type ResendOTPRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+// Response DTOs
+
+// generic envelope for all JSON responses.
 type APIResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
 	Data    any    `json:"data,omitempty"` // omitted when nil
 }
 
-// TokenResponse carries the JWT returned after successful OTP verification.
+// returned by POST /auth/login.
+// if true, the client must proceed to /auth/verify-otp.
+type LoginResponse struct {
+	RequiresOTP  bool   `json:"requires_otp"`
+	AccessToken  string `json:"access_token,omitempty"`
+	RefreshToken string `json:"refresh_token,omitempty"`
+	ExpiresIn    string `json:"expires_in,omitempty"`
+}
+
+// carries the tokens returned after successful OTP verification.
 type TokenResponse struct {
-	Token     string `json:"token"`
-	ExpiresIn string `json:"expires_in"`
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresIn    string `json:"expires_in"`
+}
+
+// carries the new access token from POST /auth/refresh.
+type RefreshResponse struct {
+	AccessToken string `json:"access_token"`
+	ExpiresIn   string `json:"expires_in"`
+}
+
+// public representation of a user (GET /auth/me).
+type UserResponse struct {
+	UserID  string `json:"user_id"`
+	Email   string `json:"email"`
+	Role    string `json:"role"`
+	GroupID string `json:"group_id,omitempty"`
 }

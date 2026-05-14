@@ -8,6 +8,13 @@ type OTPEntry struct {
 	// Code is the 6-digit OTP string (e.g. "048312").
 	Code string
 
+	// Purpose indicates why this OTP was generated.
+	// "login" for login verification, "action_confirm" for sensitive actions.
+	Purpose string
+
+	// Attempts tracks how many times the user has tried to verify this OTP.
+	Attempts int
+
 	// ExpiresAt marks when this OTP becomes invalid.
 	ExpiresAt time.Time
 }

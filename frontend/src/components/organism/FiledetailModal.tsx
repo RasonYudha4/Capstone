@@ -12,7 +12,7 @@ import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import StatusPill, { type FileStatus } from '../atoms/StatusPill'
 import type { FileRecord } from '../molecules/FileTableRow'
-import FileDropzone from '../atoms/FileDropzone'
+import FileDropzone from '../molecules/FileDropzone'
 import { useState } from 'react'
 import ConfirmDialog from '../molecules/ConfirmDialog'
 

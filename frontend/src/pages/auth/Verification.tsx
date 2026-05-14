@@ -1,19 +1,40 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useNavigate, useLocation } from "react-router";
 import {
     InputOTP,
     InputOTPGroup,
     InputOTPSlot,
 } from "@/components/ui/input-otp";
 import { otpSchema, type OTPFormValues } from "@/dtos/login_dto";
+import { authService } from "@/services/auth_service";
+import { useAuth } from "@/cores/AuthContext";
+import { AxiosError } from "axios";
+import { voidApiResponseSchema } from "@/dtos/login_dto";
 
 
 export default function VerifyOTP() {
     const [isLoading, setIsLoading] = useState(false);
     const [isResending, setIsResending] = useState(false);
+    const [serverError, setServerError] = useState<string | null>(null);
+    const [resendSuccess, setResendSuccess] = useState<string | null>(null);
+
+    const navigate = useNavigate();
+    const location = useLocation();
+    const { login } = useAuth();
+
+    // Email passed from Login page via route state
+    const email = (location.state as { email?: string })?.email;
+
+    // Guard: redirect to login if no email in state
+    useEffect(() => {
+        if (!email) {
+            navigate("/login", { replace: true });
+        }
+    }, [email, navigate]);
 
     const {
         control,
@@ -23,31 +44,62 @@ export default function VerifyOTP() {
         formState: { errors },
     } = useForm<OTPFormValues>({
         resolver: zodResolver(otpSchema),
-        defaultValues: { otp: "" },
+        defaultValues: { email: email ?? "", otp: "" },
     });
 
     const otpValue = watch("otp");
 
     const onSubmit = async (data: OTPFormValues) => {
         setIsLoading(true);
+        setServerError(null);
         try {
-            // TODO: plug in OTP verification via auth context
-            console.log("OTP submitted:", data.otp);
+            const tokens = await authService.verifyOtp(data.email, data.otp);
+
+            // Store tokens temporarily so the /auth/me call has a valid Bearer token
+            localStorage.setItem("accessToken", tokens.access_token);
+            localStorage.setItem("refreshToken", tokens.refresh_token);
+
+            const user = await authService.me();
+            login(user, tokens.access_token, tokens.refresh_token);
+            navigate("/dashboard", { replace: true });
+        } catch (error) {
+            if (error instanceof AxiosError && error.response?.data) {
+                const result = voidApiResponseSchema.safeParse(error.response.data);
+                setServerError(result.success ? result.data.message : "Verification failed.");
+            } else if (error instanceof Error) {
+                setServerError(error.message);
+            } else {
+                setServerError("Verification failed. Please try again.");
+            }
         } finally {
             setIsLoading(false);
         }
     };
 
     const onResend = async () => {
+        if (!email) return;
         setIsResending(true);
+        setServerError(null);
+        setResendSuccess(null);
         try {
-            // TODO: trigger resend OTP via auth context
-            console.log("Resend OTP triggered");
-            reset();
+            await authService.resendOtp(email);
+            reset({ email, otp: "" });
+            setResendSuccess("A new OTP has been sent to your email.");
+        } catch (error) {
+            if (error instanceof AxiosError && error.response?.data) {
+                const result = voidApiResponseSchema.safeParse(error.response.data);
+                setServerError(result.success ? result.data.message : "Failed to resend OTP.");
+            } else if (error instanceof Error) {
+                setServerError(error.message);
+            } else {
+                setServerError("Failed to resend OTP. Please try again.");
+            }
         } finally {
             setIsResending(false);
         }
     };
+
+    if (!email) return null;
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-white px-4">
@@ -79,6 +131,20 @@ export default function VerifyOTP() {
                         verifikasi 6-digit yang diterima.
                     </p>
                 </div>
+
+                {/* Error Message */}
+                {serverError && (
+                    <div className="mb-4 p-3 rounded-xl bg-red-500/20 border border-red-400/30 text-red-200 text-sm text-center">
+                        {serverError}
+                    </div>
+                )}
+
+                {/* Success Message */}
+                {resendSuccess && (
+                    <div className="mb-4 p-3 rounded-xl bg-green-500/20 border border-green-400/30 text-green-200 text-sm text-center">
+                        {resendSuccess}
+                    </div>
+                )}
 
                 {/* OTP Form */}
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
@@ -118,6 +184,7 @@ export default function VerifyOTP() {
                     </div>
 
                     <button
+                        id="verify-submit"
                         type="submit"
                         disabled={isLoading || otpValue.length < 6}
                         className="w-full py-3 rounded-xl bg-white text-[#6B5FAE] text-sm font-semibold transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
@@ -130,6 +197,7 @@ export default function VerifyOTP() {
                 <p className="text-center text-sm text-white/50 mt-6">
                     Tidak mendapatkan kode?{" "}
                     <button
+                        id="resend-otp"
                         type="button"
                         onClick={onResend}
                         disabled={isResending}
