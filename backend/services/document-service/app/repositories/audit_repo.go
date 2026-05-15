@@ -24,16 +24,16 @@ func(a *AuditRepo) GetAudit()([]schemas.AuditResponse, error){
 	rows, err := a.db.Query(context.Background(), `
 	SELECT 
 		a.audit_id, 
-		a.type,
 		a.action,
+		a.description,
 		u.email AS userName,
 		d.filename AS documentName,
-		a.source,
 		a.created_at,
 		a.updated_at
 	FROM audit a
 	JOIN users u ON u.user_id = a.user_id
 	JOIN documents d ON d.document_id = a.document_id
+	WHERE a.source = 'client'
 	`)
 	if err != nil{
 		log.Print("Error fetching data from db :", err)
@@ -48,11 +48,10 @@ func(a *AuditRepo) GetAudit()([]schemas.AuditResponse, error){
 
 		err := rows.Scan(
 			&audit.AuditId,
-			&audit.AuditType,
 			&audit.Action,
+			&audit.Description,
 			&audit.UserName,
 			&audit.DocumentName,
-			&audit.Source,
 			&audit.CreatedAt,
 			&audit.UpdatedAt,
 		)
@@ -67,18 +66,22 @@ func(a *AuditRepo) GetAudit()([]schemas.AuditResponse, error){
 	return audits, err
 }
 
-func (a *AuditRepo)SaveAudit(types,action string, userId, documentId uuid.UUID, source string, createdAt, updatedAt time.Time)(error){
+func (a *AuditRepo)SaveAudit(action,description string, userId, documentId uuid.UUID, source string, createdAt, updatedAt time.Time)(string,error){
+	var filename string
+
 	insertQuery := `
 	INSERT INTO audit
-	(type,action,user_id,document_id,source,created_at,updated_at) VALUES
+	(action,description,user_id,document_id,source,created_at,updated_at) VALUES
 	($1,$2,$3,$4,$5,$6,$7)
+	returning
+		(SELECT filename FROM documents WHERE document_id = $4)
 	`
 	
-	_, err := a.db.Exec(context.Background(),insertQuery,types,action,userId,documentId,source,createdAt,updatedAt)
+	err := a.db.QueryRow(context.Background(),insertQuery,action,description,userId,documentId,source,createdAt,updatedAt).Scan(&filename)
 	if err != nil {
 		log.Print("Error Insert Audit log: ", err)
-		return err
+		return "",err
 	}
 
-	return nil
+	return filename, nil
 }

@@ -2,7 +2,6 @@ package api
 
 import(
 	"capstone/app/services"
-
 	"github.com/gin-gonic/gin"
 )
 
@@ -23,5 +22,7 @@ func (a *AuditHandler)GetAudit(r *gin.Context){
 		return
 	}
 
-	r.JSON(200, audit)
+	r.JSON(200, gin.H{
+		"data" : audit,
+	})
 }

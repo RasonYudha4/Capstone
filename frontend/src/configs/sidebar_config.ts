@@ -30,15 +30,15 @@ const generalSection: NavSection = {
 
 const adminSection: NavSection = {
     title: 'Admin Tools',
-    roles: ['admin', 'master-admin'],
+    // roles: ['admin', 'master-admin'],
     items: [
-        { href: '/storage', label: "Dashboard", icon: 'folders'}
+        { href: '/storage', label: "Storage", icon: 'folders'}
     ],
 }
 
 const masterAdminSection: NavSection = {
     title: 'Master Controls',
-    roles: ['master-admin'],
+    // roles: ['master-admin'],
     items: [
         { href: '/admins', label: 'Admins', icon: 'users' },
         { href: '/activity-log', label: 'Activity Log', icon: 'activity'}

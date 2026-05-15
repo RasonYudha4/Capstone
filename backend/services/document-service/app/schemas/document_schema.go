@@ -15,6 +15,7 @@ type DocumentResponse struct {
 	DocumentType string	 `json:"document_type"` 	
 	CreatedBy string	 `json:"created_by"`
 	UpdatedAt time.Time	 `json:"updated_at"`
+	Assessment string	 `json:"assessment"`
 	Status string		 `json:"status"`
 }
 
@@ -28,6 +29,7 @@ type DocumentRequest struct {
 	Description string 		`form:"description"`
 }
 
+
 type UploadResponse struct {
 	Status bool 	`json:"status"`
 	Message string 	`json:"message"`
@@ -37,12 +39,7 @@ type UploadResponse struct {
 
 type UpdateRequest struct {
 	DocumentId string		`form:"document_id"`
-	GroupId string 			`form:"group_id"`
-	ServicesId string		`form:"service_id"`
-	StandardId string 		`form:"standard_id"`
-	AssessmentId string		`form:"assessment_id"`
 	FileName string 		`form:"filename"`
-	DocumentTypeId string	`form:"document_type_id"`
 	Description string 		`form:"description"`
 }
 
@@ -51,6 +48,23 @@ type ApprovalRequest struct {
 	Status string `json:"status"`
 }
 
-type DeleteRequest struct {
-	DocumentId string `json:"document_id"`
+type GroupStat struct {
+    GroupId      uuid.UUID `json:"group_id"`
+    GroupName    string    `json:"group_name"`
+    TotalFiles   int       `json:"total_files"`
+    EmptySections int      `json:"empty_sections"`
 }
+
+type StatusStat struct {
+    Approved int `json:"approved"`
+    Pending  int `json:"pending"`
+    Rejected int `json:"rejected"`
+}
+
+type StatsResponse struct {
+	Status  bool        `json:"status"`
+	Groups  []GroupStat `json:"groups"`
+	Stats   StatusStat  `json:"stats"`
+	Total   int         `json:"total"`
+}
+

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { FileSearch } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import PanelHeader from '../atoms/PanelHeader'
-import InputBar from '../atoms/InputBar'
+import InputBar from '../molecules/InputBar'
 import MessageBubble, { type Message, TypingBubble } from '../molecules/MessageBubble'
 
 const INITIAL_MESSAGE: Message = {

@@ -43,8 +43,8 @@ func AllowedRole(allowedRoles ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userRole := c.GetString("role")
 		
-		for _,err := range allowedRoles {
-			if userRole == err {
+		for _, role := range allowedRoles {
+			if userRole == role {
 				c.Next()	
 				return
 			}

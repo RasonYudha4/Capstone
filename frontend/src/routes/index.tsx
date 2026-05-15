@@ -16,11 +16,10 @@ const Activity = lazy(() => import('../pages/admin/master-admin/ActivityLog'))
 export const router = createBrowserRouter([
     { path: '/', element: <Root /> },
     { path: '/login', element: wrap(Login) },
-    { path: '/storage', element: wrap(Storage) },
 
     // All authenticated routes share ONE layout
     {
-        element: <AuthGuard allowedRoles={['staff', 'admin', 'master-admin']} />,
+        // element: <AuthGuard allowedRoles={['staff', 'admin', 'master-admin']} />,
         children: [
             {
                 element: <AppLayout />,
@@ -30,15 +29,15 @@ export const router = createBrowserRouter([
 
                     // Admin + master-admin only
                     {
-                        element: <AuthGuard allowedRoles={['admin', 'master-admin']} />,
+                        // element: <AuthGuard allowedRoles={['admin', 'master-admin']} />,
                         children: [
-                            // { path: '/storage', element: wrap(Storage) },
+                            { path: '/storage', element: wrap(Storage) },
                         ],
                     },
 
                     // Master-admin only
                     {
-                        element: <AuthGuard allowedRoles={['master-admin']} />,
+                        // element: <AuthGuard allowedRoles={['master-admin']} />,
                         children: [
                             { path: '/admins', element: wrap(Admins) },
                             { path: '/activity-log', element: wrap(Activity) }
