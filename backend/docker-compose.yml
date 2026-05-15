@@ -1,12 +1,23 @@
 services:
 
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    ports:
+      - "8000:80"
+    volumes:
+      - D:\capstone\backend\nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - document-service
+      - minio
+    networks: 
+      - server
+
   postgres:
-    image: postgres:17
+    image: postgres:18
     container_name: postgre
-    environment:
-      POSTGRES_USER: capstone
-      POSTGRES_PASSWORD: capstoneboi
-      POSTGRES_DB: capstone_db
+    env_file:
+      - .env
     deploy:
       resources:
         limits:
@@ -15,7 +26,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - C:\Users\LENOVO\Downloads\test\test\data_db:/var/lib/postgresql/data
+      - C:\Users\LENOVO\Downloads\test\test\data_db18:/var/lib/postgresql/data_db18
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U capstone -d capstone_db"]
       interval: 10s
@@ -33,9 +44,8 @@ services:
         limits:
           memory: 512m
           cpus: "1"
-    environment:
-      - MINIO_ROOT_USER=minioadmin
-      - MINIO_ROOT_PASSWORD=minioadmin
+    env_file:
+      - .env
     ports:
       - "9000:9000"
       - "9100:9100"
@@ -47,9 +57,7 @@ services:
       - server
 
   document-service:
-    build:
-      context: ./services/document-service
-      dockerfile: Dockerfile
+    image: document-service
     container_name: document-service
     deploy:
       resources:
@@ -58,16 +66,11 @@ services:
           cpus: "1"
     environment:
       SLEEP_BEFORE_START: 10
-      DB_URL: postgresql://capstone:capstoneboi@postgres:5432/capstone_db?sslmode=disable
-      ENDPOINT: minio:9000
-      BUCKET_URL: http://minio:9000/testing/%s
-      ACCESS_KEY: SRtY0aixaO1f5er952kL
-      SECRET_KEY: bLhjW3B8R1Y05vNs2T1pn5fI7cAP7eUgZuCbMnis
+    env_file:
+      - .env
     depends_on:
       postgres:
         condition: service_healthy
-    ports:
-      - "8081:8081"
     networks:
       - server
 
@@ -86,8 +89,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    ports:
-      - "8080:8080"
     networks:
       - server
       
@@ -100,57 +101,14 @@ services:
           memory: 256m
           cpus: "0.5"
     restart: unless-stopped
-    environment:
-      PGADMIN_DEFAULT_EMAIL: capstone@gmail.com
-      PGADMIN_DEFAULT_PASSWORD: capstoneboi
+    env_file:
+      - .env
     ports:
       - "9080:80"
     volumes:
-      - C:\Users\LENOVO\Downloads\test\test\pgadmin:/opt/cloudbeaver/workspace
+      - C:\Users\LENOVO\Downloads\test\test\pgadmin:/var/lib/pgadmindock
     networks:
       - server
-
-#  grafana:
-#    image: grafana/grafana:latest
-#    container_name: grafana
-#    ports:
-#      - "3001:3000"
-#    volumes:
-#      - D:\capstone\grafana:/var/lib/grafana
-#    networks:
-#      - server
-
-#  prometheus:
-#    image: prom/prometheus
-#    container_name: prometheus
-#    restart: unless-stopped
-#    ports:
-#      - "9090:9090"
-#    volumes:
-#      - D:\capstone\prometheus\prometheus.yml:/etc/prometheus/prometheus.yml
-#      - D:\capstone\prometheus\prometheus-data:/prometheus
-#    command:
-#      - "--config.file=/etc/prometheus/prometheus.yml"
-#    networks:
-#      - server
-
-#  node_exporter:
-#    image: quay.io/prometheus/node-exporter:latest
-#    container_name: node_exporter
-#    restart: unless-stopped
-#    volumes:
-#      - D:/capstone/node_exporter/proc:/host/proc:ro
-#      - D:/capstone/node_exporter/sys:/host/sys:ro
-#      - D:/capstone/node_exporter:/rootfs:ro
-#    command:
-#      - '--path.procfs=/host/proc'
-#      - '--path.rootfs=/rootfs'
-#      - '--path.sysfs=/host/sys'
-#      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
-#    ports:
-#      - "9101:9100"
-#    networks:
-#      - server
 
 networks:
   server:
