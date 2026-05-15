@@ -1,4 +1,5 @@
-FROM golang:1.25.0-alpine
+#stage1
+FROM golang:1.25 AS builder
 
 WORKDIR /app
 
@@ -7,8 +8,12 @@ RUN go mod download
 
 COPY . .
 
-RUN go build -o main ./main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o main ./main.go
 
-EXPOSE 8081
+#stage 2
+FROM alpine:latest
 
+WORKDIR /app
+
+COPY --from=builder  /app/main .
 CMD ["./main"]

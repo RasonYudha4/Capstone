@@ -3,10 +3,11 @@ package middleware
 import (
 	"capstone/app/schemas"
 
-	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 	"net/http"
 	"strings"
+
+	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 func Extract_JWT_data(secretKey string) gin.HandlerFunc {
@@ -31,23 +32,26 @@ func Extract_JWT_data(secretKey string) gin.HandlerFunc {
 			return
 		}
 		claims := token.Claims.(*schemas.Claims)
-		c.Set("email", claims.Email)
+		c.Set("user_id", claims.UserId)
 		c.Set("role", claims.Role)
 
 		c.Next()
 	}
 }
 
-func AllowedRole() gin.HandlerFunc{
-	return func(c *gin.Context){
+func AllowedRole(allowedRoles ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		userRole := c.GetString("role")
-		if userRole != "master-admin"{
-			c.AbortWithStatusJSON(403, gin.H{
-			"message": "Not Authorized",
-		})
-		return
+		
+		for _, role := range allowedRoles {
+			if userRole == role {
+				c.Next()	
+				return
+			}
 		}
-
-		c.Next()
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+			"message": "Unauthorized",})
 	}
-}
+}	
+	
+	

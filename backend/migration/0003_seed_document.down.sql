@@ -1,1 +1,0 @@
-DELETE FROM documents WHERE document_id IN("9269058a-7cc4-4615-9a15-951d32fbbe88")

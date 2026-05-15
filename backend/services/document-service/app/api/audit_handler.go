@@ -1,15 +1,28 @@
 package api
 
 import(
-	"capstone/app/repositories"
+	"capstone/app/services"
 	"github.com/gin-gonic/gin"
 )
 
-func GetAudit(r *gin.Context){
-	audit, err := repositories.GetAudit()
+type AuditHandler struct {
+	service *services.AuditService
+}
+
+func NewAuditHandler(service *services.AuditService) *AuditHandler{
+	return &AuditHandler {
+		service: service,
+	}
+}
+
+func (a *AuditHandler)GetAudit(r *gin.Context){
+	audit, err := a.service.Get_audit()
 	if err != nil{
 		r.JSON(500, "Internal error")
 		return
 	}
-	r.JSON(200, audit)
+
+	r.JSON(200, gin.H{
+		"data" : audit,
+	})
 }

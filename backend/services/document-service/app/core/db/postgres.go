@@ -7,10 +7,9 @@ import (
 	"context"
 
 )
-var DB *pgxpool.Pool
-func InitDB(){
-	var err error
-	DB, err = pgxpool.New(context.Background(), os.Getenv("DB_URL"))
+
+func InitDB()(*pgxpool.Pool, error){
+	DB, err := pgxpool.New(context.Background(), os.Getenv("DB_URL"))
 	if err != nil {
 		log.Fatal("failed create pool ", err)
 	}
@@ -20,4 +19,5 @@ func InitDB(){
 	}
 	
 	log.Print("DB connect sucess")
+	return DB, nil
 }

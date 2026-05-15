@@ -1,21 +1,64 @@
-export type FileStatus = 'approved' | 'review' | 'pending' | 'rejected'
+import React from 'react'
 
-const statusConfig: Record<FileStatus, { label: string; className: string }> = {
-    approved: { label: 'Sudah di approve', className: 'bg-[#6B5FAE]/20 text-[#6B5FAE]' },
-    review: { label: 'Sedang di review', className: 'bg-[#3B2F6E]/20 text-[#3B2F6E]' },
-    pending: { label: 'Dalam antrian', className: 'bg-gray-200 text-gray-500' },
-    rejected: { label: 'Ditolak', className: 'bg-red-800/20 text-red-800' },
+export type FileStatus = 'pending' | 'approved' | 'rejected'
+
+type StatusConfig = {
+  label: string
+  className: string
+}
+
+// Central config
+const statusConfig: Record<FileStatus, StatusConfig> = {
+  pending: {
+    label: 'Pending',
+    className: 'bg-gray-100 text-yellow-700',
+  },
+  approved: {
+    label: 'Approved',
+    className: 'bg-gray-100 text-green-700',
+  },
+  rejected: {
+    label: 'Rejected',
+    className: 'bg-gray-100 text-red-700',
+  },
 }
 
 interface StatusPillProps {
-    status: FileStatus
+  status?: string | null
+  className?: string
 }
 
-export default function StatusPill({ status }: StatusPillProps) {
-    const { label, className } = statusConfig[status]
+export default function StatusPill({ status, className = '' }: StatusPillProps) {
+  // ─────────────────────────────────────────────
+  // Normalize incoming status
+  // ─────────────────────────────────────────────
+  const normalizedStatus = typeof status === 'string'
+    ? status.trim().toLowerCase()
+    : ''
+
+  const config = statusConfig[normalizedStatus as FileStatus]
+
+  // ─────────────────────────────────────────────
+  // Fallback (prevents crash)
+  // ─────────────────────────────────────────────
+  if (!config) {
     return (
-        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${className}`}>
-            {label}
-        </span>
+      <span
+        className={`px-3 py-1  text-xs font-medium bg-gray-200 text-gray-600 ${className}`}
+      >
+        Unknown
+      </span>
     )
+  }
+
+  // ─────────────────────────────────────────────
+  // Normal render
+  // ─────────────────────────────────────────────
+  return (
+    <span
+      className={`px-3 py-1  text-xs font-medium ${config.className} ${className}`}
+    >
+      {config.label}
+    </span>
+  )
 }

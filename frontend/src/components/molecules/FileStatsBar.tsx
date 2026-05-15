@@ -4,24 +4,21 @@ import LegendDot from '../atoms/LegendDot'
 interface FileStatsBarProps {
     total: number
     approved: number
-    review: number
     pending: number
     rejected: number
 }
 
-export default function FileStatsBar({ total, approved, review, pending, rejected }: FileStatsBarProps) {
+export default function FileStatsBar({ total, approved, pending, rejected }: FileStatsBarProps) {
     const segments = [
         { value: approved, className: 'bg-[#6B5FAE]' },
-        { value: review, className: 'bg-[#3B2F6E]' },
-        { value: pending, className: 'bg-gray-200' },
+        { value: pending,  className: 'bg-gray-200' },
         { value: rejected, className: 'bg-red-800' },
     ]
 
     const legends = [
         { label: 'Sudah di approve', className: 'bg-[#6B5FAE]' },
-        { label: 'Sedang di review', className: 'bg-[#3B2F6E]' },
-        { label: 'Dalam antrian', className: 'bg-gray-200 border border-gray-300' },
-        { label: 'Ditolak', className: 'bg-red-800' },
+        { label: 'Dalam antrian',   className: 'bg-gray-200 border border-gray-300' },
+        { label: 'Ditolak',         className: 'bg-red-800' },
     ]
 
     return (
