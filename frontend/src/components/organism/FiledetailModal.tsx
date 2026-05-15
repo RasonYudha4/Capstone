@@ -14,7 +14,11 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import StatusPill, { type FileStatus } from '../atoms/StatusPill'
 import type { FileRecord } from '../molecules/FileTableRow'
 import FileDropzone from '../molecules/FileDropzone'
+<<<<<<< HEAD
 import { useState, useEffect } from 'react'
+=======
+import { useState } from 'react'
+>>>>>>> a3f2b8f3f997b51cf2a98b7b1c959f9917687db3
 import ConfirmDialog from '../molecules/ConfirmDialog'
 import type { DocumentResponse } from '@/dtos/document_dto'
 

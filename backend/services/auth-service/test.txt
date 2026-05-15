@@ -1,0 +1,20 @@
+Client                          Server
+  │                               │
+  │  POST /auth/request-otp      │
+  │  { "email": "user@x.com" }   │
+  │ ────────────────────────────► │
+  │                               │  1. Generate 6-digit OTP (crypto/rand)
+  │                               │  2. Store in memory map[email] → {code, expiresAt}
+  │                               │  3. Log OTP to console (simulated email)
+  │  ◄──────────────────────────  │
+  │  { "success": true }          │
+  │                               │
+  │  POST /auth/verify-otp       │
+  │  { "email": "...", "otp": "..."} │
+  │ ────────────────────────────► │
+  │                               │  1. Look up stored OTP by email
+  │                               │  2. Check expiration (5 min window)
+  │                               │  3. Compare codes
+  │                               │  4. If valid → delete OTP (single-use), mint JWT
+  │  ◄──────────────────────────  │
+  │  { "token": "eyJhb...", ... } │

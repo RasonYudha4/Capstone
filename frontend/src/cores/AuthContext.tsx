@@ -9,18 +9,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     useEffect(() => {
         const stored = localStorage.getItem('user')
-        if (stored) setUser(JSON.parse(stored) as User)
+        const token = localStorage.getItem('accessToken')
+        if (stored && token) {
+            setUser(JSON.parse(stored) as User)
+        }
         setLoading(false)
     }, [])
 
-    const login = (userData: User) => {
+    const login = (userData: User, accessToken: string, refreshToken: string) => {
         setUser(userData)
         localStorage.setItem('user', JSON.stringify(userData))
+        localStorage.setItem('accessToken', accessToken)
+        localStorage.setItem('refreshToken', refreshToken)
     }
 
     const logout = () => {
         setUser(null)
         localStorage.removeItem('user')
+        localStorage.removeItem('accessToken')
+        localStorage.removeItem('refreshToken')
     }
 
     return (

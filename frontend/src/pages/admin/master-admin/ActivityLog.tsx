@@ -1,5 +1,3 @@
-'use client'
-
 import { History, RefreshCw, AlertCircle } from 'lucide-react'
 import SectionHeading from '@/components/atoms/SectionHeading'
 import ActivityDateGroup from '@/components/organism/ActivityDateGroup'
@@ -15,7 +13,6 @@ export default function ActivityLog() {
             <div className="bg-white rounded-2xl border border-gray-100 p-6 min-h-172">
                 <div className="overflow-y-auto max-h-160 pr-2">
 
-                    {/* ── Error banner ── */}
                     {isError && (
                         <div className="flex items-center gap-3 rounded-xl border border-red-100 bg-red-50 px-4 py-3 mb-4 text-sm text-red-600">
                             <AlertCircle className="size-4 shrink-0" />
@@ -33,7 +30,6 @@ export default function ActivityLog() {
                         </div>
                     )}
 
-                    {/* ── Loading spinner ── */}
                     {isLoading && (
                         <div className="flex items-center justify-center gap-2 py-12">
                             <svg className="animate-spin size-4 text-gray-400" viewBox="0 0 24 24" fill="none">
@@ -44,19 +40,16 @@ export default function ActivityLog() {
                         </div>
                     )}
 
-                    {/* ── Activity groups ── */}
                     {!isLoading && groups.map(group => (
                         <ActivityDateGroup key={group.date} {...group} />
                     ))}
 
-                    {/* ── End of list ── */}
                     {!isLoading && !isError && groups.length > 0 && (
                         <p className="text-center text-xs text-gray-400 py-4">
                             Semua aktivitas telah dimuat
                         </p>
                     )}
 
-                    {/* ── Empty state ── */}
                     {!isLoading && !isError && groups.length === 0 && (
                         <p className="text-center text-xs text-gray-400 py-8">
                             Belum ada aktivitas

@@ -6,6 +6,7 @@ import Root from '../pages/Root'
 import AppLayout from '../pages/AppLayout'
 
 const Login = lazy(() => import('../pages/auth/Login'))
+const Verification = lazy(() => import('../pages/auth/Verification'))
 const Dashboard = lazy(() => import('../pages/Dashboard'))
 const Unauthorized = lazy(() => import('../pages/Unauthorized'))
 const NotFound = lazy(() => import('../pages/Notfound'))
@@ -16,6 +17,7 @@ const Activity = lazy(() => import('../pages/admin/master-admin/ActivityLog'))
 export const router = createBrowserRouter([
     { path: '/', element: <Root /> },
     { path: '/login', element: wrap(Login) },
+{ path: '/verify', element: wrap(Verification) },
 
     // All authenticated routes share ONE layout
     {
