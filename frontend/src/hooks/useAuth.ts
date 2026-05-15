@@ -1,46 +1,63 @@
-import axioHandler from '@/cores/axios'
-import {
-    apiResponseSchema,
-    voidApiResponseSchema,
-    loginResponseSchema,
-    tokenResponseSchema,
-    userResponseSchema,
-    type LoginResponse,
-    type TokenResponse,
-    type UserResponse,
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { authService } from '@/services/auth_service'
+import type {
+    LoginFormValues,
+    OTPFormValues,
+    LoginResponse,
+    TokenResponse,
+    UserResponse,
 } from '@/dtos/login_dto'
 
-export const authService = {
-    login: async (email: string, password: string): Promise<LoginResponse> => {
-        const { data } = await axioHandler.post('/auth/login', { email, password })
-        const parsed = apiResponseSchema(loginResponseSchema).parse(data)
-        if (!parsed.success) throw new Error(parsed.message)
-        return loginResponseSchema.parse(parsed.data)
-    },
+// ─── Query Keys ───────────────────────────────────────────────────────────────
 
-    verifyOtp: async (email: string, otp: string): Promise<TokenResponse> => {
-        const { data } = await axioHandler.post('/auth/verify-otp', { email, otp })
-        const parsed = apiResponseSchema(tokenResponseSchema).parse(data)
-        if (!parsed.success) throw new Error(parsed.message)
-        return tokenResponseSchema.parse(parsed.data)
-    },
+export const authKeys = {
+    all: ['auth'] as const,
+    me: () => [...authKeys.all, 'me'] as const,
+}
 
-    resendOtp: async (email: string): Promise<void> => {
-        const { data } = await axioHandler.post('/auth/resend-otp', { email })
-        const parsed = voidApiResponseSchema.parse(data)
-        if (!parsed.success) throw new Error(parsed.message)
-    },
+// ─── Queries ──────────────────────────────────────────────────────────────────
 
-    logout: async (refreshToken: string): Promise<void> => {
-        const { data } = await axioHandler.post('/auth/logout', { refresh_token: refreshToken })
-        const parsed = voidApiResponseSchema.parse(data)
-        if (!parsed.success) throw new Error(parsed.message)
-    },
+export const useMe = (enabled = true) => {
+    return useQuery<UserResponse>({
+        queryKey: authKeys.me(),
+        queryFn: () => authService.me(),
+        enabled,
+        staleTime: 1000 * 60 * 5,
+    })
+}
 
-    me: async (): Promise<UserResponse> => {
-        const { data } = await axioHandler.get('/auth/me')
-        const parsed = apiResponseSchema(userResponseSchema).parse(data)
-        if (!parsed.success) throw new Error(parsed.message)
-        return userResponseSchema.parse(parsed.data)
-    },
+// ─── Mutations ────────────────────────────────────────────────────────────────
+
+export const useLogin = () => {
+    return useMutation<LoginResponse, Error, LoginFormValues>({
+        mutationFn: ({ email, password }) => authService.login(email, password),
+    })
+}
+
+export const useVerifyOtp = () => {
+    const queryClient = useQueryClient()
+
+    return useMutation<TokenResponse, Error, OTPFormValues>({
+        mutationFn: ({ email, otp }) => authService.verifyOtp(email, otp),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: authKeys.me() })
+        },
+    })
+}
+
+export const useResendOtp = () => {
+    return useMutation<void, Error, string>({
+        mutationFn: (email) => authService.resendOtp(email),
+    })
+}
+
+export const useLogout = () => {
+    const queryClient = useQueryClient()
+
+    return useMutation<void, Error, string>({
+        mutationFn: (refreshToken) => authService.logout(refreshToken),
+        onSuccess: () => {
+            queryClient.removeQueries({ queryKey: authKeys.all })
+        },
+    })
 }

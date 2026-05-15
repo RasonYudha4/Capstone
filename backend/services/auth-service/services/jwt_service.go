@@ -23,30 +23,23 @@ func NewJWTService() *JWTService {
 
 // defines the JWT payload.
 // embedding jwt.RegisteredClaims gives standard fields (exp, iat, iss, etc.).
-
 type Claims struct {
-    UserID string `json:"user_id"`
-    Email  string `json:"email"`
-    Role   string `json:"role"`
-    jwt.RegisteredClaims
+	UserID string `json:"user_id"`
+	Email  string `json:"email"`
+	Role   string `json:"role"`
+	jwt.RegisteredClaims
 }
 
 // creates a signed JWT for the given user.
 // token includes the user's ID, email, role, and an expiration timestamp.
 func (s *JWTService) GenerateToken(userID, email, role string) (string, error) {
-    now := time.Now()
-    expiresAt := now.Add(config.AccessTokenExpiry)
+	now := time.Now()
+	expiresAt := now.Add(config.AccessTokenExpiry)
 
-    claims := &Claims{
-        UserID: userID,
-        Email:  email,
-        Role:   role,
-        RegisteredClaims: jwt.RegisteredClaims{
-            // ... rest of your registered claims
-        },
-    }
-    // ... rest of function
-}
+	claims := &Claims{
+		UserID: userID,
+		Email:  email,
+		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			// the principal (the user).
 			Subject: userID,

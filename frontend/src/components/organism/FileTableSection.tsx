@@ -8,12 +8,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-<<<<<<< HEAD
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
-=======
->>>>>>> a3f2b8f3f997b51cf2a98b7b1c959f9917687db3
 import BreadcrumbNav, { type BreadcrumbSegment } from '../molecules/BreadcrumbNav'
 import FileTableRow, { type FileRecord } from '../molecules/FileTableRow'
 import FileDetailModal from './FiledetailModal'
