@@ -15,7 +15,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - C:\Users\LENOVO\Downloads\test\test\data_db:/var/lib/postgresql/data
+      - ./data_db:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U capstone -d capstone_db"]
       interval: 10s
@@ -42,8 +42,8 @@ services:
       - "9000:9000"
       - "9100:9100"
     volumes:
-      - C:\Users\LENOVO\Downloads\test\test\data:/mnt/data
-      - C:\Users\LENOVO\Downloads\test\test\minio.license:/etc/minio/minio.license
+      - ./data:/mnt/data
+      - ./minio.license:/etc/minio/minio.license
     command: server /mnt/data --console-address ":9100" --license /etc/minio/minio.license
     networks:
       - server
@@ -107,7 +107,7 @@ services:
     ports:
       - "9090:80"
     volumes:
-      - C:\Users\LENOVO\Downloads\test\test\pgadmin:/opt/cloudbeaver/workspace
+      - ./pgadmin:/opt/cloudbeaver/workspace
     networks:
       - server
 
