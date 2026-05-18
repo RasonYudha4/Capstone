@@ -1,0 +1,12 @@
+# Docker runtime data
+backend/data/
+backend/data_db/
+backend/pgadmin/
+backend/minio.license
+
+# Environment files
+frontend/.env
+backend/.env
+*.env
+*.env.local
+*.env.*.local
