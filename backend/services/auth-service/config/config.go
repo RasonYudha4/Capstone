@@ -6,7 +6,7 @@ import "time"
 // In production, these would come from environment variables or a config file.
 const (
 	// port the HTTP server listens on.
-	ServerPort = ":8080"
+	ServerPort = ":8089"
 
 	// JWTSecret is the signing key for JWT tokens.
 	// In production, load this from an environment variable (e.g. JWT_SECRET).

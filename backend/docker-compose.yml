@@ -10,9 +10,10 @@ services:
     depends_on:
       - document-service
       - minio
-    networks: 
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
       - server
-
   postgres:
     image: postgres:18
     container_name: postgre
