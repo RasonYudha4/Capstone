@@ -2,7 +2,7 @@ package middleware
 
 import (
 	"capstone/app/schemas"
-
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -20,14 +20,33 @@ func Extract_JWT_data(secretKey string) gin.HandlerFunc {
 			return
 		}
 
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+		// Properly validate "Bearer <token>" format.
+		parts := strings.SplitN(authHeader, " ", 2)
+		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"message": "Authorization header must be: Bearer <token>",
+			})
+			return
+		}
+
+		tokenString := parts[1]
 		token, err := jwt.ParseWithClaims(tokenString, &schemas.Claims{}, func(t *jwt.Token) (any, error) {
+			// Prevent algorithm confusion attacks (e.g. "none" or RSA→HMAC).
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+			}
 			return []byte(secretKey), nil
 		})
 
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"message": "invalid or expired token",
+			})
+			return
+		}
+		if !token.Valid {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"message": "token validation failed",
 			})
 			return
 		}
@@ -53,5 +72,4 @@ func AllowedRole(allowedRoles ...string) gin.HandlerFunc {
 			"message": "Unauthorized",})
 	}
 }	
-	
-	
+

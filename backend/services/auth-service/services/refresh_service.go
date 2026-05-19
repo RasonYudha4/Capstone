@@ -110,6 +110,22 @@ func (s *RefreshService) RevokeAllUserTokens(userID string) error {
 	return err
 }
 
+// atomically revokes the old refresh token and issues a new one.
+// prevents stolen tokens from being reused indefinitely.
+func (s *RefreshService) RotateToken(rawToken string) (newRawToken string, userID string, err error) {
+	userID, err = s.RevokeToken(rawToken)
+	if err != nil {
+		return "", "", fmt.Errorf("rotate: revoke old token: %w", err)
+	}
+
+	newRawToken, err = s.CreateToken(userID)
+	if err != nil {
+		return "", "", fmt.Errorf("rotate: create new token: %w", err)
+	}
+
+	return newRawToken, userID, nil
+}
+
 // produces a hex-encoded SHA-256 hash of the raw token.
 func hashToken(raw string) string {
 	h := sha256.Sum256([]byte(raw))

@@ -17,6 +17,9 @@ type OTPEntry struct {
 
 	// ExpiresAt marks when this OTP becomes invalid.
 	ExpiresAt time.Time
+
+	// CreatedAt records when this OTP was generated (for resend cooldown).
+	CreatedAt time.Time
 }
 
 // IsExpired returns true if the OTP has passed its expiration time.

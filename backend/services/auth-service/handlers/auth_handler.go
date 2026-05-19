@@ -265,6 +265,15 @@ func (h *AuthHandler) ResendOTP(c *gin.Context) {
 		return
 	}
 
+	// rate-limit: enforce cooldown between resend requests.
+	if !h.otpService.CanResend(req.Email) {
+		c.JSON(http.StatusTooManyRequests, models.APIResponse{
+			Success: false,
+			Message: "Please wait before requesting a new OTP.",
+		})
+		return
+	}
+
 	// generate a fresh OTP (overwrites the old one).
 	_, err := h.otpService.GenerateAndStore(req.Email, "login")
 	if err != nil {
@@ -284,7 +293,7 @@ func (h *AuthHandler) ResendOTP(c *gin.Context) {
 
 // POST /auth/refresh
 
-// refresh issues a new access token using a valid refresh token.
+// refresh issues a new access token and rotates the refresh token.
 func (h *AuthHandler) Refresh(c *gin.Context) {
 	var req models.RefreshRequest
 
@@ -296,8 +305,8 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 		return
 	}
 
-	// validate the refresh token.
-	userID, err := h.refreshService.ValidateToken(req.RefreshToken)
+	// rotate: revoke old token and issue a new one.
+	newRefreshToken, userID, err := h.refreshService.RotateToken(req.RefreshToken)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, models.APIResponse{
 			Success: false,
@@ -330,9 +339,10 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
 		Message: "Token refreshed.",
-		Data: models.RefreshResponse{
-			AccessToken: accessToken,
-			ExpiresIn:   config.AccessTokenExpiry.String(),
+		Data: models.TokenResponse{
+			AccessToken:  accessToken,
+			RefreshToken: newRefreshToken,
+			ExpiresIn:    config.AccessTokenExpiry.String(),
 		},
 	})
 }

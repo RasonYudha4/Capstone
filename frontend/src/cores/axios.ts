@@ -29,9 +29,43 @@ axioHandler.interceptors.response.use(
     },
 
     async (error) => {
-        if (error.response?.status === 401) {
-            window.location.href = '/login'
+        const originalRequest = error.config;
+
+        // Don't intercept auth endpoints to prevent loops
+        const isAuthEndpoint = originalRequest?.url?.startsWith('/auth/');
+
+        if (
+            error.response?.status === 401 &&
+            !isAuthEndpoint &&
+            !originalRequest._retry
+        ) {
+            originalRequest._retry = true;
+
+            const refreshToken = localStorage.getItem('refreshToken');
+            if (refreshToken) {
+                try {
+                    const { data } = await axios.post(
+                        `${API_BASE_URL}/auth/refresh`,
+                        { refresh_token: refreshToken }
+                    );
+                    const newAccessToken = data.data.access_token;
+                    localStorage.setItem('accessToken', newAccessToken);
+                    originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+                    return axioHandler(originalRequest);
+                } catch {
+                    // Refresh also failed — clear storage and redirect
+                    localStorage.removeItem('accessToken');
+                    localStorage.removeItem('refreshToken');
+                    localStorage.removeItem('user');
+                }
+            }
+
+            // Only redirect if not already on login page
+            if (window.location.pathname !== '/login') {
+                window.location.href = '/login';
+            }
         }
+
         return Promise.reject(error);
     }
 );

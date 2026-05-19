@@ -39,6 +39,13 @@ func getAuthenticatedUser(c *gin.Context) *services.Claims {
 // Demonstrates reading user info from the Gin context after JWT middleware.
 func (h *DocumentHandler) ListDocuments(c *gin.Context) {
 	user := getAuthenticatedUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, models.APIResponse{
+			Success: false,
+			Message: "Authentication required.",
+		})
+		return
+	}
 
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
@@ -62,6 +69,13 @@ func (h *DocumentHandler) ListDocuments(c *gin.Context) {
 // so by the time this handler runs, we know the user is authorized.
 func (h *DocumentHandler) UploadDocument(c *gin.Context) {
 	user := getAuthenticatedUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, models.APIResponse{
+			Success: false,
+			Message: "Authentication required.",
+		})
+		return
+	}
 
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
@@ -79,6 +93,13 @@ func (h *DocumentHandler) UploadDocument(c *gin.Context) {
 // This is the most restricted endpoint — only the highest-privilege role can approve.
 func (h *DocumentHandler) ApproveDocument(c *gin.Context) {
 	user := getAuthenticatedUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, models.APIResponse{
+			Success: false,
+			Message: "Authentication required.",
+		})
+		return
+	}
 
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,

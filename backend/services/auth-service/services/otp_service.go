@@ -42,6 +42,7 @@ func (s *OTPService) GenerateAndStore(email, purpose string) (string, error) {
 		Purpose:   purpose,
 		Attempts:  0,
 		ExpiresAt: time.Now().Add(config.OTPExpiration),
+		CreatedAt: time.Now(),
 	}
 
 	// store the OTP. overwrites the previous OTP for this email
@@ -49,9 +50,10 @@ func (s *OTPService) GenerateAndStore(email, purpose string) (string, error) {
 	s.store[email] = entry
 	s.mu.Unlock()
 
-	// send OTP via email
-	log.Printf("📧 [OTP] Code for %s: %s (purpose: %s, expires: %s)",
-		email, code, purpose, entry.ExpiresAt.Format(time.RFC3339))
+	// In production, send OTP via email service (SendGrid/SES/etc.).
+	// DO NOT log the actual code in production.
+	log.Printf("📧 [OTP] Code generated for %s (purpose: %s, expires: %s)",
+		email, purpose, entry.ExpiresAt.Format(time.RFC3339))
 
 	return code, nil
 }
@@ -98,6 +100,19 @@ func (s *OTPService) HasPending(email string) bool {
 	defer s.mu.RUnlock()
 	_, exists := s.store[email]
 	return exists
+}
+
+// CanResend checks if enough time has passed since the last OTP was generated.
+// Returns true if at least 60 seconds have elapsed (prevents email flooding).
+func (s *OTPService) CanResend(email string) bool {
+	const resendCooldown = 60 * time.Second
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	entry, exists := s.store[email]
+	if !exists {
+		return false
+	}
+	return time.Since(entry.CreatedAt) >= resendCooldown
 }
 
 // produces a random numeric string of the given length

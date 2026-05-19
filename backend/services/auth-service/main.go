@@ -2,12 +2,14 @@ package main
 
 import (
 	"log"
+	"time"
 
 	"auth-service/config"
 	"auth-service/handlers"
 	"auth-service/middleware"
 	"auth-service/services"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
@@ -36,6 +38,16 @@ func main() {
 
 	// router
 	router := gin.Default()
+
+	// CORS — restrict origins in production.
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:5173"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Authorization", "Content-Type"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}))
 
 	// public routes
 	auth := router.Group("/auth")

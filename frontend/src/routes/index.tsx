@@ -21,7 +21,7 @@ export const router = createBrowserRouter([
 
     // All authenticated routes share ONE layout
     {
-        // element: <AuthGuard allowedRoles={['staff', 'admin', 'master-admin']} />,
+        element: <AuthGuard allowedRoles={['staff', 'admin', 'master-admin']} />,
         children: [
             {
                 element: <AppLayout />,
@@ -31,7 +31,7 @@ export const router = createBrowserRouter([
 
                     // Admin + master-admin only
                     {
-                        // element: <AuthGuard allowedRoles={['admin', 'master-admin']} />,
+                        element: <AuthGuard allowedRoles={['admin', 'master-admin']} />,
                         children: [
                             { path: '/storage', element: wrap(Storage) },
                         ],
@@ -39,7 +39,7 @@ export const router = createBrowserRouter([
 
                     // Master-admin only
                     {
-                        // element: <AuthGuard allowedRoles={['master-admin']} />,
+                        element: <AuthGuard allowedRoles={['master-admin']} />,
                         children: [
                             { path: '/admins', element: wrap(Admins) },
                             { path: '/activity-log', element: wrap(Activity) }

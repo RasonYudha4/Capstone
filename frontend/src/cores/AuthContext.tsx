@@ -1,4 +1,6 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
+import { setAccessToken, getAccessToken } from './tokenStore'
+import { authService } from '../services/auth_service'
 import type { AuthContextType, User } from './types'
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -9,25 +11,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     useEffect(() => {
         const stored = localStorage.getItem('user')
-        const token = localStorage.getItem('accessToken')
-        if (stored && token) {
-            setUser(JSON.parse(stored) as User)
+        if (stored) {
+            authService.refresh().then((data) => {
+                setAccessToken(data.access_token);
+                setUser(JSON.parse(stored) as User);
+            }).catch(() => {
+                localStorage.removeItem('user');
+            }).finally(() => {
+                setLoading(false);
+            });
+        } else {
+            setLoading(false);
         }
-        setLoading(false)
     }, [])
 
-    const login = (userData: User, accessToken: string, refreshToken: string) => {
+    const login = (userData: User, accessToken: string) => {
         setUser(userData)
         localStorage.setItem('user', JSON.stringify(userData))
-        localStorage.setItem('accessToken', accessToken)
-        localStorage.setItem('refreshToken', refreshToken)
+        setAccessToken(accessToken)
     }
 
     const logout = () => {
         setUser(null)
         localStorage.removeItem('user')
-        localStorage.removeItem('accessToken')
-        localStorage.removeItem('refreshToken')
+        setAccessToken(null)
     }
 
     return (

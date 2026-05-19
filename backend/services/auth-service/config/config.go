@@ -1,16 +1,28 @@
 package config
 
-import "time"
+import (
+	"os"
+	"time"
+)
+
+// getEnv reads an environment variable or returns a fallback default.
+func getEnv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+// Loaded from environment — NEVER hardcode secrets in production.
+var (
+	JWTSecret   = getEnv("JWT_SECRET", "super-secret-key-change-in-production")
+	DatabaseURL = getEnv("DATABASE_URL", "postgresql://capstone:capstoneboi@127.0.0.1:5432/capstone_db?sslmode=disable")
+)
 
 // Application-wide configuration constants.
-// In production, these would come from environment variables or a config file.
 const (
 	// port the HTTP server listens on.
 	ServerPort = ":8080"
-
-	// JWTSecret is the signing key for JWT tokens.
-	// In production, load this from an environment variable (e.g. JWT_SECRET).
-	JWTSecret = "super-secret-key-change-in-production"
 
 	// Token Lifetimes
 
@@ -58,7 +70,4 @@ const (
 	// context key where the authenticated user's
 	// claims are stored after passing through the JWT middleware.
 	ContextKeyUser = "authenticated_user"
-
-	// load from DATABASE_URL environment variable.
-	DatabaseURL = "postgresql://capstone:capstoneboi@127.0.0.1:5432/capstone_db?sslmode=disable"
 )
