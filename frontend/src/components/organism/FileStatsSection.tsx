@@ -15,9 +15,9 @@ export default function FileStatsSection() {
     }
 
     const total    = data?.total          ?? 0
-    const approved = data?.stats.approved ?? 0
-    const pending  = data?.stats.pending  ?? 0
-    const rejected = data?.stats.rejected ?? 0
+    const approved = data?.stats?.approved ?? 0
+    const pending  = data?.stats?.pending  ?? 0
+    const rejected = data?.stats?.rejected ?? 0
 
     return (
         <section className="bg-white rounded-2xl border border-gray-100 p-6">

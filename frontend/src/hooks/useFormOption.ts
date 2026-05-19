@@ -14,8 +14,8 @@ export const useFormOptions = () => {
         staleTime: 1000 * 60 * 5,
     })
 
-    const services      = useMemo(() => query.data?.data.services       ?? [], [query.data])
-    const documentTypes = useMemo(() => query.data?.data.document_types ?? [], [query.data])
+    const services      = useMemo(() => query.data?.data?.services       ?? [], [query.data])
+    const documentTypes = useMemo(() => query.data?.data?.document_types ?? [], [query.data])
 
     const getStandards = (serviceId: string): StandardOption[] =>
         services.find(s => s.id === serviceId)?.standards ?? []

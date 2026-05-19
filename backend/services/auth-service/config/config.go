@@ -22,7 +22,7 @@ var (
 // Application-wide configuration constants.
 const (
 	// port the HTTP server listens on.
-	ServerPort = ":8080"
+	ServerPort = ":8089"
 
 	// Token Lifetimes
 

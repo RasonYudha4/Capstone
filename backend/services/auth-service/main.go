@@ -26,9 +26,6 @@ func main() {
 	auditService := services.NewAuditService(services.DB)     // Phase 2
 
 	// set passwords on existing seed users 
-	if err := userService.SeedPasswords(); err != nil {
-		log.Fatalf("❌ Failed to seed passwords: %v", err)
-	}
 
 	// handlers
 	authHandler := handlers.NewAuthHandler(

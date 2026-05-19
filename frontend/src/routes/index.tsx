@@ -17,7 +17,7 @@ const Activity = lazy(() => import('../pages/admin/master-admin/ActivityLog'))
 export const router = createBrowserRouter([
     { path: '/', element: <Root /> },
     { path: '/login', element: wrap(Login) },
-{ path: '/verify', element: wrap(Verification) },
+    { path: '/verify', element: wrap(Verification) },
 
     // All authenticated routes share ONE layout
     {
