@@ -8,6 +8,7 @@ import (
 	"capstone/app/routes"
 	"capstone/app/services"
 	"log"
+	"os"
 
 	"github.com/gin-gonic/gin"
 )
@@ -53,9 +54,9 @@ func main(){
 
 
     routes.DocumentRoute(r, documentHandler, jwtSecret)
-    routes.AuditRoute(r, auditHandler, jwtSecret)
+    routes.AuditRoute(r, auditHandler)
 
-    routes.NotificationRoute(r, notificationHandler, jwtSecret)
+    routes.NotificationRoute(r, notificationHandler)
     routes.FormOptionRoute(r, formOptionHandler)
     
     log.Fatal(r.Run(":8081"))   

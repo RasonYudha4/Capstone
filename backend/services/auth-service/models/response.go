@@ -46,6 +46,7 @@ type LoginResponse struct {
 	AccessToken  string `json:"access_token,omitempty"`
 	RefreshToken string `json:"refresh_token,omitempty"`
 	ExpiresIn    string `json:"expires_in,omitempty"`
+	PreAuthToken string `json:"pre_auth_token,omitempty"`
 }
 
 // carries the tokens returned after successful OTP verification.

@@ -89,6 +89,8 @@ services:
           cpus: "1"
     environment:
       SLEEP_BEFORE_START: 10
+    env_file:
+      - .env
     depends_on:
       postgres:
         condition: service_healthy
