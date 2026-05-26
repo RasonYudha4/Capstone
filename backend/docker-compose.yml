@@ -6,7 +6,7 @@ services:
     ports:
       - "8000:80"
     volumes:
-      - D:\capstone\backend\nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - document-service
       - minio
@@ -27,7 +27,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - C:\Users\LENOVO\Downloads\test\test\data_db18:/var/lib/postgresql/data_db18
+      - ./data_db:/var/lib/postgresql/data_db18
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U capstone -d capstone_db"]
       interval: 10s
@@ -51,14 +51,16 @@ services:
       - "9000:9000"
       - "9100:9100"
     volumes:
-      - C:\Users\LENOVO\Downloads\test\test\data:/mnt/data
-      - C:\Users\LENOVO\Downloads\test\test\minio.license:/etc/minio/minio.license
+      - ./data:/mnt/data
+      - ./minio.license:/etc/minio/minio.license
     command: server /mnt/data --console-address ":9100" --license /etc/minio/minio.license
     networks:
       - server
 
   document-service:
-    image: document-service
+    build:
+      context: ./services/document-service
+      dockerfile: Dockerfile
     container_name: document-service
     deploy:
       resources:
@@ -107,7 +109,7 @@ services:
     ports:
       - "9080:80"
     volumes:
-      - C:\Users\LENOVO\Downloads\test\test\pgadmin:/var/lib/pgadmindock
+      - ./pgadmin:/var/lib/pgadmindock
     networks:
       - server
 
