@@ -2,6 +2,7 @@ package services
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"math/big"
