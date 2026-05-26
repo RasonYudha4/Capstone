@@ -20,6 +20,8 @@ type OTPEntry struct {
 
 	// CreatedAt records when this OTP was generated (for resend cooldown).
 	CreatedAt time.Time
+
+	PreAuthToken string  // Token bukti password sudah diverifikasi
 }
 
 // IsExpired returns true if the OTP has passed its expiration time.

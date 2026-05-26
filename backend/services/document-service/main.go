@@ -14,6 +14,12 @@ import (
 
 
 func main(){
+
+    jwtSecret := os.Getenv("JWT_SECRET")
+    if jwtSecret == "" {
+        log.Fatal("❌ JWT_SECRET environment variable is required")
+    }
+
     gin.SetMode(gin.ReleaseMode)
     r := gin.Default()
     r.HandleMethodNotAllowed = true 
@@ -46,9 +52,10 @@ func main(){
     formOptionHandler := api.NewFormOptionsHandler(formOptionService)
 
 
-    routes.DocumentRoute(r, documentHandler)
-    routes.AuditRoute(r, auditHandler)
-    routes.NotificationRoute(r, notificationHandler)
+    routes.DocumentRoute(r, documentHandler, jwtSecret)
+    routes.AuditRoute(r, auditHandler, jwtSecret)
+
+    routes.NotificationRoute(r, notificationHandler, jwtSecret)
     routes.FormOptionRoute(r, formOptionHandler)
     
     log.Fatal(r.Run(":8081"))   

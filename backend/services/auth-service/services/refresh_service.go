@@ -113,17 +113,51 @@ func (s *RefreshService) RevokeAllUserTokens(userID string) error {
 // atomically revokes the old refresh token and issues a new one.
 // prevents stolen tokens from being reused indefinitely.
 func (s *RefreshService) RotateToken(rawToken string) (newRawToken string, userID string, err error) {
-	userID, err = s.RevokeToken(rawToken)
-	if err != nil {
-		return "", "", fmt.Errorf("rotate: revoke old token: %w", err)
-	}
+    tx, err := s.db.Begin()
+    if err != nil {
+        return "", "", fmt.Errorf("rotate: begin tx: %w", err)
+    }
+    defer tx.Rollback() // no-op if committed
 
-	newRawToken, err = s.CreateToken(userID)
-	if err != nil {
-		return "", "", fmt.Errorf("rotate: create new token: %w", err)
-	}
+    // 1. Revoke old token within transaction
+    oldHash := hashToken(rawToken)
+    err = tx.QueryRow(
+        `UPDATE refresh_tokens SET revoked = TRUE
+         WHERE token_hash = $1 AND revoked = FALSE
+         RETURNING user_id`,
+        oldHash,
+    ).Scan(&userID)
+    if err == sql.ErrNoRows {
+        return "", "", fmt.Errorf("token not found or already revoked")
+    }
+    if err != nil {
+        return "", "", fmt.Errorf("rotate: revoke: %w", err)
+    }
 
-	return newRawToken, userID, nil
+    // 2. Create new token within same transaction
+    b := make([]byte, 32)
+    if _, err := rand.Read(b); err != nil {
+        return "", "", fmt.Errorf("rotate: generate token: %w", err)
+    }
+    newRawToken = base64.URLEncoding.EncodeToString(b)
+    newHash := hashToken(newRawToken)
+    expiresAt := time.Now().Add(config.RefreshTokenExpiry)
+
+    _, err = tx.Exec(
+        `INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
+         VALUES ($1, $2, $3)`,
+        userID, newHash, expiresAt,
+    )
+    if err != nil {
+        return "", "", fmt.Errorf("rotate: create: %w", err)
+    }
+
+    // 3. Commit both operations atomically
+    if err := tx.Commit(); err != nil {
+        return "", "", fmt.Errorf("rotate: commit: %w", err)
+    }
+
+    return newRawToken, userID, nil
 }
 
 // produces a hex-encoded SHA-256 hash of the raw token.

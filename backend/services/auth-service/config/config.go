@@ -15,9 +15,18 @@ func getEnv(key, fallback string) string {
 
 // Loaded from environment — NEVER hardcode secrets in production.
 var (
-	JWTSecret   = getEnv("JWT_SECRET", "super-secret-key-change-in-production")
+	JWTSecret   = requireEnv("JWT_SECRET")
 	DatabaseURL = getEnv("DATABASE_URL", "postgresql://capstone:capstoneboi@127.0.0.1:5432/capstone_db?sslmode=disable")
 )
+
+// requireEnv reads an environment variable or terminates.
+func requireEnv(key string) string {
+    v := os.Getenv(key)
+    if v == "" {
+        log.Fatalf("❌ Required environment variable %s is not set", key)
+    }
+    return v
+}
 
 // Application-wide configuration constants.
 const (

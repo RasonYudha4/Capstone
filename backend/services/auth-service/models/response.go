@@ -10,8 +10,9 @@ type LoginRequest struct {
 
 // for POST /auth/verify-otp.
 type OTPVerifyRequest struct {
-	Email string `json:"email" binding:"required,email"`
-	OTP   string `json:"otp"   binding:"required,len=6"`
+	Email        string `json:"email" binding:"required,email"`
+	OTP          string `json:"otp"   binding:"required,len=6"`
+	PreAuthToken string `json:"pre_auth_token" binding:"required"`
 }
 
 // for POST /auth/refresh.

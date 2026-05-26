@@ -37,12 +37,20 @@ func (s *OTPService) GenerateAndStore(email, purpose string) (string, error) {
 		return "", fmt.Errorf("failed to generate OTP: %w", err)
 	}
 
+	// Generate pre-auth token sebagai bukti password sudah diverifikasi
+	preAuthBytes := make([]byte, 32)
+	if _, err := rand.Read(preAuthBytes); err != nil {
+		return "", fmt.Errorf("failed to generate pre-auth token: %w", err)
+	}
+	preAuthToken := base64.URLEncoding.EncodeToString(preAuthBytes)
+
 	entry := &models.OTPEntry{
 		Code:      code,
 		Purpose:   purpose,
 		Attempts:  0,
 		ExpiresAt: time.Now().Add(config.OTPExpiration),
 		CreatedAt: time.Now(),
+		PreAuthToken: preAuthToken,
 	}
 
 	// store the OTP. overwrites the previous OTP for this email
@@ -55,11 +63,11 @@ func (s *OTPService) GenerateAndStore(email, purpose string) (string, error) {
 	log.Printf("📧 [OTP] Code generated for %s (purpose: %s, expires: %s)",
 		email, purpose, entry.ExpiresAt.Format(time.RFC3339))
 
-	return code, nil
+	return preAuthToken, nil  // Return pre-auth token, BUKAN OTP code
 }
 
 // checks the submitted OTP against the stored entry.
-func (s *OTPService) Verify(email, code string) (valid bool, errMsg string, err error) {
+func (s *OTPService) Verify(email, code, preAuthToken string) (valid bool, errMsg string, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -74,6 +82,11 @@ func (s *OTPService) Verify(email, code string) (valid bool, errMsg string, err 
 	if entry.IsExpired() {
 		delete(s.store, email)
 		return false, "OTP has expired. Please request a new one.", nil
+	}
+
+    // Validasi pre-auth token
+	if entry.PreAuthToken != preAuthToken {
+		return false, "Invalid pre-authentication token.", nil
 	}
 
 	// Too many failed attempts 

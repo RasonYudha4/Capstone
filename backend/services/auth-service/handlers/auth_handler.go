@@ -156,7 +156,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	// for "admin" and "master-admin", require OTP as a second factor.
-	_, err = h.otpService.GenerateAndStore(user.Email, "login")
+	preAuthToken, err := h.otpService.GenerateAndStore(user.Email, "login")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
@@ -170,6 +170,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		Message: "OTP has been sent to your email. Please verify to complete login.",
 		Data: models.LoginResponse{
 			RequiresOTP: true,
+			PreAuthToken: preAuthToken,
 		},
 	})
 }
@@ -189,7 +190,7 @@ func (h *AuthHandler) VerifyOTP(c *gin.Context) {
 		return
 	}
 
-	valid, errMsg, err := h.otpService.Verify(req.Email, req.OTP)
+	valid, errMsg, err := h.otpService.Verify(req.Email, req.OTP, req.PreAuthToken)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
@@ -308,9 +309,10 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 	// rotate: revoke old token and issue a new one.
 	newRefreshToken, userID, err := h.refreshService.RotateToken(req.RefreshToken)
 	if err != nil {
+		log.Printf("⚠️  Refresh token rotation failed: %v", err)
 		c.JSON(http.StatusUnauthorized, models.APIResponse{
 			Success: false,
-			Message: err.Error(),
+			Message: "Invalid or expired refresh token.",
 		})
 		return
 	}
@@ -363,9 +365,10 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 
 	userID, err := h.refreshService.RevokeToken(req.RefreshToken)
 	if err != nil {
+		log.Printf("⚠️  Token revocation failed: %v", err)
 		c.JSON(http.StatusBadRequest, models.APIResponse{
 			Success: false,
-			Message: err.Error(),
+			Message: "Invalid or expired token.",
 		})
 		return
 	}

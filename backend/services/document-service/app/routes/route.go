@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func DocumentRoute(r *gin.Engine, documentHandler *api.DocumentHandler) {
+func DocumentRoute(r *gin.Engine, documentHandler *api.DocumentHandler, jwtSecret string) {
 
 	documentsRoute := r.Group("/")
 	documentsRoute.GET("/documents/type/:type", documentHandler.Get_document_by_type_handler)
@@ -22,7 +22,7 @@ func DocumentRoute(r *gin.Engine, documentHandler *api.DocumentHandler) {
 
 	documentsRoute.GET(
 		"/documents/:id", 
-		middleware.Extract_JWT_data("super-secret-key-change-in-production"),
+		middleware.Extract_JWT_data(jwtSecret),
 		middleware.AllowedRole("master-admin", "admin"),
 		documentHandler.Get_document_by_id_handler,
 			
