@@ -1,6 +1,7 @@
 package config
 
 import (
+	"log"
 	"os"
 	"time"
 )
@@ -16,7 +17,7 @@ func getEnv(key, fallback string) string {
 // Loaded from environment — NEVER hardcode secrets in production.
 var (
 	JWTSecret   = requireEnv("JWT_SECRET")
-	DatabaseURL = getEnv("DATABASE_URL", "postgresql://capstone:capstoneboi@127.0.0.1:5432/capstone_db?sslmode=disable")
+	DatabaseURL = getEnv("DB_URL", "postgresql://capstone:capstoneboi@127.0.0.1:5432/capstone_db?sslmode=disable")
 )
 
 // requireEnv reads an environment variable or terminates.

@@ -105,19 +105,19 @@ func DocumentRoute(r *gin.Engine, documentHandler *api.DocumentHandler, jwtSecre
 		documentHandler.GetStats)
 }
 
-func AuditRoute(r *gin.Engine, auditHandler *api.AuditHandler) {
+func AuditRoute(r *gin.Engine, auditHandler *api.AuditHandler, jwtSecret string) {
 
 	r.GET(
 		"/audit",
-		middleware.Extract_JWT_data("super-secret-key-change-in-production"),
+		middleware.Extract_JWT_data(jwtSecret), 
 		middleware.AllowedRole("master-admin"),
 		auditHandler.GetAudit,
 	)
 }
 
-func NotificationRoute(r *gin.Engine, notificationHandler *api.NotificationHandler){
+func NotificationRoute(r *gin.Engine, notificationHandler *api.NotificationHandler, jwtSecret string){
 
-	notification := r.Group("/notifications", middleware.Extract_JWT_data("super-secret-key-change-in-production"))
+	notification := r.Group("/notifications", middleware.Extract_JWT_data(jwtSecret))
 {
     notification.GET("/events", notificationHandler.SSEHandler)
     notification.GET("", notificationHandler.GetAll)

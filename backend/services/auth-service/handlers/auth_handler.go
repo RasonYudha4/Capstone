@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"time"
-
+	"log"
 	"auth-service/config"
 	"auth-service/models"
 	"auth-service/services"
