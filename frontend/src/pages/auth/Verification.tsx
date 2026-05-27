@@ -26,15 +26,17 @@ export default function VerifyOTP() {
     const location = useLocation();
     const { login } = useAuth();
 
-    // Email passed from Login page via route state
-    const email = (location.state as { email?: string })?.email;
-
-    // Guard: redirect to login if no email in state
+    // Email and PreAuthToken passed from Login page via route state
+    const state = location.state as { email?: string; preAuthToken?: string };
+    const email = state?.email;
+    const preAuthToken = state?.preAuthToken;
+ 
+    // Guard: redirect to login if no email or preAuthToken in state
     useEffect(() => {
-        if (!email) {
+        if (!email || !preAuthToken) {
             navigate("/login", { replace: true });
         }
-    }, [email, navigate]);
+    }, [email, preAuthToken, navigate]);
 
     const {
         control,
@@ -53,7 +55,7 @@ export default function VerifyOTP() {
         setIsLoading(true);
         setServerError(null);
         try {
-            const tokens = await authService.verifyOtp(data.email, data.otp);
+            const tokens = await authService.verifyOtp(data.email, data.otp, preAuthToken!);
 
             // Store tokens temporarily so the /auth/me call has a valid Bearer token
             localStorage.setItem("accessToken", tokens.access_token);

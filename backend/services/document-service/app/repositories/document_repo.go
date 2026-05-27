@@ -199,10 +199,10 @@ func(s *DocumentRepo) Get_document_by_id(documentId, createdById uuid.UUID, role
 func (s *DocumentRepo) Create_document(assessmeentId,documentTypeId,createdById,groupId,standardId,serviceId uuid.UUID, filename, filepath string)(string,bool,error){
 	var group_id uuid.UUID
 	err := s.db.QueryRow(context.Background(),
-	`SELECT group_id from users
-		WHERE user_id = $1 `, createdById).Scan(&group_id)
+	`SELECT group_id from services
+		WHERE service_id = $1 `, serviceId).Scan(&group_id)
 	if err!= nil{
-		log.Print("error getting group id", err)
+		log.Print("error getting group id from service", err)
 		return "", false,nil
 	}
 

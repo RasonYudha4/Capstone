@@ -31,10 +31,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     }, [])
 
-    const login = (userData: User, accessToken: string) => {
+    const login = (userData: User, accessToken: string, refreshToken?: string) => {
         setUser(userData)
         localStorage.setItem('user', JSON.stringify(userData))
         localStorage.setItem('accessToken', accessToken)
+        if (refreshToken) {
+            localStorage.setItem('refreshToken', refreshToken)
+        }
     }
 
     const logout = () => {

@@ -24,8 +24,8 @@ export const authService = {
     },
 
     // POST /auth/verify-otp
-    verifyOtp: async (email: string, otp: string): Promise<TokenResponse> => {
-        const { data } = await axioHandler.post('/auth/verify-otp', { email, otp })
+    verifyOtp: async (email: string, otp: string, preAuthToken: string): Promise<TokenResponse> => {
+        const { data } = await axioHandler.post('/auth/verify-otp', { email, otp, pre_auth_token: preAuthToken })
         const parsed = apiResponseSchema(tokenResponseSchema).parse(data)
         if (!parsed.success) {
             throw new Error(parsed.message)

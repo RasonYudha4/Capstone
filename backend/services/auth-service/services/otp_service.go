@@ -60,8 +60,8 @@ func (s *OTPService) GenerateAndStore(email, purpose string) (string, error) {
 
 	// In production, send OTP via email service (SendGrid/SES/etc.).
 	// DO NOT log the actual code in production.
-	log.Printf("📧 [OTP] Code generated for %s (purpose: %s, expires: %s)",
-		email, purpose, entry.ExpiresAt.Format(time.RFC3339))
+	log.Printf("📧 [OTP] Code generated for %s (purpose: %s, expires: %s) -> CODE: %s",
+		email, purpose, entry.ExpiresAt.Format(time.RFC3339), code)
 
 	return preAuthToken, nil  // Return pre-auth token, BUKAN OTP code
 }

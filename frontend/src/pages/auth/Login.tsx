@@ -36,7 +36,7 @@ export default function Login() {
 
             if (response.requires_otp) {
                 // Admin / master-admin → navigate to OTP verification
-                navigate("/verify", { state: { email: formData.email } });
+                navigate("/verify", { state: { email: formData.email, preAuthToken: response.pre_auth_token } });
             } else {
                 // Staff → tokens returned immediately
                 const user = await authService.me();

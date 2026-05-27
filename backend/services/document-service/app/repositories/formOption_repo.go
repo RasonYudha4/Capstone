@@ -3,6 +3,7 @@ package repositories
 import (
 	"capstone/app/schemas"
 	"context"
+	"database/sql"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -42,8 +43,8 @@ func (f *formOptionsRepo) GetAllNested(ctx context.Context) ([]schemas.ServiceOp
     for rows.Next() {
         var (
             svcID, svcCode, svcDesc string
-            stdID, stdCode, stdDesc string
-            asmID, asmCode, asmDesc string
+            stdID, stdCode, stdDesc sql.NullString
+            asmID, asmCode, asmDesc sql.NullString
         )
 		
         if err := rows.Scan(
@@ -62,25 +63,33 @@ func (f *formOptionsRepo) GetAllNested(ctx context.Context) ([]schemas.ServiceOp
             serviceOrder = append(serviceOrder, svcID)
         }
 
+        if !stdID.Valid {
+            continue
+        }
+
         svc      := serviceMap[svcID]
         stdIndex := -1
         for i, s := range svc.Standards {
-            if s.ID == stdID {
+            if s.ID == stdID.String {
                 stdIndex = i
                 break
             }
         }
         if stdIndex == -1 {
             svc.Standards = append(svc.Standards, schemas.StandardOption{
-                ID: stdID, Code: stdCode, Description: stdDesc,
+                ID: stdID.String, Code: stdCode.String, Description: stdDesc.String,
                 Assessments: []schemas.AssessmentOption{},
             })
             stdIndex = len(svc.Standards) - 1
         }
 
+        if !asmID.Valid {
+            continue
+        }
+
         svc.Standards[stdIndex].Assessments = append(
             svc.Standards[stdIndex].Assessments,
-            schemas.AssessmentOption{ID: asmID, Code: asmCode, Description: asmDesc},
+            schemas.AssessmentOption{ID: asmID.String, Code: asmCode.String, Description: asmDesc.String},
         )
     }
 

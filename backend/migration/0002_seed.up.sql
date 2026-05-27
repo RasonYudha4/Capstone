@@ -1082,3 +1082,9 @@ INSERT INTO assessment (standard_id, assessment_code, description, created_at, u
   ((SELECT standard_id FROM standard WHERE standard_code = 'Prognas 6.1' LIMIT 1), 'Prognas 6.1.b', 'Rumah sakit telah menyusun dan mengembangkan panduan praktik klinis (PPK), panduan penggunaan antimikroba untuk terapi dan profilaksis (PPAB), berdasarkan kajian ilmiah dan kebijakan rumah sakit serta mengacu regulasi yang berlaku secara nasional.', NOW(), NOW()),
   ((SELECT standard_id FROM standard WHERE standard_code = 'Prognas 6.1' LIMIT 1), 'Prognas 6.1.c', 'Terdapat mekanisme untuk mengawasi pelaksanaan penatagunaan antimikroba terhadap pembatasan penggunaan jenis, jumlah dan durasi pemakaian antibiotik.', NOW(), NOW()),
   ((SELECT standard_id FROM standard WHERE standard_code = 'Prognas 6.1' LIMIT 1), 'Prognas 6.1.d', 'Rumah sakit telah melaksanakan pemantauan dan evaluasi secara bersinambung terhadap indikator penggunaan antimikroba (PGA).', NOW(), NOW());
+
+-- Seed User Accounts
+INSERT INTO users (email, verified, role, created_at, updated_at) VALUES
+('masteradmin@gmail.com', true, 'master-admin', NOW(), NOW()),
+('admin@gmail.com', true, 'admin', NOW(), NOW()),
+('staff@gmail.com', true, 'staff', NOW(), NOW());

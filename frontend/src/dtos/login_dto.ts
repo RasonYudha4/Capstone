@@ -60,6 +60,7 @@ export const voidApiResponseSchema = z.object({
 export const loginResponseSchema = z.object({
     requires_otp: z.boolean(),
     access_token: z.string().optional(),
+    pre_auth_token: z.string().optional(),
     refresh_token: z.string().optional(),
     expires_in: z.string().optional(),
 });
