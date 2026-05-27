@@ -187,14 +187,13 @@ func ValidatePasswordPolicy(password string) error {
 
 // sets bcrypt-hashed passwords on the existing seed users
 // that were created by migration 0002_seed.up.sql.
-// Only updates users that don't already have a password_hash set.
 func (s *UserService) SeedPasswords() error {
 	seeds := []struct {
 		Email, Password string
 	}{
-		{"masteradmin@gmail.com", "password123"},
-		{"admin@gmail.com", "password123"},
-		{"staff@gmail.com", "password123"},
+		{config.MasterAdminEmail, config.MasterAdminPassword},
+		{config.AdminEmail, config.AdminPassword},
+		{config.StaffEmail, config.StaffPassword},
 	}
 
 	for _, seed := range seeds {

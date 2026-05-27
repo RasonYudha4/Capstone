@@ -5,7 +5,6 @@ import (
 	"log"
 	"net/http"
 	"time"
-	"log"
 	"auth-service/config"
 	"auth-service/models"
 	"auth-service/services"

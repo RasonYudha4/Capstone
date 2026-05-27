@@ -18,6 +18,14 @@ func getEnv(key, fallback string) string {
 var (
 	JWTSecret   = requireEnv("JWT_SECRET")
 	DatabaseURL = getEnv("DB_URL", "postgresql://capstone:capstoneboi@127.0.0.1:5432/capstone_db?sslmode=disable")
+
+	// Seeder credentials
+	MasterAdminEmail    = getEnv("MASTER_ADMIN_EMAIL", "masteradmin@gmail.com")
+	MasterAdminPassword = getEnv("MASTER_ADMIN_PASSWORD", "password123")
+	AdminEmail          = getEnv("ADMIN_EMAIL", "admin@gmail.com")
+	AdminPassword       = getEnv("ADMIN_PASSWORD", "password123")
+	StaffEmail          = getEnv("STAFF_EMAIL", "staff@gmail.com")
+	StaffPassword       = getEnv("STAFF_PASSWORD", "password123")
 )
 
 // requireEnv reads an environment variable or terminates.

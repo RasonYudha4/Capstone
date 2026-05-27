@@ -8,7 +8,6 @@ import (
 	"math/big"
 	"sync"
 	"time"
-	"encoding/base64"
 	"auth-service/config"
 	"auth-service/models"
 )
