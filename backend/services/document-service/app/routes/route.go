@@ -123,10 +123,6 @@ func NotificationRoute(r *gin.Engine, notificationHandler *api.NotificationHandl
 }
 
 func FormOptionRoute (r *gin.Engine, formOptionHandler *api.FormOptionsHandler, jwtSecret string){
-	r.GET(
-		"/form-option",
-		middleware.Extract_JWT_data(jwtSecret),
-		middleware.AllowedRole("master-admin", "admin"),
-		formOptionHandler.GetFormOptions,
-	)
+
+	r.GET("/form-option", middleware.Extract_JWT_data(jwtSecret),formOptionHandler.GetFormOptions, )
 }
