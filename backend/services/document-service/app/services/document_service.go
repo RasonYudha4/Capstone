@@ -305,9 +305,10 @@ func (d *DocumentService) Approval_document(documentId, userId uuid.UUID, status
 		if err != nil {
         	return schemas.Response{}, err
     	}
-    		rows, err = d.repo.Approval_document(documentId, status, signedDocPath)
+    		rows, err = d.repo.Approval_document(documentId, status, signedDocPath, file)
 	}else {
-		rows, err = d.repo.Approval_document(documentId, status, "")
+		
+		rows, err = d.repo.Approval_document(documentId, status, "",file)
 	}
 
 	if err != nil {

@@ -2,20 +2,19 @@ package repositories
 
 import (
 	"capstone/app/schemas"
+	"mime/multipart"
 
 	"context"
-	"log"
-	"time"
 	"fmt"
+	"log"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
-
-
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type DocumentRepo struct{
@@ -281,12 +280,12 @@ func (s *DocumentRepo) Delete_document(documentId, userId uuid.UUID)(string,bool
 }
 
 
-func (s *DocumentRepo) Approval_document(documentId uuid.UUID, status string, filePath string) (int64, error) {
+func (s *DocumentRepo) Approval_document(documentId uuid.UUID, status string, filePath string, file multipart.File) (int64, error) {
 
     var result pgconn.CommandTag
     var err error
 
-    if status == "approved" {
+    if status == "approved" && file != nil {
         query := `
             UPDATE documents SET
                 status = $1,
@@ -296,7 +295,16 @@ func (s *DocumentRepo) Approval_document(documentId uuid.UUID, status string, fi
             AND is_deleted = false
         `
         result, err = s.db.Exec(context.Background(), query, status, filePath, documentId)
-    } else {
+    }else if status == "approve" && file == nil{
+		 query := `
+            UPDATE documents SET
+                status = $1,
+                updated_at = NOW()
+            WHERE document_id = $2
+            AND is_deleted = false
+        `
+        result, err = s.db.Exec(context.Background(), query, status, documentId)
+	}else {
         query := `
             UPDATE documents SET
                 status = $1,

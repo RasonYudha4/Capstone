@@ -3,6 +3,7 @@ package api
 import (
 	"capstone/app/services"
 	"github.com/gin-gonic/gin"
+	"log"
 )
 
 type FormOptionsHandler struct {
@@ -14,7 +15,10 @@ func NewFormOptionsHandler(service services.FormOptionsService) *FormOptionsHand
 }
 
 func (h *FormOptionsHandler) GetFormOptions(c *gin.Context) {
-	data, err := h.service.GetFormOptions(c.Request.Context())
+	userId := c.GetString("user_id")
+	log.Print(userId)
+
+	data, err := h.service.GetFormOptions(c.Request.Context(), userId)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
