@@ -36,10 +36,10 @@ type NotificationService struct {
 	clients map[connKey]chan SSEEvent
 }
 
-func NewNotificationService(notifRepo *repositories.NotificationRepository) *NotificationService {
+func NewNotificationService(notifRepo *repositories.NotificationRepository, apiKey string, fromAddress string) *NotificationService {
 	return &NotificationService{
-		from:          "onboarding@resend.dev",
-		password:      "re_Qw7tzQnc_LC3yCpemAjVLwyhCRToFYZAA",
+		from:          fromAddress,
+		password:      apiKey,
 		smtpHost:      "smtp.resend.com",
 		smtpPort:      "465",
 		notifications: notifRepo,

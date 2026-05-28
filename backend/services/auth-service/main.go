@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 
 	"auth-service/config"
@@ -18,10 +19,15 @@ func main() {
 
 	// services
 	userService := services.NewUserService(services.DB)
-	otpService := services.NewOTPService()
+	otpService := services.NewOTPService(services.DB)
 	jwtService := services.NewJWTService()
 	refreshService := services.NewRefreshService(services.DB) // Phase 2
 	auditService := services.NewAuditService(services.DB)     // Phase 2
+
+	// Start OTP cleanup goroutine
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	otpService.StartCleanup(ctx)
 
 	// set passwords on existing seed users 
 	if err := userService.SeedPasswords(); err != nil {
@@ -52,6 +58,11 @@ func main() {
 
 		// revoke a refresh token (logout).
 		auth.POST("/logout", authHandler.Logout)
+
+		// health check
+		auth.GET("/health", func(c *gin.Context) {
+			c.JSON(200, gin.H{"status": "UP"})
+		})
 	}
 
 	// protected routes

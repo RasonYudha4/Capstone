@@ -3,6 +3,7 @@ services:
   nginx:
     image: nginx:latest
     container_name: nginx
+    restart: unless-stopped
     ports:
       - "8000:80"
     volumes:
@@ -10,13 +11,13 @@ services:
     depends_on:
       - document-service
       - minio
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - auth-service
     networks:
       - server
   postgres:
     image: postgres:18
     container_name: postgre
+    restart: unless-stopped
     env_file:
       - .env
     deploy:
@@ -40,6 +41,7 @@ services:
   minio:
     image: quay.io/minio/aistor/minio
     container_name: object-storage
+    restart: unless-stopped
     deploy:
       resources:
         limits:
@@ -61,6 +63,7 @@ services:
       context: ./services/document-service
       dockerfile: Dockerfile
     container_name: document-service
+    restart: unless-stopped
     deploy:
       resources:
         limits:
@@ -81,10 +84,11 @@ services:
       context: ./services/auth-service
       dockerfile: Dockerfile
     container_name: auth-service
+    restart: unless-stopped
     deploy:
       resources:
         limits:
-          memory: 216m
+          memory: 512m
           cpus: "1"
     environment:
       SLEEP_BEFORE_START: 10
@@ -93,6 +97,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8089/auth/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks:
       - server
       

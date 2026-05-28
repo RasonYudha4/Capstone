@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"log"
 	"net/http"
 	"strings"
 
@@ -46,9 +47,10 @@ func JWTAuth(jwtService *services.JWTService) gin.HandlerFunc {
 		// --- Step 3: Validate the JWT ---
 		claims, err := jwtService.ValidateToken(tokenString)
 		if err != nil {
+			log.Printf("⚠️  JWT validation failed: %v", err)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, models.APIResponse{
 				Success: false,
-				Message: "Invalid or expired token: " + err.Error(),
+				Message: "Authentication failed.",
 			})
 			return
 		}

@@ -1,28 +1,28 @@
 package services
 
 import (
+	"context"
 	"crypto/rand"
-	"encoding/base64"
+	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"math/big"
-	"sync"
 	"time"
+
 	"auth-service/config"
 	"auth-service/models"
 )
 
-// manages OTP generation, in-memory storage, and verification.
-// The store is protected by a mutex for concurrent safety.
+// manages OTP generation, PostgreSQL storage, and verification.
 type OTPService struct {
-	mu    sync.RWMutex
-	store map[string]*models.OTPEntry
+	db *sql.DB
 }
 
-// creates a ready-to-use OTPService instance.
-func NewOTPService() *OTPService {
+// creates a ready-to-use OTPService instance backed by PostgreSQL.
+func NewOTPService(db *sql.DB) *OTPService {
 	return &OTPService{
-		store: make(map[string]*models.OTPEntry),
+		db: db,
 	}
 }
 
@@ -37,81 +37,97 @@ func (s *OTPService) GenerateAndStore(email, purpose string) (string, error) {
 		return "", fmt.Errorf("failed to generate OTP: %w", err)
 	}
 
-	// Generate pre-auth token sebagai bukti password sudah diverifikasi
+	// Generate pre-auth token (32 bytes hex encoded = 64 chars)
 	preAuthBytes := make([]byte, 32)
 	if _, err := rand.Read(preAuthBytes); err != nil {
 		return "", fmt.Errorf("failed to generate pre-auth token: %w", err)
 	}
-	preAuthToken := base64.URLEncoding.EncodeToString(preAuthBytes)
+	preAuthToken := hex.EncodeToString(preAuthBytes)
 
-	entry := &models.OTPEntry{
-		Code:      code,
-		Purpose:   purpose,
-		Attempts:  0,
-		ExpiresAt: time.Now().Add(config.OTPExpiration),
-		CreatedAt: time.Now(),
-		PreAuthToken: preAuthToken,
+	expiresAt := time.Now().Add(config.OTPExpiration)
+
+	// Delete any existing OTP for this email first
+	if _, err := s.db.Exec(`DELETE FROM otp_entries WHERE email = $1`, email); err != nil {
+		return "", fmt.Errorf("failed to clear existing OTP: %w", err)
 	}
 
-	// store the OTP. overwrites the previous OTP for this email
-	s.mu.Lock()
-	s.store[email] = entry
-	s.mu.Unlock()
+	// INSERT the new OTP entry into the database
+	_, err = s.db.Exec(
+		`INSERT INTO otp_entries (email, otp_code, pre_auth_token, failed_attempts, expires_at)
+		 VALUES ($1, $2, $3, 0, $4)`,
+		email, code, preAuthToken, expiresAt,
+	)
+	if err != nil {
+		return "", fmt.Errorf("failed to store OTP: %w", err)
+	}
 
 	// In production, send OTP via email service (SendGrid/SES/etc.).
 	// DO NOT log the actual code in production.
 	log.Printf("📧 [OTP] Code generated for %s (purpose: %s, expires: %s) -> CODE: %s",
-		email, purpose, entry.ExpiresAt.Format(time.RFC3339), code)
+		email, purpose, expiresAt.Format(time.RFC3339), code)
 
-	return preAuthToken, nil  // Return pre-auth token, BUKAN OTP code
+	return preAuthToken, nil // Return pre-auth token, BUKAN OTP code
 }
 
 // checks the submitted OTP against the stored entry.
 func (s *OTPService) Verify(email, code, preAuthToken string) (valid bool, errMsg string, err error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	var entry models.OTPEntry
+	err = s.db.QueryRow(
+		`SELECT id, email, otp_code, pre_auth_token, failed_attempts, expires_at, created_at
+		 FROM otp_entries WHERE email = $1 AND pre_auth_token = $2`,
+		email, preAuthToken,
+	).Scan(&entry.ID, &entry.Email, &entry.Code, &entry.PreAuthToken, &entry.FailedAttempts, &entry.ExpiresAt, &entry.CreatedAt)
 
-	entry, exists := s.store[email]
-
-	// OTP was never requested for this email.
-	if !exists {
+	if err == sql.ErrNoRows {
 		return false, "No OTP requested for this email.", nil
+	}
+	if err != nil {
+		return false, "", fmt.Errorf("failed to query OTP: %w", err)
 	}
 
 	// OTP has expired
 	if entry.IsExpired() {
-		delete(s.store, email)
+		if _, delErr := s.db.Exec(`DELETE FROM otp_entries WHERE id = $1`, entry.ID); delErr != nil {
+			log.Printf("⚠️  Failed to delete expired OTP for %s: %v", email, delErr)
+		}
 		return false, "OTP has expired. Please request a new one.", nil
 	}
 
-    // Validasi pre-auth token
-	if entry.PreAuthToken != preAuthToken {
-		return false, "Invalid pre-authentication token.", nil
-	}
-
-	// Too many failed attempts 
-	if entry.Attempts >= config.OTPMaxAttempts {
-		delete(s.store, email)
+	// Too many failed attempts
+	if entry.FailedAttempts >= config.OTPMaxAttempts {
+		if _, delErr := s.db.Exec(`DELETE FROM otp_entries WHERE id = $1`, entry.ID); delErr != nil {
+			log.Printf("⚠️  Failed to delete OTP after max attempts for %s: %v", email, delErr)
+		}
 		return false, "Too many failed attempts. Please request a new OTP.", nil
 	}
 
 	// Code mismatch, increment attempt counter.
 	if entry.Code != code {
-		entry.Attempts++
-		remaining := config.OTPMaxAttempts - entry.Attempts
+		if _, updErr := s.db.Exec(`UPDATE otp_entries SET failed_attempts = failed_attempts + 1 WHERE id = $1`, entry.ID); updErr != nil {
+			log.Printf("⚠️  Failed to update failed_attempts for %s: %v", email, updErr)
+		}
+		remaining := config.OTPMaxAttempts - entry.FailedAttempts - 1
 		return false, fmt.Sprintf("Invalid OTP. %d attempt(s) remaining.", remaining), nil
 	}
 
-	// delete valid otp so it can't be reused (single-use).
-	delete(s.store, email)
+	// delete valid OTP so it can't be reused (single-use).
+	if _, delErr := s.db.Exec(`DELETE FROM otp_entries WHERE id = $1`, entry.ID); delErr != nil {
+		log.Printf("⚠️  Failed to delete verified OTP for %s: %v", email, delErr)
+	}
 	return true, "", nil
 }
 
 // checks whether an OTP entry exists for the given email.
 func (s *OTPService) HasPending(email string) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	_, exists := s.store[email]
+	var exists bool
+	err := s.db.QueryRow(
+		`SELECT EXISTS(SELECT 1 FROM otp_entries WHERE email = $1 AND expires_at > NOW())`,
+		email,
+	).Scan(&exists)
+	if err != nil {
+		log.Printf("⚠️  Failed to check pending OTP for %s: %v", email, err)
+		return false
+	}
 	return exists
 }
 
@@ -119,13 +135,40 @@ func (s *OTPService) HasPending(email string) bool {
 // Returns true if at least 60 seconds have elapsed (prevents email flooding).
 func (s *OTPService) CanResend(email string) bool {
 	const resendCooldown = 60 * time.Second
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	entry, exists := s.store[email]
-	if !exists {
+	var createdAt time.Time
+	err := s.db.QueryRow(
+		`SELECT created_at FROM otp_entries WHERE email = $1 ORDER BY created_at DESC LIMIT 1`,
+		email,
+	).Scan(&createdAt)
+	if err != nil {
 		return false
 	}
-	return time.Since(entry.CreatedAt) >= resendCooldown
+	return time.Since(createdAt) >= resendCooldown
+}
+
+// StartCleanup runs a background goroutine that deletes expired OTP entries every 2 minutes.
+func (s *OTPService) StartCleanup(ctx context.Context) {
+	go func() {
+		ticker := time.NewTicker(2 * time.Minute)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				log.Println("🛑 OTP cleanup goroutine stopped")
+				return
+			case <-ticker.C:
+				result, err := s.db.Exec(`DELETE FROM otp_entries WHERE expires_at < NOW()`)
+				if err != nil {
+					log.Printf("⚠️  OTP cleanup failed: %v", err)
+					continue
+				}
+				if rows, _ := result.RowsAffected(); rows > 0 {
+					log.Printf("🧹 OTP cleanup: removed %d expired entries", rows)
+				}
+			}
+		}
+	}()
 }
 
 // produces a random numeric string of the given length

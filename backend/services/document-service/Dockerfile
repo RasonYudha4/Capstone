@@ -11,9 +11,12 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o main ./main.go
 
 #stage 2
-FROM alpine:latest
+FROM alpine:3.21
 
 WORKDIR /app
 
+RUN adduser -D appuser
+
 COPY --from=builder  /app/main .
+USER appuser
 CMD ["./main"]

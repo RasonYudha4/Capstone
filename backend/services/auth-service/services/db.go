@@ -3,6 +3,7 @@ package services
 import (
 	"database/sql"
 	"log"
+	"time"
 
 	"auth-service/config"
 
@@ -19,6 +20,11 @@ func InitDB() {
 	if err != nil {
 		log.Fatalf("❌ Failed to open database connection: %v", err)
 	}
+
+	// Connection pool settings
+	DB.SetMaxOpenConns(25)
+	DB.SetMaxIdleConns(5)
+	DB.SetConnMaxLifetime(5 * time.Minute)
 
 	if err = DB.Ping(); err != nil {
 		log.Fatalf("❌ Failed to ping database: %v", err)
@@ -51,6 +57,21 @@ func migrateAuth() {
 
 		// Index
 		`CREATE INDEX IF NOT EXISTS idx_refresh_token_hash ON refresh_tokens(token_hash);`,
+
+		// OTP entries table
+		`CREATE TABLE IF NOT EXISTS otp_entries (
+			id SERIAL PRIMARY KEY,
+			email VARCHAR(255) NOT NULL,
+			otp_code VARCHAR(10) NOT NULL,
+			pre_auth_token VARCHAR(64) NOT NULL,
+			failed_attempts INT DEFAULT 0,
+			expires_at TIMESTAMP NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		);`,
+
+		// OTP indexes
+		`CREATE INDEX IF NOT EXISTS idx_otp_entries_email ON otp_entries(email);`,
+		`CREATE INDEX IF NOT EXISTS idx_otp_entries_pre_auth_token ON otp_entries(pre_auth_token);`,
 	}
 
 	for _, m := range migrations {

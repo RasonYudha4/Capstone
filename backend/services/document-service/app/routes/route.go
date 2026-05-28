@@ -10,7 +10,12 @@ import (
 func DocumentRoute(r *gin.Engine, documentHandler *api.DocumentHandler, jwtSecret string) {
 
 	documentsRoute := r.Group("/")
-	documentsRoute.GET("/documents/type/:type", documentHandler.Get_document_by_type_handler)
+	documentsRoute.GET(
+		"/documents/type/:type",
+		middleware.Extract_JWT_data(jwtSecret),
+		middleware.AllowedRole("master-admin", "admin"),
+		documentHandler.Get_document_by_type_handler,
+	)
 
 	documentsRoute.GET(
 		"/documents/:id", 
@@ -117,6 +122,11 @@ func NotificationRoute(r *gin.Engine, notificationHandler *api.NotificationHandl
 	}
 }
 
-func FormOptionRoute (r *gin.Engine, formOptionHandler *api.FormOptionsHandler){
-	r.GET("/form-option", formOptionHandler.GetFormOptions)
+func FormOptionRoute (r *gin.Engine, formOptionHandler *api.FormOptionsHandler, jwtSecret string){
+	r.GET(
+		"/form-option",
+		middleware.Extract_JWT_data(jwtSecret),
+		middleware.AllowedRole("master-admin", "admin"),
+		formOptionHandler.GetFormOptions,
+	)
 }

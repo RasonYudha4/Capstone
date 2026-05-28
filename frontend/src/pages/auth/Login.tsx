@@ -39,6 +39,9 @@ export default function Login() {
                 navigate("/verify", { state: { email: formData.email, preAuthToken: response.pre_auth_token } });
             } else {
                 // Staff → tokens returned immediately
+                localStorage.setItem("accessToken", response.access_token!);
+                localStorage.setItem("refreshToken", response.refresh_token!);
+
                 const user = await authService.me();
                 login(user, response.access_token!, response.refresh_token!);
                 navigate("/dashboard", { replace: true });

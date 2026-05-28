@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"log"
 	"net/http"
 
 	"auth-service/config"
@@ -56,9 +57,10 @@ func RequireRoles(allowedRoles ...string) gin.HandlerFunc {
 
 		// Check if the user's role is in the allowed set.
 		if _, allowed := roleSet[claims.Role]; !allowed {
+			log.Printf("⚠️  RBAC denied: user %s (role: %s) requires one of [%s]", claims.Email, claims.Role, formatRoles(allowedRoles))
 			c.AbortWithStatusJSON(http.StatusForbidden, models.APIResponse{
 				Success: false,
-				Message: "Access denied. Required role(s): " + formatRoles(allowedRoles),
+				Message: "Insufficient permissions.",
 			})
 			return
 		}

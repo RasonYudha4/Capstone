@@ -3,6 +3,7 @@ package config
 import (
 	"log"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -17,7 +18,10 @@ func getEnv(key, fallback string) string {
 // Loaded from environment — NEVER hardcode secrets in production.
 var (
 	JWTSecret   = requireEnv("JWT_SECRET")
-	DatabaseURL = getEnv("DB_URL", "postgresql://capstone:capstoneboi@127.0.0.1:5432/capstone_db?sslmode=disable")
+	DatabaseURL = requireEnv("DB_URL")
+
+	// IsDevMode is true when DEV_MODE env var is set to "true" (default false).
+	IsDevMode = strings.EqualFold(getEnv("DEV_MODE", "false"), "true")
 
 	// Seeder credentials
 	MasterAdminEmail    = getEnv("MASTER_ADMIN_EMAIL", "masteradmin@gmail.com")

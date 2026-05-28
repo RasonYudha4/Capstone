@@ -1,0 +1,9 @@
+# Production overrides — removes dev port mappings
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+services:
+  postgres:
+    ports: !override []
+  minio:
+    ports: !override []
+  pgadmin:
+    ports: !override []

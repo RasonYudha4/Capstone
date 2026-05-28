@@ -88,7 +88,9 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	// if lock has expired, reset the counter.
 	if user.LockedUntil != nil && !user.IsLocked() {
-		_ = h.userService.ResetFailedAttempts(user.UserID)
+		if err := h.userService.ResetFailedAttempts(user.UserID); err != nil {
+			log.Printf("⚠️  Failed to reset failed attempts for user %s: %v", user.UserID, err)
+		}
 	}
 
 	// verify password.
@@ -107,8 +109,12 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		h.auditService.Log("error", "login_fail", &user.UserID, "client")
 
 		if count >= config.MaxLoginAttempts {
-			_ = h.userService.LockAccount(user.UserID)
-			_ = h.refreshService.RevokeAllUserTokens(user.UserID)
+			if lockErr := h.userService.LockAccount(user.UserID); lockErr != nil {
+				log.Printf("⚠️  Failed to lock account for user %s: %v", user.UserID, lockErr)
+			}
+			if revokeErr := h.refreshService.RevokeAllUserTokens(user.UserID); revokeErr != nil {
+				log.Printf("⚠️  Failed to revoke tokens for user %s: %v", user.UserID, revokeErr)
+			}
 			h.auditService.Log("error", "lockout", &user.UserID, "system")
 			c.JSON(http.StatusTooManyRequests, models.APIResponse{
 				Success: false,
@@ -126,7 +132,9 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	// password correct, reset failed attempts.
-	_ = h.userService.ResetFailedAttempts(user.UserID)
+	if err := h.userService.ResetFailedAttempts(user.UserID); err != nil {
+		log.Printf("⚠️  Failed to reset failed attempts for user %s: %v", user.UserID, err)
+	}
 
 	// role-based login branching
 

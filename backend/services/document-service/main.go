@@ -20,6 +20,16 @@ func main(){
         log.Fatal("❌ JWT_SECRET environment variable is required")
     }
 
+    resendAPIKey := os.Getenv("RESEND_API_KEY")
+    if resendAPIKey == "" {
+        log.Println("⚠️  RESEND_API_KEY not set — email notifications will fail")
+    }
+
+    smtpFrom := os.Getenv("SMTP_FROM")
+    if smtpFrom == "" {
+        smtpFrom = "noreply@example.com"
+    }
+
     gin.SetMode(gin.ReleaseMode)
     r := gin.Default()
     r.HandleMethodNotAllowed = true 
@@ -40,7 +50,7 @@ func main(){
     notificationRepo := repositories.NewNotificationRepository(dbConn) 
     formOptionRepo := repositories.NewFormOptionsRepository(dbConn)
 
-    notification := services.NewNotificationService(notificationRepo) 
+    notification := services.NewNotificationService(notificationRepo, resendAPIKey, smtpFrom)
     service := services.NewDocumentService(repo, audit, storage, notification)
     auditService := services.NewAuditService(audit)
     formOptionService := services.NewFormOptionsService(formOptionRepo)
@@ -56,7 +66,7 @@ func main(){
     routes.AuditRoute(r, auditHandler, jwtSecret)
 
     routes.NotificationRoute(r, notificationHandler, jwtSecret)
-    routes.FormOptionRoute(r, formOptionHandler)
+    routes.FormOptionRoute(r, formOptionHandler, jwtSecret)
     
     log.Fatal(r.Run(":8081"))   
 }
