@@ -1084,7 +1084,29 @@ INSERT INTO assessment (standard_id, assessment_code, description, created_at, u
   ((SELECT standard_id FROM standard WHERE standard_code = 'Prognas 6.1' LIMIT 1), 'Prognas 6.1.d', 'Rumah sakit telah melaksanakan pemantauan dan evaluasi secara bersinambung terhadap indikator penggunaan antimikroba (PGA).', NOW(), NOW());
 
 -- Seed User Accounts
-INSERT INTO users (email, verified, role, created_at, updated_at) VALUES
-('masteradmin@gmail.com', true, 'master-admin', NOW(), NOW()),
-('admin@gmail.com', true, 'admin', NOW(), NOW()),
-('staff@gmail.com', true, 'staff', NOW(), NOW());
+INSERT INTO users (email, verified, role, group_id, password_hash, failed_attempts, created_at, updated_at) VALUES
+
+('masteradmin@gmail.com', true, 'master-admin', NULL,
+ '$2y$10$qJ91x6/5YZUB5BSwse8t7u.dzx8UbKjnSFP5YhVNeOVrFCyRYI48K', 0, NOW(), NOW()),
+
+('staff@gmail.com', true, 'staff', NULL,
+ '$2y$10$qJ91x6/5YZUB5BSwse8t7u.dzx8UbKjnSFP5YhVNeOVrFCyRYI48K', 0, NOW(), NOW()),
+
+('admin.manajemen@gmail.com', true, 'admin',
+ (SELECT group_id FROM groups WHERE group_name = 'Kelompok manajemen rumah sakit' LIMIT 1),
+ '$2y$10$qJ91x6/5YZUB5BSwse8t7u.dzx8UbKjnSFP5YhVNeOVrFCyRYI48K', 0, NOW(), NOW()),
+
+('admin.pelayanan@gmail.com', true, 'admin',
+ (SELECT group_id FROM groups WHERE group_name = 'kelompok pelayanan berfokus pada pasien' LIMIT 1),
+ '$2y$10$qJ91x6/5YZUB5BSwse8t7u.dzx8UbKjnSFP5YhVNeOVrFCyRYI48K', 0, NOW(), NOW()),
+
+('admin.keselamatan@gmail.com', true, 'admin',
+ (SELECT group_id FROM groups WHERE group_name = 'Kelompok sasaran keselamatan pasien' LIMIT 1),
+ '$2y$10$qJ91x6/5YZUB5BSwse8t7u.dzx8UbKjnSFP5YhVNeOVrFCyRYI48K', 0, NOW(), NOW()),
+
+('admin.nasional@gmail.com', true, 'admin',
+ (SELECT group_id FROM groups WHERE group_name = 'Kelompok program nasional' LIMIT 1),
+ '$2y$10$qJ91x6/5YZUB5BSwse8t7u.dzx8UbKjnSFP5YhVNeOVrFCyRYI48K', 0, NOW(), NOW());
+
+CREATE INDEX IF NOT EXISTS idx_otp_entries_email ON otp_entries(email);
+CREATE INDEX IF NOT EXISTS idx_otp_entries_pre_auth_token ON otp_entries(pre_auth_token);
