@@ -56,7 +56,7 @@ func main(){
     routes.AuditRoute(r, auditHandler, jwtSecret)
 
     routes.NotificationRoute(r, notificationHandler, jwtSecret)
-    routes.FormOptionRoute(r, formOptionHandler)
+    routes.FormOptionRoute(r, formOptionHandler, jwtSecret)
     
     log.Fatal(r.Run(":8081"))   
 }

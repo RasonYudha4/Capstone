@@ -117,6 +117,7 @@ func NotificationRoute(r *gin.Engine, notificationHandler *api.NotificationHandl
 	}
 }
 
-func FormOptionRoute (r *gin.Engine, formOptionHandler *api.FormOptionsHandler){
-	r.GET("/form-option", formOptionHandler.GetFormOptions)
+func FormOptionRoute (r *gin.Engine, formOptionHandler *api.FormOptionsHandler, jwtSecret string){
+
+	r.GET("/form-option", middleware.Extract_JWT_data(jwtSecret),formOptionHandler.GetFormOptions, )
 }

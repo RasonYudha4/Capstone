@@ -7,7 +7,7 @@ import (
 )
 
 type FormOptionsService interface {
-    GetFormOptions(ctx context.Context) (*schemas.FormOptionsResponse, error)
+    GetFormOptions(ctx context.Context, userId string) (*schemas.FormOptionsResponse, error)
 }
 
 type formOptionsService struct {
@@ -18,8 +18,8 @@ func NewFormOptionsService(repo repositories.FormOptionsRepository) FormOptionsS
     return &formOptionsService{repo: repo}
 }
 
-func (s *formOptionsService) GetFormOptions(ctx context.Context) (*schemas.FormOptionsResponse, error) {
-    services, err := s.repo.GetAllNested(ctx)
+func (s *formOptionsService) GetFormOptions(ctx context.Context, userId string) (*schemas.FormOptionsResponse, error) {
+    services, err := s.repo.GetAllNested(ctx, userId)
     if err != nil {
         return nil, err
     }
