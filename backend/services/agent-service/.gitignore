@@ -1,0 +1,16 @@
+*/venv
+**/venv
+
+*/__pycache__
+**/__pycache__
+
+*/vector_db
+**/vector_db
+
+*/docs
+**/docs
+
+.env
+
+*/data
+**/data

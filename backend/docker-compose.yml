@@ -12,6 +12,7 @@ services:
       - document-service
       - minio
       - auth-service
+      - agent-service
     networks:
       - server
   postgres:
@@ -103,6 +104,27 @@ services:
       timeout: 5s
       retries: 5
       start_period: 60s
+    networks:
+      - server
+
+  agent-service:
+    build:
+      context: ./services/agent-service
+      dockerfile: Dockerfile
+    container_name: agent-service
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 12g        
+          cpus: "4"
+    env_file:
+      - .env
+    volumes:
+      - ./services/agent-service/data/models:/app/models
+      - ./services/agent-service/data/vector_db:/app/vector_db
+    ports:
+      - "8001:8001"         
     networks:
       - server
       
