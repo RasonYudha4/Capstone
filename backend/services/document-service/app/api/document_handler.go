@@ -83,23 +83,20 @@ func(d *DocumentHandler) Get_document_by_status_handler(c *gin.Context){
     })
 }
 
-func (d *DocumentHandler)Get_document_by_type_handler(c *gin.Context){
-	typeId, err := uuid.Parse(c.Param("type"))
-	if err != nil{
-		log.Print("Error parse type into uuid; ", err)
-		return
-	}
+func (d *DocumentHandler) Get_document_by_type_handler(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-    limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
-	
-	Type,page, limit, err := d.documentService.Get_document_by_type(typeId,page,limit)
-	if err != nil{
-		c.JSON(500,"Internal Server Error")
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+
+	docs, page, limit, err := d.documentService.Get_documents_by_type(page, limit)
+	if err != nil {
+		log.Print("Error fetching public documents: ", err)
+		c.JSON(500, "Internal Server Error")
 		return
 	}
+
 	c.JSON(200, gin.H{
-		"data": Type,
-		"page": page,
+		"data":  docs,
+		"page":  page,
 		"limit": limit,
 	})
 }
@@ -147,11 +144,7 @@ func(d *DocumentHandler) Get_document_by_standard_handler(c *gin.Context){
 		c.JSON(500,"internal server error")
 		return 
 	}
-	c.JSON(200, gin.H{
-		"data": standard,
-		"page": page,
-		"limit": limit,
-	})
+	c.JSON(200, gin.H{"data": standard, "page": page,"limit": limit})
 }
 
 func(d *DocumentHandler) Get_document_by_service_handler(c *gin.Context){
@@ -176,11 +169,7 @@ func(d *DocumentHandler) Get_document_by_service_handler(c *gin.Context){
 		c.JSON(500, "internal server error")
 		return
 	}
-	c.JSON(200, gin.H{
-		"data": service,
-		"page": page,
-		"limit": limit,
-	})
+	c.JSON(200, gin.H{"data": service, "page": page, "limit": limit})
 }
 
 func(d *DocumentHandler) Get_document_by_assessment_handler(c *gin.Context){
@@ -205,11 +194,7 @@ func(d *DocumentHandler) Get_document_by_assessment_handler(c *gin.Context){
 		c.JSON(500, "internal server error")
 		return
 	}
-	c.JSON(200, gin.H{
-		"data": assessment, 
-		"page": page,
-		"limit": limit,
-	})
+	c.JSON(200, gin.H{"data": assessment, "page": page,"limit": limit})
 }
 
 func (d *DocumentHandler) Get_document_by_createdBy_handler(c *gin.Context) {
@@ -264,11 +249,13 @@ func(d *DocumentHandler) Create_document_handler(c *gin.Context){
 
 	userId,err := uuid.Parse(c.GetString("user_id"))
 	if err != nil{
-		c.JSON(400, gin.H{"errir": err.Error()})
+		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
-	result, err := d.documentService.Create_document(req,file,fileHeader,userId)
+	role := c.GetString("role")
+
+	result, err := d.documentService.Create_document(req,file,fileHeader,userId, role)
 	if err != nil{
 		c.JSON(500,"Internal server error")
 		return
@@ -287,60 +274,43 @@ func (d *DocumentHandler) Update_document_handler(c *gin.Context) {
 
     if err := c.ShouldBind(&req); err != nil {
         log.Print("Error binding request: ", err)
-        c.JSON(400, gin.H{
-            "status": false,
-            "message": err.Error(),
-        })
+        c.JSON(400, gin.H{"status": false, "message": err.Error()})
         return
     }
 
     fileHeader, err := c.FormFile("uploadedFile")
-
     var file multipart.File
-
     if err != nil {
         if err == http.ErrMissingFile {
             file = nil
             fileHeader = nil
         } else {
             log.Print("Error reading file: ", err)
-            c.JSON(400, gin.H{
-                "status": false,
-                "message": "Failed to read file",
-            })
+            c.JSON(400, gin.H{"status": false, "message": "Failed to read file"})
             return
         }
     } else {
         file, err = fileHeader.Open()
         if err != nil {
             log.Print("Error opening file: ", err)
-            c.JSON(500, gin.H{
-                "status": false,
-                "message": "Failed to open file",
-            })
+            c.JSON(500, gin.H{"status": false, "message": "Failed to open file"})
             return
         }
         defer file.Close()
     }
 
-    
     userId, err := uuid.Parse(c.GetString("user_id"))
+	userRole := c.GetString("role")
     if err != nil {
         log.Print("Failed parse user id: ", err)
-        c.JSON(400, gin.H{
-            "status": false,
-            "message": "Invalid user",
-        })
+        c.JSON(400, gin.H{"status": false, "message": "Invalid user"})
         return
     }
     
-    result, err := d.documentService.Update_document(req, file, fileHeader, userId)
+    result, err := d.documentService.Update_document(req, file, fileHeader, userId,userRole)
     if err != nil {
         log.Print("Failed update document: ", err)
-        c.JSON(500, gin.H{
-            "status": false,
-            "message": "Internal server error",
-        })
+        c.JSON(500, gin.H{"status": false, "message": "Internal server error"})
         return
     }
 
@@ -348,7 +318,6 @@ func (d *DocumentHandler) Update_document_handler(c *gin.Context) {
         c.JSON(400, result)
         return
     }
-
     c.JSON(200, result)
 }
 
@@ -364,8 +333,9 @@ func (d *DocumentHandler) Delete_document_handler(c *gin.Context){
 	if err != nil{
 		log.Print("error", err)
 	}	
+	userRole := c.GetString("role")
 
-	result, err:= d.documentService.Delete_document(documentId,userId)
+	result, err:= d.documentService.Delete_document(documentId,userId, userRole)
 	if err != nil{
 		c.JSON(500, result)
 	}
@@ -403,7 +373,6 @@ func (d *DocumentHandler) Approval_document_handler(c *gin.Context) {
 
 	var file multipart.File
 	var fileHeader *multipart.FileHeader
-
 	uploadedFile, header, err := c.Request.FormFile("document")
 	if err == nil {
 		file = uploadedFile

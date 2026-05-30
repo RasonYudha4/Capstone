@@ -11,9 +11,7 @@ func DocumentRoute(r *gin.Engine, documentHandler *api.DocumentHandler, jwtSecre
 
 	documentsRoute := r.Group("/")
 	documentsRoute.GET(
-		"/documents/type/:type",
-		middleware.Extract_JWT_data(jwtSecret),
-		middleware.AllowedRole("master-admin", "admin"),
+		"/documents/public",
 		documentHandler.Get_document_by_type_handler,
 	)
 

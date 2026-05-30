@@ -14,3 +14,4 @@ DROP TYPE IF EXISTS user_role;
 DROP TYPE IF EXISTS audit_type;
 DROP TYPE IF EXISTS audit_source;
 DROP TYPE IF EXISTS action_type;
+
