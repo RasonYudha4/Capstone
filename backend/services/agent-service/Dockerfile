@@ -17,9 +17,8 @@ ENV PATH="/app/venv/bin:$PATH"
 
 # Install dependencies
 COPY requirements.txt .
-RUN pip config set global.index-url https://mirror.kambing.ui.ac.id/pypi/simple && \
-    pip config set global.trusted-host mirror.kambing.ui.ac.id && \
-    pip install --no-cache-dir --upgrade pip && \
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir -r requirements.txt
 
 # Copy application code

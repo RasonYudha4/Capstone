@@ -3,10 +3,10 @@ retrieval/retriever.py — query-time retrieval logic.
 """
 from __future__ import annotations
 
-from backend.services.rag_test.app.core.config import settings
-from backend.services.rag_test.app.core.logger import get_logger, timer
-from backend.services.rag_test.app.core.store.base import SearchResult
-from backend.services.rag_test.app.core.store.chromadb import ChromaStore
+from app.core.config import settings
+from app.core.logger import get_logger, timer
+from app.core.store.base import SearchResult
+from app.core.store.chromadb import ChromaStore
 
 log = get_logger("retriever")
 
