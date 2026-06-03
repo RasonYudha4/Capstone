@@ -1,0 +1,27 @@
+# API
+fastapi
+uvicorn[standard]
+python-multipart
+
+# PDF extraction
+pymupdf4llm
+pdfplumber
+pypdf
+
+# Vector store — pick one
+chromadb
+
+# Embedding & generation — OpenVINO path
+# optimum[openvino] pulls in: optimum, openvino, openvino-tokenizers, openvino-runtime
+optimum[openvino]
+optimum-intel
+transformers          # tokenizer + apply_chat_template + TextIteratorStreamer
+numpy
+
+# Config & utilities
+pydantic-settings
+python-dotenv
+tenacity
+
+# Image processing (enricher / signature detection)
+Pillow
