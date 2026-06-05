@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"log"
@@ -122,6 +123,9 @@ func (s *OTPService) CanResend(email string) bool {
 	const resendCooldown = 60 * time.Second
 	createdAt, err := s.otpRepo.GetLastCreatedAt(email)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return true
+		}
 		return false
 	}
 	return time.Since(createdAt) >= resendCooldown

@@ -217,7 +217,7 @@ func(d *DocumentService) Update_document(req schemas.UpdateRequest, file multipa
 		return schemas.Response{Status: false, Message: "Invalid document ID"}, err
 	}
 
-	if userRole != "master_admin" {
+	if userRole != "master-admin" {
 		authorized, err := d.repo.Check_document_owner(documentId, createdById)
 		if err != nil {
 			return schemas.Response{Status: false, Message: "Authorization check failed"}, err

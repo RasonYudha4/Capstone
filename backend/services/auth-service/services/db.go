@@ -23,7 +23,7 @@ func InitDB() {
 
 	// Connection pool settings
 	DB.SetMaxOpenConns(25)
-	DB.SetMaxIdleConns(5)
+	DB.SetMaxIdleConns(15)
 	DB.SetConnMaxLifetime(5 * time.Minute)
 
 	if err = DB.Ping(); err != nil {

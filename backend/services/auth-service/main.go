@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"time"
 
 	"auth-service/config"
 	"auth-service/handlers"
@@ -12,6 +13,7 @@ import (
 	"auth-service/services"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/time/rate"
 )
 
 func main() {
@@ -49,17 +51,20 @@ func main() {
 	// router
 	router := gin.Default()
 
+	// Rate limiter for sensitive auth endpoints (5 requests per minute, burst of 5)
+	authRateLimiter := middleware.RateLimit(rate.Every(12*time.Second), 5)
+
 	// public routes
 	auth := router.Group("/auth")
 	{
 		// email + password login (staff → JWT, admin → OTP required).
-		auth.POST("/login", authHandler.Login)
+		auth.POST("/login", authRateLimiter, authHandler.Login)
 
 		// otp verification (completes admin/master-admin login).
-		auth.POST("/verify-otp", authHandler.VerifyOTP)
+		auth.POST("/verify-otp", authRateLimiter, authHandler.VerifyOTP)
 
 		// resend OTP (only if login was already initiated via /auth/login).
-		auth.POST("/resend-otp", authHandler.ResendOTP)
+		auth.POST("/resend-otp", authRateLimiter, authHandler.ResendOTP)
 
 		// get a new access token using a refresh token.
 		auth.POST("/refresh", authHandler.Refresh)
