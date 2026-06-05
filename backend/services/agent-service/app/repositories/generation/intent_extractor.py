@@ -1,23 +1,15 @@
 """
 generation/intent_extractor.py — extract structured intent from a user question.
-
-Pulls known standar_ids and bab_codes from the vector store (KMK chunks)
-so the LLM chooses from values that actually exist, not from memory.
-
-Returns a dict with:
-    query_type : "requirement_lookup" | "evidence_check" | "gap_analysis" | "general"
-    standar_id : e.g. "MFK 6" or None
-    bab_code   : e.g. "MFK" or None
 """
 from __future__ import annotations
 
 import json
 
-from app.repositories.generation.generator import generate
+from app.repositories.generation.generator import GeneratorModel, generate
 from app.core.store.chromadb import ChromaStore
 
 
-def extract_intent(question: str) -> dict:
+def extract_intent(question: str, gen: GeneratorModel) -> dict:
     store = ChromaStore()
 
     known_standards = store.get_all_unique_values("standar_id", {"is_kmk": True})
@@ -46,12 +38,10 @@ def extract_intent(question: str) -> dict:
     Pertanyaan: {question}
     """
 
-    raw = generate(prompt)
+    raw = generate(prompt, gen)
 
     try:
-        # Strip markdown code fences if LLM wraps response in them
         clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         return json.loads(clean)
     except (json.JSONDecodeError, AttributeError):
-        # Safe fallback — treat as general semantic search
         return {"query_type": "general", "standar_id": None, "bab_code": None}

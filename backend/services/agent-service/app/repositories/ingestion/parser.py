@@ -21,8 +21,8 @@ import pymupdf4llm
 import pdfplumber
 from pypdf import PdfReader
 
-from models import ParsedDocument, SignatureStatus
-from backend.services.rag_test.app.core.logger import get_logger
+from app.models import ParsedDocument, SignatureStatus
+from app.core.logger import get_logger
 
 log = get_logger("parser")
 

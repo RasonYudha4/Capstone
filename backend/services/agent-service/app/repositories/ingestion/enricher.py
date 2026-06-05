@@ -12,8 +12,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from models import ParsedDocument, SignatureStatus
-from backend.services.rag_test.app.core.logger import get_logger
+from app.models import ParsedDocument, SignatureStatus
+from app.core.logger import get_logger
 
 log = get_logger("enricher")
 

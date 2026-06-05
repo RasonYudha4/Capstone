@@ -14,8 +14,8 @@ Two public entry points:
 Embedder lifecycle
 ------------------
 OVModelForFeatureExtraction is expensive to load (~seconds).
-_get_embedder() initialises it exactly once per process and caches the
-instance at module level.  Both pipeline functions call _get_embedder()
+_embedder initialises it exactly once per process and caches the
+instance at module level.  Both pipeline functions call _embedder
 transparently — callers never manage the model lifetime themselves.
 """
 from __future__ import annotations
@@ -40,25 +40,10 @@ log = get_logger("ingest_pipeline")
 # Module-level embedder singleton
 # ---------------------------------------------------------------------------
 
-_embedder: EmbedderModel | None = None
-
-
-def _get_embedder() -> EmbedderModel:
-    """
-    Lazy-initialise the OVModel exactly once per process.
-
-    Using a module-level variable (rather than re-creating inside each
-    pipeline call) is critical: loading a model on every ingest request
-    would cost several seconds and defeat the point of local inference.
-    """
-    global _embedder
-    if _embedder is None:
-        _embedder = EmbedderModel.from_pretrained(
-            model_name_or_path=settings.embed_model_path,
-            device=settings.embed_device,
-        )
-    return _embedder
-
+_embedder = EmbedderModel.from_pretrained(
+    settings.embed_model_path,
+    device=settings.embed_device,
+)
 
 # ---------------------------------------------------------------------------
 # KMK ingestion — called once at system setup
@@ -98,7 +83,7 @@ def run_ingest_kmk(kmk_path: str) -> IngestResult:
         try:
             embed_chunks(
                 chunks,
-                embedder=_get_embedder(),
+                embedder=_embedder,
                 batch_size=settings.embed_batch_size,
             )
         except EmbeddingError as exc:
@@ -179,7 +164,7 @@ def run_ingest_evidence(
         try:
             embed_chunks(
                 chunks,
-                embedder=_get_embedder(),
+                embedder=_embedder,
                 batch_size=settings.embed_batch_size,
             )
         except EmbeddingError as exc:

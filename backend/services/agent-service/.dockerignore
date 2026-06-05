@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+
+# Virtual environments — never copy local venv into image
+venv/
+.venv/
+env/
+
+# Models — mounted as volumes, never baked in
+models/
+*.bin
+*.gguf
+*.onnx
+*.xml
+*.mapping
+
+# Vector DB — mounted as volume
+vector_db/
+chroma/
+data/
+
+# Dev/tooling noise
+.git/
+.gitignore
+.env
+*.log
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
