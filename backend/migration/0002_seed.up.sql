@@ -1089,7 +1089,7 @@ INSERT INTO users (email, verified, role, group_id, password_hash, failed_attemp
 ('masteradmin@gmail.com', true, 'master-admin', NULL,
  '$2y$10$qJ91x6/5YZUB5BSwse8t7u.dzx8UbKjnSFP5YhVNeOVrFCyRYI48K', 0, NOW(), NOW()),
 
-('staff@gmail.com', true, 'staff', NULL,
+('staff@gmail.com', false, 'staff', NULL,
  '$2y$10$qJ91x6/5YZUB5BSwse8t7u.dzx8UbKjnSFP5YhVNeOVrFCyRYI48K', 0, NOW(), NOW()),
 
 ('admin.manajemen@gmail.com', true, 'admin',

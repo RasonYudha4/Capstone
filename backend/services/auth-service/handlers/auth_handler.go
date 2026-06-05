@@ -71,7 +71,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, models.APIResponse{
 			Success: false,
 			Message: "Invalid email or password.",
-		})
+		})	
 		return
 	}
 
@@ -138,8 +138,31 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	// role-based login branching
 
-	// for "staff" role: issue tokens immediately.
+	// for "staff" role:
 	if user.Role == config.RoleStaff {
+		// If staff is not verified (first login), they require OTP!
+		if !user.Verified {
+			preAuthToken, err := h.otpService.GenerateAndStore(user.Email, "login")
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, models.APIResponse{
+					Success: false,
+					Message: "Failed to generate OTP.",
+				})
+				return
+			}
+
+			c.JSON(http.StatusOK, models.APIResponse{
+				Success: true,
+				Message: "OTP has been sent to your email. Please verify to complete login.",
+				Data: models.LoginResponse{
+					RequiresOTP:  true,
+					PreAuthToken: preAuthToken,
+				},
+			})
+			return
+		}
+
+		// If already verified, log in immediately.
 		accessToken, refreshToken, err := h.issueTokens(user)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, models.APIResponse{
@@ -223,6 +246,19 @@ func (h *AuthHandler) VerifyOTP(c *gin.Context) {
 			Message: "Failed to retrieve user information.",
 		})
 		return
+	}
+
+	// If role is staff and not verified yet, mark them as verified now!
+	if user.Role == config.RoleStaff && !user.Verified {
+		if err := h.userService.MarkAsVerified(user.UserID); err != nil {
+			log.Printf("⚠️  Failed to mark staff %s as verified: %v", user.Email, err)
+			c.JSON(http.StatusInternalServerError, models.APIResponse{
+				Success: false,
+				Message: "Failed to update verification status.",
+			})
+			return
+		}
+		user.Verified = true // update local state
 	}
 
 	accessToken, refreshToken, err := h.issueTokens(user)

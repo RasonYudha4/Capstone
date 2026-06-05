@@ -142,6 +142,15 @@ func (s *UserService) ResetFailedAttempts(userID string) error {
 	return err
 }
 
+// MarkAsVerified marks a user as verified in the database.
+func (s *UserService) MarkAsVerified(userID string) error {
+	_, err := s.db.Exec(
+		`UPDATE users SET verified = true, updated_at = NOW() WHERE user_id = $1`,
+		userID,
+	)
+	return err
+}
+
 // password hashing & validation
 
 // produces a bcrypt hash of the given plaintext password.
