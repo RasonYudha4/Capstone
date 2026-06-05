@@ -19,7 +19,7 @@ func InitMinio()(*minio.Client, error){
 		Secure: useSSL,
 	})
 	if err != nil {
-		log.Fatal("error wok: ",err)
+		log.Fatal("error: ",err)
 	}
 
 	log.Println("Minio client Init")

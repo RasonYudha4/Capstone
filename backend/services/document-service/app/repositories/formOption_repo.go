@@ -4,7 +4,7 @@ import (
 	"capstone/app/schemas"
 	"context"
 	"database/sql"
-    "log"
+    "fmt"
 	"github.com/jackc/pgx/v5/pgxpool"
     "github.com/jackc/pgx/v5"
 )
@@ -23,7 +23,8 @@ func NewFormOptionsRepository(db *pgxpool.Pool) FormOptionsRepository {
 }
 
 func (f *formOptionsRepo) GetAllNested(ctx context.Context, userID string) ([]schemas.ServiceOption, error) {
-	var role, groupID string
+	var role string
+	var groupID sql.NullString
 	err := f.db.QueryRow(ctx, `
 		SELECT role, group_id FROM users WHERE user_id = $1
 	`, userID).Scan(&role, &groupID)
@@ -40,13 +41,14 @@ func (f *formOptionsRepo) GetAllNested(ctx context.Context, userID string) ([]sc
 		LEFT JOIN standard   st ON st.service_id = sv.service_id
 		LEFT JOIN assessment a  ON a.standard_id = st.standard_id
 	`
-    log.Print(userID)
 
 	var rows pgx.Rows
 	if role == "master-admin" {
 		rows, err = f.db.Query(ctx, baseQuery)
-	} else {
+	} else if groupID.Valid{
 		rows, err = f.db.Query(ctx, baseQuery+` WHERE sv.group_id = $1`, groupID)
+	}else{
+		return nil, fmt.Errorf("user has no group assigned")
 	}
 	if err != nil {
 		return nil, err
