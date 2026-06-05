@@ -11,11 +11,9 @@ type Response struct {
 type DocumentResponse struct {
 	DocumentId uuid.UUID `json:"document_id"`
 	Filename string		 `json:"filename"`
-	FilePath string		 `json:"filepath"`	
 	DocumentType string	 `json:"document_type"` 	
 	CreatedBy string	 `json:"created_by"`
 	UpdatedAt time.Time	 `json:"updated_at"`
-	Assessment string	 `json:"assessment"`
 	Status string		 `json:"status"`
 }
 

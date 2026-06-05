@@ -10,17 +10,18 @@ import (
 	"time"
 
 	"auth-service/config"
+	"auth-service/repositories"
 )
 
 // manages refresh token creation, validation, and revocation.
 // raw token is only ever held by the client.
 type RefreshService struct {
-	db *sql.DB
+	refreshRepo *repositories.RefreshRepository
 }
 
-// creates a RefreshService backed by the given database.
-func NewRefreshService(db *sql.DB) *RefreshService {
-	return &RefreshService{db: db}
+// creates a RefreshService backed by the given RefreshRepository.
+func NewRefreshService(refreshRepo *repositories.RefreshRepository) *RefreshService {
+	return &RefreshService{refreshRepo: refreshRepo}
 }
 
 // generates a new refresh token for the given user.
@@ -37,11 +38,7 @@ func (s *RefreshService) CreateToken(userID string) (string, error) {
 	tokenHash := hashToken(rawToken)
 	expiresAt := time.Now().Add(config.RefreshTokenExpiry)
 
-	_, err := s.db.Exec(
-		`INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
-		 VALUES ($1, $2, $3)`,
-		userID, tokenHash, expiresAt,
-	)
+	err := s.refreshRepo.Save(userID, tokenHash, expiresAt)
 	if err != nil {
 		return "", fmt.Errorf("store refresh token: %w", err)
 	}
@@ -53,15 +50,7 @@ func (s *RefreshService) CreateToken(userID string) (string, error) {
 func (s *RefreshService) ValidateToken(rawToken string) (userID string, err error) {
 	tokenHash := hashToken(rawToken)
 
-	var expiresAt time.Time
-	var revoked bool
-
-	err = s.db.QueryRow(
-		`SELECT user_id, expires_at, revoked
-		 FROM refresh_tokens WHERE token_hash = $1`,
-		tokenHash,
-	).Scan(&userID, &expiresAt, &revoked)
-
+	userID, expiresAt, revoked, err := s.refreshRepo.GetByHash(tokenHash)
 	if err == sql.ErrNoRows {
 		return "", fmt.Errorf("invalid refresh token")
 	}
@@ -84,13 +73,7 @@ func (s *RefreshService) ValidateToken(rawToken string) (userID string, err erro
 func (s *RefreshService) RevokeToken(rawToken string) (userID string, err error) {
 	tokenHash := hashToken(rawToken)
 
-	err = s.db.QueryRow(
-		`UPDATE refresh_tokens SET revoked = TRUE
-		 WHERE token_hash = $1 AND revoked = FALSE
-		 RETURNING user_id`,
-		tokenHash,
-	).Scan(&userID)
-
+	userID, err = s.refreshRepo.RevokeByHash(tokenHash)
 	if err == sql.ErrNoRows {
 		return "", fmt.Errorf("token not found or already revoked")
 	}
@@ -103,61 +86,33 @@ func (s *RefreshService) RevokeToken(rawToken string) (userID string, err error)
 
 // revokes all refresh tokens for a user
 func (s *RefreshService) RevokeAllUserTokens(userID string) error {
-	_, err := s.db.Exec(
-		`UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = $1 AND revoked = FALSE`,
-		userID,
-	)
-	return err
+	return s.refreshRepo.RevokeAllByUserID(userID)
 }
 
 // atomically revokes the old refresh token and issues a new one.
 // prevents stolen tokens from being reused indefinitely.
 func (s *RefreshService) RotateToken(rawToken string) (newRawToken string, userID string, err error) {
-    tx, err := s.db.Begin()
-    if err != nil {
-        return "", "", fmt.Errorf("rotate: begin tx: %w", err)
-    }
-    defer tx.Rollback() // no-op if committed
+	// 1. Generate new token
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", "", fmt.Errorf("rotate: generate token: %w", err)
+	}
+	newRawToken = base64.URLEncoding.EncodeToString(b)
 
-    // 1. Revoke old token within transaction
-    oldHash := hashToken(rawToken)
-    err = tx.QueryRow(
-        `UPDATE refresh_tokens SET revoked = TRUE
-         WHERE token_hash = $1 AND revoked = FALSE
-         RETURNING user_id`,
-        oldHash,
-    ).Scan(&userID)
-    if err == sql.ErrNoRows {
-        return "", "", fmt.Errorf("token not found or already revoked")
-    }
-    if err != nil {
-        return "", "", fmt.Errorf("rotate: revoke: %w", err)
-    }
+	oldHash := hashToken(rawToken)
+	newHash := hashToken(newRawToken)
+	expiresAt := time.Now().Add(config.RefreshTokenExpiry)
 
-    // 2. Create new token within same transaction
-    b := make([]byte, 32)
-    if _, err := rand.Read(b); err != nil {
-        return "", "", fmt.Errorf("rotate: generate token: %w", err)
-    }
-    newRawToken = base64.URLEncoding.EncodeToString(b)
-    newHash := hashToken(newRawToken)
-    expiresAt := time.Now().Add(config.RefreshTokenExpiry)
+	// 2. Perform rotation atomically in the repository
+	userID, err = s.refreshRepo.RotateToken(oldHash, newHash, expiresAt)
+	if err == sql.ErrNoRows {
+		return "", "", fmt.Errorf("token not found or already revoked")
+	}
+	if err != nil {
+		return "", "", fmt.Errorf("rotate: %w", err)
+	}
 
-    _, err = tx.Exec(
-        `INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
-         VALUES ($1, $2, $3)`,
-        userID, newHash, expiresAt,
-    )
-    if err != nil {
-        return "", "", fmt.Errorf("rotate: create: %w", err)
-    }
-
-    // 3. Commit both operations atomically
-    if err := tx.Commit(); err != nil {
-        return "", "", fmt.Errorf("rotate: commit: %w", err)
-    }
-
-    return newRawToken, userID, nil
+	return newRawToken, userID, nil
 }
 
 // produces a hex-encoded SHA-256 hash of the raw token.

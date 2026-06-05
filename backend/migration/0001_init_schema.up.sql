@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS document_types (
     document_type_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(255),
     description VARCHAR(255),
+    is_public BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMP,
     updated_at TIMESTAMP
 );

@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"log"
+	"net/http"
 
 	"auth-service/config"
 	"auth-service/handlers"
 	"auth-service/middleware"
+	"auth-service/repositories"
 	"auth-service/services"
 
 	"github.com/gin-gonic/gin"
@@ -17,12 +19,18 @@ func main() {
 	services.InitDB()
 	defer services.DB.Close()
 
+	// repositories
+	userRepo := repositories.NewUserRepository(services.DB)
+	otpRepo := repositories.NewOTPRepository(services.DB)
+	refreshRepo := repositories.NewRefreshRepository(services.DB)
+	auditRepo := repositories.NewAuditRepository(services.DB)
+
 	// services
-	userService := services.NewUserService(services.DB)
-	otpService := services.NewOTPService(services.DB)
+	userService := services.NewUserService(userRepo)
+	otpService := services.NewOTPService(otpRepo)
 	jwtService := services.NewJWTService()
-	refreshService := services.NewRefreshService(services.DB) // Phase 2
-	auditService := services.NewAuditService(services.DB)     // Phase 2
+	refreshService := services.NewRefreshService(refreshRepo) // Phase 2
+	auditService := services.NewAuditService(auditRepo)       // Phase 2
 
 	// Start OTP cleanup goroutine
 	ctx, cancel := context.WithCancel(context.Background())
@@ -61,7 +69,7 @@ func main() {
 
 		// health check
 		auth.GET("/health", func(c *gin.Context) {
-			c.JSON(200, gin.H{"status": "UP"})
+			c.JSON(http.StatusOK, gin.H{"status": "UP"})
 		})
 	}
 

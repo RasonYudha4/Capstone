@@ -1,7 +1,6 @@
 package services
 
 import (
-	"database/sql"
 	"fmt"
 	"log"
 	"time"
@@ -9,72 +8,32 @@ import (
 
 	"auth-service/config"
 	"auth-service/models"
+	"auth-service/repositories"
 
 	"golang.org/x/crypto/bcrypt"
 )
 
-// handles all user-related database operations.
+// handles all user-related operations.
 type UserService struct {
-	db *sql.DB
+	userRepo *repositories.UserRepository
 }
 
-// creates a UserService backed by the given database.
-func NewUserService(db *sql.DB) *UserService {
-	return &UserService{db: db}
-}
-
-
-//  queries
-
-// shared column list for all user queries.
-const userColumns = `user_id, group_id, email, verified, role,
-	verification_code, password_hash, failed_attempts, locked_until,
-	created_at, updated_at`
-
-// scans a sql.Row into a User struct.
-func scanUser(row *sql.Row) (*models.User, error) {
-	user := &models.User{}
-	err := row.Scan(
-		&user.UserID, &user.GroupID, &user.Email, &user.Verified,
-		&user.Role, &user.VerificationCode, &user.PasswordHash,
-		&user.FailedAttempts, &user.LockedUntil,
-		&user.CreatedAt, &user.UpdatedAt,
-	)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return user, nil
+// creates a UserService backed by the given UserRepository.
+func NewUserService(userRepo *repositories.UserRepository) *UserService {
+	return &UserService{userRepo: userRepo}
 }
 
 // looks up a user by their email address.
 // returns (nil, nil) if not found.
 func (s *UserService) GetByEmail(email string) (*models.User, error) {
-	row := s.db.QueryRow(
-		`SELECT `+userColumns+` FROM users WHERE email = $1`, email,
-	)
-	user, err := scanUser(row)
-	if err != nil {
-		return nil, fmt.Errorf("query user by email: %w", err)
-	}
-	return user, nil
+	return s.userRepo.GetByEmail(email)
 }
 
 // looks up a user by their UUID.
-// reeeturns (nil, nil) if not found.
+// returns (nil, nil) if not found.
 func (s *UserService) GetByID(id string) (*models.User, error) {
-	row := s.db.QueryRow(
-		`SELECT `+userColumns+` FROM users WHERE user_id = $1`, id,
-	)
-	user, err := scanUser(row)
-	if err != nil {
-		return nil, fmt.Errorf("query user by id: %w", err)
-	}
-	return user, nil
+	return s.userRepo.GetByID(id)
 }
-
 
 //  Authentication
 
@@ -110,13 +69,7 @@ func (s *UserService) Authenticate(email, password string) (*models.User, error)
 // adds 1 to the failed login counter.
 // returns the new count.
 func (s *UserService) IncrementFailedAttempts(userID string) (int, error) {
-	var count int
-	err := s.db.QueryRow(
-		`UPDATE users SET failed_attempts = failed_attempts + 1, updated_at = NOW()
-		 WHERE user_id = $1 RETURNING failed_attempts`,
-		userID,
-	).Scan(&count)
-	return count, err
+	return s.userRepo.IncrementFailedAttempts(userID)
 }
 
 // sets the locked_until timestamp to NOW (UTC) + LockDuration.
@@ -124,22 +77,18 @@ func (s *UserService) IncrementFailedAttempts(userID string) (int, error) {
 // and lib/pq reads it back as UTC.
 func (s *UserService) LockAccount(userID string) error {
 	lockUntil := time.Now().UTC().Add(config.LockDuration)
-	_, err := s.db.Exec(
-		`UPDATE users SET locked_until = $1, updated_at = NOW() WHERE user_id = $2`,
-		lockUntil, userID,
-	)
-	return err
+	return s.userRepo.UpdateLock(userID, lockUntil)
 }
 
 // clears the failed attempt counter and lock.
 // called after a successful login.
 func (s *UserService) ResetFailedAttempts(userID string) error {
-	_, err := s.db.Exec(
-		`UPDATE users SET failed_attempts = 0, locked_until = NULL, updated_at = NOW()
-		 WHERE user_id = $1`,
-		userID,
-	)
-	return err
+	return s.userRepo.ResetFailedAttempts(userID)
+}
+
+// MarkAsVerified marks a user as verified in the database.
+func (s *UserService) MarkAsVerified(userID string) error {
+	return s.userRepo.MarkAsVerified(userID)
 }
 
 // password hashing & validation
@@ -216,10 +165,7 @@ func (s *UserService) SeedPasswords() error {
 			return err
 		}
 
-		_, err = s.db.Exec(
-			`UPDATE users SET password_hash = $1, updated_at = NOW() WHERE user_id = $2`,
-			hash, user.UserID,
-		)
+		err = s.userRepo.UpdatePasswordHash(user.UserID, hash)
 		if err != nil {
 			return fmt.Errorf("set password for %s: %w", seed.Email, err)
 		}

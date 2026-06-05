@@ -1,13 +1,3 @@
--- Remove seeded users
-DELETE FROM users WHERE email IN (
-  'masteradmin@gmail.com',
-  'staff@gmail.com',
-  'admin.manajemen@gmail.com',
-  'admin.pelayanan@gmail.com',
-  'admin.keselamatan@gmail.com',
-  'admin.nasional@gmail.com'
-);
-
 -- Remove all seeded reference data (order matters due to foreign keys)
 TRUNCATE assessment CASCADE;
 TRUNCATE standard CASCADE;

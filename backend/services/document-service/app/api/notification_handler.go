@@ -44,6 +44,7 @@ func (h *NotificationHandler) SSEHandler(c *gin.Context) {
 	c.Writer.Header().Set("Cache-Control", "no-cache")
 	c.Writer.Header().Set("Connection", "keep-alive")
 	c.Writer.Header().Set("Transfer-Encoding", "chunked")
+	c.Status(http.StatusOK)
 
 	ch := make(chan services.SSEEvent, 10)
 	h.notificationService.RegisterSSE(userID, connID, ch)
