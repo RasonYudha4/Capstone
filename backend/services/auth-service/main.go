@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"net/http"
 
 	"auth-service/config"
 	"auth-service/handlers"
@@ -61,7 +62,7 @@ func main() {
 
 		// health check
 		auth.GET("/health", func(c *gin.Context) {
-			c.JSON(200, gin.H{"status": "UP"})
+			c.JSON(http.StatusOK, gin.H{"status": "UP"})
 		})
 	}
 

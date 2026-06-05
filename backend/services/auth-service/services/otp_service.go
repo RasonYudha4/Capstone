@@ -147,7 +147,7 @@ func (s *OTPService) CanResend(email string) bool {
 }
 
 // StartCleanup runs a background goroutine that deletes expired OTP entries every 2 minutes.
-func (s *OTPService) StartCleanup(ctx context.Context) {*
+func (s *OTPService) StartCleanup(ctx context.Context) {
 	go func() {
 		ticker := time.NewTicker(2 * time.Minute)
 		defer ticker.Stop()
