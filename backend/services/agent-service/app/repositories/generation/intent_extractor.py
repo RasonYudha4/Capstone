@@ -3,45 +3,47 @@ generation/intent_extractor.py — extract structured intent from a user questio
 """
 from __future__ import annotations
 
-import json
+import re
 
-from app.repositories.generation.generator import GeneratorModel, generate
-from app.core.store.chromadb import ChromaStore
+_REQUIREMENT_KEYWORDS = {
+    "standar", "persyaratan", "ketentuan", "regulasi", "kmk", "permenkes",
+    "akreditasi", "kriteria", "elemen penilaian", "ep", "bab",
+}
+
+_EVIDENCE_KEYWORDS = {
+    "bukti", "evidence", "dokumen", "file", "upload", "tersedia",
+    "sudah ada", "dimiliki", "lampiran",
+}
+
+_GAP_KEYWORDS = {
+    "belum", "kurang", "gap", "missing", "tidak ada", "kosong",
+    "kekurangan", "apa yang belum",
+}
 
 
-def extract_intent(question: str, gen: GeneratorModel) -> dict:
-    store = ChromaStore()
+def extract_intent(question: str, gen=None) -> dict:  # gen kept for backward compat
+    q = question.lower()
+    words = set(re.findall(r'\w+', q))
 
-    known_standards = store.get_all_unique_values("standar_id", {"is_kmk": True})
-    known_bab_codes = store.get_all_unique_values("bab_code",   {"is_kmk": True})
+    if _GAP_KEYWORDS & (words | {q[i:j] for i in range(len(q)) for j in range(i+2, min(i+20, len(q)+1))}):
+        query_type = "gap_analysis"
+    elif _REQUIREMENT_KEYWORDS & words:
+        query_type = "requirement_lookup"
+    elif _EVIDENCE_KEYWORDS & words:
+        query_type = "evidence_check"
+    else:
+        query_type = "general"
 
-    prompt = f"""
-    ATURAN KETAT:
-    - standar_id dan bab_code HANYA diisi jika disebutkan EKSPLISIT dalam pertanyaan.
-    - Jika tidak ada kata yang cocok persis dengan daftar, kembalikan null.
-    - Pertanyaan tentang sistem/file/daftar dokumen = query_type: "general"
-    Kamu adalah asisten sistem akreditasi rumah sakit.
-    Ekstrak intent dari pertanyaan berikut.
+    # Extract standar_id pattern e.g. "AP 1.1", "MKI.2"
+    standar_match = re.search(r'\b([A-Z]{2,5}\.?\s?\d+\.?\d*)\b', question)
+    standar_id = standar_match.group(1) if standar_match else None
 
-    BAB codes yang tersedia: {known_bab_codes}
-    Standar IDs yang tersedia: {known_standards}
+    # Extract bab_code pattern e.g. "BAB 1", "BAB IV"
+    bab_match = re.search(r'\bBAB\s+([IVX]+|\d+)\b', question, re.IGNORECASE)
+    bab_code = bab_match.group(0).upper() if bab_match else None
 
-    Kembalikan HANYA JSON dengan field berikut (tanpa penjelasan tambahan):
-    - query_type: salah satu dari:
-        "requirement_lookup" — pengguna ingin tahu isi standar/persyaratan
-        "evidence_check"     — pengguna ingin tahu bukti/dokumen yang sudah ada
-        "gap_analysis"       — pengguna ingin tahu EP mana yang belum ada buktinya
-        "general"            — pertanyaan umum yang tidak masuk kategori di atas
-    - standar_id: standar ID spesifik dari daftar di atas, atau null jika tidak disebutkan
-    - bab_code: BAB code dari daftar di atas, atau null jika tidak disebutkan
-
-    Pertanyaan: {question}
-    """
-
-    raw = generate(prompt, gen)
-
-    try:
-        clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-        return json.loads(clean)
-    except (json.JSONDecodeError, AttributeError):
-        return {"query_type": "general", "standar_id": None, "bab_code": None}
+    return {
+        "query_type": query_type,
+        "standar_id": standar_id,
+        "bab_code":   bab_code,
+    }

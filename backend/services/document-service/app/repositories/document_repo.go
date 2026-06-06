@@ -181,7 +181,7 @@ func(s *DocumentRepo) Get_document_by_id(documentId, createdById uuid.UUID, role
 	return filePath,schemas.UploadResponse{} ,nil
 }
 
-func (s *DocumentRepo) Create_document(assessmeentId,documentTypeId,createdById,groupId,standardId,serviceId uuid.UUID, filename, filepath string, role string)(string,bool,bool,error){
+func (s *DocumentRepo) Create_document(assessmeentId,documentTypeId,createdById,standardId,serviceId uuid.UUID, filename, filepath string, role string)(string,bool,bool,error){
 	
 	if role != "master-admin" {
 		var authorized bool
@@ -479,4 +479,18 @@ func (s *DocumentRepo) Check_document_owner(documentId, userId uuid.UUID) (bool,
 	}
 
 	return authorized, nil
+}
+
+func (s *DocumentRepo) GetGroupNameByServiceId(serviceId string) (string, error) {
+	var groupName string
+	err := s.db.QueryRow(context.Background(), `
+		SELECT g.group_name 
+		FROM groups g
+		JOIN services sv ON sv.group_id = g.group_id
+		WHERE sv.service_id = $1
+	`, serviceId).Scan(&groupName)
+	if err != nil {
+		return "", err
+	}
+	return groupName, nil
 }

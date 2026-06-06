@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
     libgomp1 \
+    ocl-icd-libopencl1 \
+    opencl-headers \
     && rm -rf /var/lib/apt/lists/*
 
 # Create and activate virtualenv
@@ -18,7 +20,6 @@ ENV PATH="/app/venv/bin:$PATH"
 # Install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir -r requirements.txt
 
 # Copy application code

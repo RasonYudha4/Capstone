@@ -117,14 +117,16 @@ services:
       resources:
         limits:
           memory: 12g        
-          cpus: "4"
+          cpus: "16"
     env_file:
       - .env
     volumes:
       - ./services/agent-service/data/models:/app/models
       - ./services/agent-service/data/vector_db:/app/vector_db
+      - ./services/agent-service:/app
+      - agent_venv:/app/venv
     ports:
-      - "8001:8001"         
+      - "8001:8001"    
     networks:
       - server
       
@@ -154,3 +156,4 @@ networks:
 volumes:
   postgres_data:
   pgadmin_data:
+  agent_venv:

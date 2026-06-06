@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     #     --task feature-extraction `
     #     --weight-format int8 `
     #     ./models/qwen3-0.6b-ov-int8
-    embed_model_path:  str = "./models/qwen3-0.6b-ov-int8"
+    embed_model_path:  str = "/app/models/qwen3-0.6b-ov-int8"
     embed_device:      str = "AUTO"
     embed_batch_size:  int = 128
 
@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     # --task text-generation-with-past  → enables KV cache reuse between tokens
     # --weight-format int4              → ~650MB, fastest decode
     # --group-size 128 --ratio 1.0      → quality-preserving INT4 (≈ Q4_K_M)
-    chat_model_path:   str = "./models/qwen3-4b-instruct-2507-ov-int4"
+    chat_model_path:   str = "/app/models/qwen3-4b-instruct-2507-ov-int4"
 
     # OpenVINO device: "CPU" | "GPU" | "NPU" | "AUTO"
     chat_device:       str = "AUTO"

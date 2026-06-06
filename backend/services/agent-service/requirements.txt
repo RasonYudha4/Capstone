@@ -1,3 +1,7 @@
+# Force CPU-only torch to prevent CUDA packages being pulled ins
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+
 # API
 fastapi
 uvicorn[standard]

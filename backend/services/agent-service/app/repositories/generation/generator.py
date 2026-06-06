@@ -44,6 +44,7 @@ class GeneratorModel:
         self._tokenizer = AutoTokenizer.from_pretrained(
             self.model_name_or_path,
             trust_remote_code=True,
+            fix_mistral_regex=True
         )
         self._model = OVModelForCausalLM.from_pretrained(
             self.model_name_or_path,
@@ -51,6 +52,8 @@ class GeneratorModel:
             ov_config={
                 "KV_CACHE_PRECISION": "u8",
                 "PERFORMANCE_HINT":   "LATENCY",
+                "NUM_STREAMS":           "1",
+                "INFERENCE_NUM_THREADS": "16",
             },
             trust_remote_code=True,
         )

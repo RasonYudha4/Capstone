@@ -4,6 +4,7 @@ import (
 	"context"
 	"mime/multipart"
 	"os"
+	"io"
 	"strings"
 	"fmt"
 	"log"
@@ -23,7 +24,7 @@ func NewStorageRepo(minio *minio.Client) *StorageRepo{
 
 var bucket = os.Getenv("BUCKET")
 
-func (s *StorageRepo) Upload_document(file multipart.File, header *multipart.FileHeader, filename string)(string, string, error){
+func (s *StorageRepo) Upload_document(file io.Reader, header *multipart.FileHeader, filename string)(string, string, error){
 	extension := filepath.Ext(header.Filename)
 	fileName := strings.Join(strings.Fields(filename), "_") + extension
 

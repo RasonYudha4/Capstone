@@ -65,7 +65,7 @@ def run_query(question: str) -> str:
 def run_query_stream(question: str) -> Generator[str, None, None]:
     log.info("=== stream query start: '%s' ===", question[:80])
 
-    intent  = extract_intent(question, _generator)
+    intent  = extract_intent(question)
     filters = _build_filters(intent)
 
     q_vec   = embed_query(question, _embedder)

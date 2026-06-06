@@ -3,12 +3,12 @@ package services
 import (
 	"capstone/app/repositories"
 	"capstone/app/schemas"
-
+	"bytes"
 	"fmt"
 	"log"
 	"mime/multipart"
 	"time"
-
+	"io"
 	"github.com/google/uuid"
 )
 type DocumentService struct {
@@ -133,59 +133,60 @@ func(d *DocumentService) Get_document_by_createdBy(createdById uuid.UUID, page, 
 	return docs, page,limit, nil
 }
 
-func (d *DocumentService) Create_document(req schemas.DocumentRequest, file multipart.File, header *multipart.FileHeader, createdById uuid.UUID,role string)(schemas.Response,error){
-	filename, filepath, err := d.storage.Upload_document(file, header, req.FileName)
-	if err != nil{
+func (d *DocumentService) Create_document(req schemas.DocumentRequest, file multipart.File, header *multipart.FileHeader, createdById uuid.UUID, role string) (schemas.Response, error) {
+	fileBytes, err := io.ReadAll(file)
+	if err != nil {
+		return schemas.Response{}, err
+	}
+
+	filename, filepath, err := d.storage.Upload_document(bytes.NewReader(fileBytes), header, req.FileName)
+	if err != nil {
 		log.Print("error upload document to storage", err)
 		return schemas.Response{}, err
 	}
 
 	assessmentId, _ := uuid.Parse(req.AssessmentId)
-	documentTypeId,_ := uuid.Parse(req.DocumentTypeId)
-	groupId, _ := uuid.Parse(req.GroupId)
+	documentTypeId, _ := uuid.Parse(req.DocumentTypeId)
 	serviceId, _ := uuid.Parse(req.ServicesId)
 	standardId, _ := uuid.Parse(req.StandardId)
-	document_Id,isCreated, isAuthorized,err := d.repo.Create_document(
-		assessmentId, 
+	document_Id, isCreated, isAuthorized, err := d.repo.Create_document(
+		assessmentId,
 		documentTypeId,
 		createdById,
-		groupId,
 		standardId,
 		serviceId,
 		filename,
 		filepath,
 		role,
 	)
-	
-	documentId, _:= uuid.Parse(document_Id)
-	
+
+	documentId, _ := uuid.Parse(document_Id)
+
 	if err != nil {
 		d.storage.Delete_document(filepath)
 		log.Print("error delete document at storage", err)
-		return schemas.Response{},err	
+		return schemas.Response{}, err
 	}
-	
+
 	if !isAuthorized {
 		return schemas.Response{
-			Status: false,
+			Status:  false,
 			Message: "Not Authorized, service/standard/assessment is not under the current group",
 		}, nil
 	}
-	
-	if !isCreated {	
-		d.storage.Delete_document(filepath)
-		_, err = d.audit.SaveAudit("error","error inserting data into database",createdById,documentId,"system",time.Now(),time.Now())
 
+	if !isCreated {
+		d.storage.Delete_document(filepath)
+		_, err = d.audit.SaveAudit("error", "error inserting data into database", createdById, documentId, "system", time.Now(), time.Now())
 		return schemas.Response{
-			Status: false,
+			Status:  false,
 			Message: "Error insert data",
 		}, nil
-	
 	}
-	
-	filename, err  = d.audit.SaveAudit("insert","Upload new document",createdById,documentId,"client",time.Now(),time.Now())
-	if err != nil{
-		log.Print("Error adding create log: ",err)
+
+	filename, err = d.audit.SaveAudit("insert", "Upload new document", createdById, documentId, "client", time.Now(), time.Now())
+	if err != nil {
+		log.Print("Error adding create log: ", err)
 	}
 
 	adminEmail, adminId, err := d.repo.Get_admin_email()
@@ -193,20 +194,22 @@ func (d *DocumentService) Create_document(req schemas.DocumentRequest, file mult
 		log.Print("Error getting master admin email")
 	}
 
-	go func(){
-		 log.Printf("[email] NotifyDeptHead done for document %s", documentId)
+	go d.TriggerIngestEvidence(bytes.NewReader(fileBytes), header.Filename, req)
+
+	go func() {
+		log.Printf("[email] NotifyDeptHead done for document %s", documentId)
 		d.notification.NotifyDeptHead(adminEmail, documentId.String())
 	}()
 
 	go d.notification.NotifySSE(adminId, SSEEvent{
-		Type:		"new_document",
-		DocumentId:	documentId.String(),
-		Status:		"Pending",
-		Message:	fmt.Sprintf("A new document (%s) requires your approval", filename),	
+		Type:       "new_document",
+		DocumentId: documentId.String(),
+		Status:     "Pending",
+		Message:    fmt.Sprintf("A new document (%s) requires your approval", filename),
 	})
 
 	return schemas.Response{
-		Status: true,
+		Status:  true,
 		Message: "Successfull adding document",
 	}, nil
 }

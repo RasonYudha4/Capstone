@@ -18,7 +18,6 @@ type DocumentResponse struct {
 }
 
 type DocumentRequest struct {
-	GroupId string 		`form:"group_id"`
 	ServicesId string	`form:"service_id"`
 	StandardId string 	`form:"standard_id"`
 	AssessmentId string	`form:"assessment_id"`
