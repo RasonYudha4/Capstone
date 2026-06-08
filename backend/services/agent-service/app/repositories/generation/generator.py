@@ -53,7 +53,6 @@ class GeneratorModel:
                 "KV_CACHE_PRECISION": "u8",
                 "PERFORMANCE_HINT":   "LATENCY",
                 "NUM_STREAMS":           "1",
-                "INFERENCE_NUM_THREADS": "16",
             },
             trust_remote_code=True,
         )

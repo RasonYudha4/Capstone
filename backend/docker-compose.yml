@@ -12,7 +12,6 @@ services:
       - document-service
       - minio
       - auth-service
-      - agent-service
     networks:
       - server
   postgres:
@@ -113,6 +112,8 @@ services:
       dockerfile: Dockerfile
     container_name: agent-service
     restart: unless-stopped
+    profiles:
+      - docker-agent
     deploy:
       resources:
         limits:
