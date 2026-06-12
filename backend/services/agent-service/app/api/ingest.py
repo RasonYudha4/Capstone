@@ -1,5 +1,7 @@
 import os
+from pathlib import Path
 import shutil
+import tempfile
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
@@ -34,33 +36,41 @@ def ingest_kmk(file: UploadFile = File(...)):
 
 @router.post("/evidence", response_model=ApiResponse)
 def ingest_evidence(
-    file:             UploadFile = File(...),
-    kelompok:         str = Form(...),
-    fungsi_pelayanan: str = Form(...),
-    standar_id:       str = Form(...),
-    ep_id:            str = Form(...),
-    doc_type:         str = Form(...),
-    nama_berkas:      str = Form(...),
-    deskripsi:        str = Form(""),
+    file:              UploadFile = File(...),
+    kelompok:               str = Form(...),
+    fungsi_pelayanan:       str = Form(...),
+    standar:                str = Form(...),
+    standar_code:           str = Form(...),
+    element_penilaian:      str = Form(...),
+    element_penilaian_code: str = Form(...),
+    doc_type:               str = Form(...),
+    nama_berkas:            str = Form(...),
+    deskripsi:              str = Form(""),
 ):
-    upload_dir = "./data/uploads"
-    os.makedirs(upload_dir, exist_ok=True)
+    suffix = Path(file.filename).suffix
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            shutil.copyfileobj(file.file, tmp)
+            tmp_path = tmp.name
 
-    file_path = os.path.join(upload_dir, file.filename)
-    with open(file_path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+        form_metadata = {
+            "kelompok":                 kelompok,
+            "fungsi_pelayanan":         fungsi_pelayanan,
+            "standar":                  standar,
+            "standar_code":             standar_code,
+            "element_penilaian":        element_penilaian,
+            "element_penilaian_code":   element_penilaian_code,
+            "doc_type":                 doc_type,
+            "nama_berkas":              nama_berkas,
+            "deskripsi":                deskripsi,
+        }
 
-    form_metadata = {
-        "kelompok":         kelompok,
-        "fungsi_pelayanan": fungsi_pelayanan,
-        "standar_id":       standar_id,
-        "ep_id":            ep_id,
-        "doc_type":         doc_type,
-        "nama_berkas":      nama_berkas,
-        "deskripsi":        deskripsi,
-    }
+        result = run_ingest_evidence(tmp_path, form_metadata)
 
-    result = run_ingest_evidence(file_path, form_metadata)
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
 
     if not result.success:
         raise HTTPException(
@@ -70,10 +80,10 @@ def ingest_evidence(
 
     return ApiResponse.created(
         data={
-            "filename":        file.filename,
-            "chunks_upserted": result.chunks_upserted,
-            "ep_id":           ep_id,
-            "standar_id":      standar_id,
+            "filename":          file.filename,
+            "chunks_upserted":   result.chunks_upserted,
+            "element_penilaian": element_penilaian,
+            "standar":           standar,
         },
         message="Evidence document ingested successfully",
     )

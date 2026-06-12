@@ -19,10 +19,34 @@ func (s *DocumentService) TriggerIngestEvidence(file io.Reader, fileName string,
 		return
 	}
 
-	kelompok, err := s.repo.GetGroupNameByServiceId(req.ServicesId)
+	kelompok, err := s.repo.Get_group_name_by_serviceid(req.ServicesId)
 	if err != nil {
 		log.Printf("[ingest] could not resolve kelompok for service %s: %v", req.ServicesId, err)
 		kelompok = ""
+	}
+
+	fungsiPelayanan, err := s.repo.Get_service_name_byid(req.ServicesId)
+	if err != nil {
+		log.Printf("[ingest] could not resolve fungsi_pelayanan for service %s: %v", req.ServicesId, err)
+		fungsiPelayanan = ""
+	}
+
+	standar, standarCode, err := s.repo.Get_standard_name_byid(req.StandardId)
+	if err != nil {
+		log.Printf("[ingest] could not resolve standar for standard %s: %v", req.StandardId, err)
+		standar, standarCode = "", ""
+	}
+
+	elementPenilaian, elementPenilaianCode, err := s.repo.Get_assessment_name_byid(req.AssessmentId)
+	if err != nil {
+		log.Printf("[ingest] could not resolve element_penilaian for assessment %s: %v", req.AssessmentId, err)
+		elementPenilaian, elementPenilaianCode = "", ""
+	}
+
+	docType, err := s.repo.Get_document_type_byid(req.DocumentTypeId)
+	if err != nil {
+		log.Printf("[ingest] could not resolve doc_type for document_type %s: %v", req.DocumentTypeId, err)
+		docType = ""
 	}
 
 	var buf bytes.Buffer
@@ -39,13 +63,15 @@ func (s *DocumentService) TriggerIngestEvidence(file io.Reader, fileName string,
 	}
 
 	fields := map[string]string{
-		"kelompok":         kelompok,
-		"fungsi_pelayanan": req.ServicesId,
-		"standar_id":       req.StandardId,
-		"ep_id":            req.AssessmentId,
-		"doc_type":         req.DocumentTypeId,
-		"nama_berkas":      req.FileName,
-		"deskripsi":        req.Description,
+		"kelompok":          		kelompok,
+		"fungsi_pelayanan":  		fungsiPelayanan,
+		"standar":           		standar,
+		"standar_code":      		standarCode,
+		"element_penilaian": 		elementPenilaian,
+		"element_penilaian_code": 	elementPenilaianCode,
+		"doc_type":          		docType,
+		"nama_berkas":       		req.FileName,
+		"deskripsi":         		req.Description,
 	}
 	for k, v := range fields {
 		if err := mw.WriteField(k, v); err != nil {
@@ -68,9 +94,10 @@ func (s *DocumentService) TriggerIngestEvidence(file io.Reader, fileName string,
 
 	if resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
-		log.Printf("[ingest] unexpected status %d: %s", resp.StatusCode, body)
+		log.Printf("[ingest] status %d: %s", resp.StatusCode, body)
 		return
 	}
 
-	log.Printf("[ingest] evidence ingested OK for ep=%s standar=%s", req.AssessmentId, req.StandardId)
+	log.Printf("[ingest] evidence ingested OK — kelompok=%s fungsi=%s standar=%s ep=%s",
+		kelompok, fungsiPelayanan, standar, elementPenilaian)
 }

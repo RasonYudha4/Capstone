@@ -6,7 +6,6 @@ No torch required — mean pooling and L2 norm are pure numpy.
 """
 from __future__ import annotations
 
-import concurrent.futures
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -16,17 +15,10 @@ import openvino as ov
 from transformers import AutoTokenizer
 
 from app.models import Chunk
+from app.core.config import settings
 from app.core.logger import get_logger
 
 log = get_logger("embedder")
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-_DEFAULT_BATCH_SIZE = 64
-_MAX_SEQ_LEN        = 512
-_DEFAULT_DEVICE     = "CPU"
-
 
 # ---------------------------------------------------------------------------
 # Model wrapper
@@ -35,7 +27,7 @@ _DEFAULT_DEVICE     = "CPU"
 @dataclass
 class EmbedderModel:
     model_name_or_path: str
-    device: str = _DEFAULT_DEVICE
+    device: str = "GPU"
 
     _tokenizer:      AutoTokenizer   = field(init=False, repr=False)
     _compiled_model: ov.CompiledModel = field(init=False, repr=False)
@@ -72,7 +64,7 @@ class EmbedderModel:
             texts,
             padding=True,          # dynamic padding — pad to longest in batch
             truncation=True,
-            max_length=_MAX_SEQ_LEN,
+            max_length=512,
             return_tensors="np",
         )
 
@@ -94,9 +86,14 @@ class EmbedderModel:
     def from_pretrained(
         cls,
         model_name_or_path: str | Path,
-        device: str = _DEFAULT_DEVICE,
+        device: str = "GPU",
     ) -> "EmbedderModel":
         return cls(model_name_or_path=str(model_name_or_path), device=device)
+    
+embedder = EmbedderModel.from_pretrained(
+    settings.embed_model_path,
+    device=settings.embed_device,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +103,7 @@ class EmbedderModel:
 def embed_chunks(
     chunks: list[Chunk],
     embedder: EmbedderModel,
-    batch_size: int = _DEFAULT_BATCH_SIZE,
+    batch_size: int = 64,
 ) -> list[Chunk]:
     if not chunks:
         return chunks

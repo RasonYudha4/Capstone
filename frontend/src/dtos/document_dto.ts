@@ -54,10 +54,9 @@ export const paginationQuerySchema = z.object({
 
 // POST /documents/upload — type DocumentRequest struct (multipart/form-data)
 export const createDocumentBodySchema = z.object({
-    group_id: uuid.optional(),
-    service_id: uuid.optional(),
-    standard_id: uuid.optional(),
-    assessment_id: uuid.optional(),
+    service_id: uuid,
+    standard_id: uuid,
+    assessment_id: uuid,
     filename: z.string().min(1, "Filename is required"),
     document_type_id: uuid,
     description: z.string().optional(),

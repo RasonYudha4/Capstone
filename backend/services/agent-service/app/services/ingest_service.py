@@ -1,5 +1,5 @@
 """
-ingest_pipeline.py — orchestrates all ingestion stages.
+ingest_service.py — orchestrates all ingestion stages.
 
 Two public entry points:
 - run_ingest_kmk(kmk_path)
@@ -21,15 +21,13 @@ transparently — callers never manage the model lifetime themselves.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
-from pathlib import Path
 
 from app.core.config import settings
 from app.repositories.ingestion.chunker import chunk_document
 from app.repositories.ingestion.embedder import EmbedderModel, EmbeddingError, embed_chunks
 from app.repositories.ingestion.enricher import enrich_document
 from app.repositories.ingestion.parser import parse_single
-from app.models import Chunk, ParsedDocument, IngestResult
+from app.models import IngestResult
 from app.core.logger import get_logger, timer
 from app.core.store.chromadb import ChromaStore
 
@@ -121,7 +119,7 @@ def run_ingest_evidence(
     Ingest a single evidence document uploaded via the form.
 
     form_metadata expected keys:
-        kelompok, fungsi_pelayanan, standar_id, ep_id,
+        kelompok, fungsi_pelayanan, standar, element_penilaian,
         doc_type, nama_berkas, deskripsi
 
     Stale chunk cleanup: deletes any existing chunks for this source
@@ -150,15 +148,6 @@ def run_ingest_evidence(
     with timer(log, "chunking evidence document"):
         chunks = chunk_document(doc, form_metadata=form_metadata)
 
-    result.chunks_total = len(chunks)
-    log.info(
-        "%s → %d chunks (ep=%s sig=%s)",
-        Path(file_path).name,
-        len(chunks),
-        form_metadata.get("ep_id"),
-        doc.signature_status.value,
-    )
-
     # ── Embed ────────────────────────────────────────────────────────────────
     with timer(log, "embedding evidence chunks"):
         try:
@@ -177,7 +166,14 @@ def run_ingest_evidence(
     with timer(log, "upserting evidence chunks"):
         try:
             store = ChromaStore()
-            store.delete_by_source(file_path)   # remove old chunks for this file
+            store.delete_by_metadata({
+                "kelompok":          form_metadata["kelompok"],
+                "fungsi_pelayanan":  form_metadata["fungsi_pelayanan"],
+                "standar_code":           form_metadata["standar_code"],
+                "element_penilaian_code": form_metadata["element_penilaian_code"],
+                "doc_type":          form_metadata["doc_type"],
+                "nama_berkas":       form_metadata["nama_berkas"],
+            })
             store.upsert(chunks)
             result.chunks_upserted = len(chunks)
         except Exception as exc:
