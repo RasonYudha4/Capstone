@@ -30,7 +30,7 @@ def retrieve(
             r.score,
             r.is_kmk,
             r.bab_code   or "n/a",
-            r.standar_id or "n/a",
+            r.standar or "n/a",
             r.doc_type   or "n/a",
             r.source,
         )

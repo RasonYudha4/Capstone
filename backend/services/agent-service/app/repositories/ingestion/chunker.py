@@ -101,7 +101,7 @@ def chunk_kmk(
     sections = _split_into_standar_sections(doc.raw_text)
 
     for section in sections:
-        bab_code  = _extract_bab_code(section["standar_id"])
+        bab_code  = _extract_bab_code(section["standar"])
         kelompok  = _KELOMPOK_MAP.get(bab_code)
 
         # Build one complete self-contained chunk
@@ -110,14 +110,14 @@ def chunk_kmk(
             for letter, body in section["ep_items"]
         )
         text = (
-            f"Standar {section['standar_id']}: {section['standar_text']}\n\n"
+            f"Standar {section['standar']}: {section['standar_text']}\n\n"
             f"Maksud dan Tujuan:\n{section['maksud_text']}\n\n"
             f"Elemen Penilaian:\n{ep_lines}"
         ).strip()
 
         tok = _count_tokens(text)
         if tok < min_tokens:
-            log.debug("dropping small KMK chunk for %s (%d tokens)", section["standar_id"], tok)
+            log.debug("dropping small KMK chunk for %s (%d tokens)", section["standar"], tok)
             continue
 
         chunks.append(Chunk(
@@ -127,7 +127,7 @@ def chunk_kmk(
             chunk_index = len(chunks),
             is_kmk      = True,
             bab_code    = bab_code,
-            standar_id  = section["standar_id"],
+            standar  = section["standar"],
             kelompok    = kelompok,
         ))
 
@@ -156,14 +156,16 @@ def chunk_evidence(
     for chunk in raw_chunks:
         chunk.is_kmk           = False
         chunk.bab_code         = form_metadata.get("bab_code")
-        chunk.standar_id       = form_metadata.get("standar_id")
+        chunk.standar       = form_metadata.get("standar")
         chunk.kelompok         = form_metadata.get("kelompok")
-        chunk.ep_id            = form_metadata.get("ep_id")
+        chunk.element_penilaian            = form_metadata.get("element_penilaian")
         chunk.fungsi_pelayanan = form_metadata.get("fungsi_pelayanan")
         chunk.doc_type         = form_metadata.get("doc_type")
         chunk.nama_berkas      = form_metadata.get("nama_berkas")
         chunk.deskripsi        = form_metadata.get("deskripsi", "")
         chunk.is_signed        = doc.signature_status.value
+        chunk.standar_code           = form_metadata.get("standar_code")
+        chunk.element_penilaian_code = form_metadata.get("element_penilaian_code")
         enriched.append(chunk)
 
     return enriched
@@ -271,12 +273,12 @@ def _tail_overlap(buffer: list[str], overlap_tokens: int) -> tuple[list[str], in
 def _split_into_standar_sections(text: str) -> list[dict]:
     """
     Walk the KMK text and collect each Standar block.
-    Returns list of dicts: {standar_id, standar_text, maksud_text, ep_items}
+    Returns list of dicts: {standar, standar_text, maksud_text, ep_items}
     """
     sections   = []
     boundaries = [(m.start(), m.group(1).strip()) for m in _STANDAR_RE.finditer(text)]
 
-    for i, (start, standar_id) in enumerate(boundaries):
+    for i, (start, standar) in enumerate(boundaries):
         end   = boundaries[i + 1][0] if i + 1 < len(boundaries) else len(text)
         block = text[start:end]
 
@@ -285,7 +287,7 @@ def _split_into_standar_sections(text: str) -> list[dict]:
         ep_items     = _EP_ITEM_RE.findall(block)   # list of (letter, body) tuples
 
         sections.append({
-            "standar_id":   standar_id,
+            "standar":   standar,
             "standar_text": standar_text.strip(),
             "maksud_text":  maksud_text.strip(),
             "ep_items":     ep_items,
@@ -304,8 +306,8 @@ def _extract_between(text: str, start_re: re.Pattern, end_re: re.Pattern) -> str
     return text[body_start:body_end].strip()
 
 
-def _extract_bab_code(standar_id: str) -> str:
-    return standar_id.split()[0] if standar_id else "UNKNOWN"
+def _extract_bab_code(standar: str) -> str:
+    return standar.split()[0] if standar else "UNKNOWN"
 
 
 # ---------------------------------------------------------------------------

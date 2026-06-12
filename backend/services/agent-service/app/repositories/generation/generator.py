@@ -29,7 +29,7 @@ log = get_logger("generator")
 @dataclass
 class GeneratorModel:
     model_name_or_path: str
-    device: str = "CPU"
+    device: str = "GPU"
 
     _tokenizer: AutoTokenizer      = field(init=False, repr=False)
     _model:     OVModelForCausalLM = field(init=False, repr=False)
@@ -66,6 +66,11 @@ class GeneratorModel:
         device: str = "CPU",
     ) -> "GeneratorModel":
         return cls(model_name_or_path=str(model_name_or_path), device=device)
+    
+generator = GeneratorModel.from_pretrained(
+    settings.chat_model_path,
+    device=settings.chat_device,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -102,6 +107,7 @@ def generate(prompt: str, gen: GeneratorModel) -> str:
 
 def generate_stream(prompt: str, gen: GeneratorModel) -> Generator[str, None, None]:
     input_ids, attention_mask = _apply_template(gen._tokenizer, prompt)
+    input_token_count = input_ids.shape[-1]
 
     streamer = TextIteratorStreamer(
         gen._tokenizer,
@@ -111,9 +117,11 @@ def generate_stream(prompt: str, gen: GeneratorModel) -> Generator[str, None, No
 
     log.info(
         "streaming (device=%s, input_tokens=%d)",
-        gen.device, input_ids.shape[-1],
+        gen.device, input_token_count,
     )
+
     t_start = time.perf_counter()
+    first_token_time: float | None = None
     token_count = 0
 
     thread = threading.Thread(
@@ -133,15 +141,25 @@ def generate_stream(prompt: str, gen: GeneratorModel) -> Generator[str, None, No
 
     for chunk in streamer:
         if chunk:
+            if first_token_time is None:
+                first_token_time = time.perf_counter()
+                ttft_ms = (first_token_time - t_start) * 1000
+                log.info("TTFT=%.1fms (prefill %d tokens)", ttft_ms, input_token_count)
             token_count += 1
             yield chunk
 
     thread.join()
 
-    elapsed = (time.perf_counter() - t_start) * 1000
+    t_end = time.perf_counter()
+    total_ms = (t_end - t_start) * 1000
+    generation_ms = (t_end - first_token_time) * 1000 if first_token_time else 0
+    tps = token_count / max(generation_ms / 1000, 1e-9)
+
     log.info(
-        "stream done — %d tokens in %.1fms (%.1f tok/s)",
-        token_count, elapsed, token_count / max(elapsed / 1000, 1e-9),
+        "stream done — input=%d chunks | output=%d chunks | "
+        "TTFT=%.1fms | gen=%.1fms | TPS=%.1f | total=%.1fms",
+        input_token_count, token_count,
+        ttft_ms, generation_ms, tps, total_ms,
     )
 
 

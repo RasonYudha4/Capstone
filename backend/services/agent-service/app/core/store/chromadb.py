@@ -113,12 +113,12 @@ class ChromaStore(VectorStore):
         self._col = self._get_collection()
         log.warning("collection '%s' dropped and recreated", self._collection_name)
 
-    def delete_by_source(self, source: str) -> None:
-        # delete all chunks where metadata source == source
-        self._col.delete(where={"source": {"$eq": source}})
+    def delete_by_metadata(self, filters: dict) -> None:
+        self._col.delete(where=_build_chroma_where(filters))
+        log.info("deleted chunks matching filters: %s", filters)
 
     def get_all_unique_values(self, field: str, filters: dict) -> list[str]:
-        # used by intent extractor to get known standar_ids and bab_codes
+        # used by intent extractor to get known standars and bab_codes
         results = self._col.get(
             where=_build_chroma_where(filters),
             include=["metadatas"]

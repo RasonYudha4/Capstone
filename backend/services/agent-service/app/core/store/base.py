@@ -1,7 +1,6 @@
 """
 store/base.py — abstract interface for all vector store backends.
 
-Both ChromaStore and FaissStore implement this contract so the pipeline
 never depends on a specific backend. Swap backends by changing one import.
 """
 from __future__ import annotations
@@ -22,8 +21,8 @@ class SearchResult:
     doc_type: str | None = None
     chunk_type: str | None = None
     bab_code:   str | None = None
-    standar_id: str | None = None
-    ep_id:      str | None = None
+    standar: str | None = None
+    element_penilaian:      str | None = None
     kelompok:   str | None = None
     page_ref:   int | None = None
     is_signed:  str | None = None
@@ -38,8 +37,8 @@ class SearchResult:
             doc_type   = payload.get("doc_type"),
             chunk_type = payload.get("chunk_type"),
             bab_code   = payload.get("bab_code"),
-            standar_id = payload.get("standar_id"),
-            ep_id      = payload.get("ep_id"),
+            standar = payload.get("standar"),
+            element_penilaian      = payload.get("element_penilaian"),
             kelompok   = payload.get("kelompok"),
             page_ref   = payload.get("page_ref"),
             is_signed  = payload.get("is_signed"),

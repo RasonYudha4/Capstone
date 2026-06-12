@@ -1,23 +1,51 @@
 """
-generation/prompt_builder.py — builds prompts for the LLM.
-
-Two prompt types:
-- build_prompt()     : standard RAG prompt, context-aware of KMK vs evidence chunks
-- build_gap_prompt() : gap analysis prompt, no retrieved chunks needed
+generation/prompt_builder.py
 """
 from __future__ import annotations
 
 from app.core.store.base import SearchResult
 
+# ---------------------------------------------------------------------------
+# Response style instructions keyed by query_type
+# ---------------------------------------------------------------------------
+
+_STYLE: dict[str, str] = {
+    "requirement_lookup": (
+        "Jawab secara ringkas dan terstruktur. "
+        "Gunakan poin-poin hanya jika ada lebih dari satu persyaratan. "
+        "Maksimal 150 kata kecuali detail teknis memang diperlukan."
+    ),
+    "evidence_check": (
+        "Jawab langsung: sebutkan dokumen yang ada, tipe, dan statusnya. "
+        "Jangan tambahkan penjelasan panjang. Maksimal 100 kata."
+    ),
+    "gap_analysis": (
+        "Fokus pada apa yang kurang. "
+        "Sebutkan EP yang belum terpenuhi dalam format daftar singkat. "
+        "Maksimal 150 kata."
+    ),
+    "inventory": (
+        "Tampilkan dalam format daftar. "
+        "Satu baris per dokumen. Tanpa penjelasan tambahan."
+    ),
+    "general": (
+        "Jawab dengan singkat dan jelas. "
+        "Maksimal 80 kata. Hindari penjelasan yang tidak diminta."
+    ),
+}
+
+_DEFAULT_STYLE = (
+    "Jawab secara ringkas. Maksimal 120 kata. "
+    "Berikan detail hanya jika pertanyaan memang meminta penjelasan mendalam."
+)
+
 
 def build_prompt(question: str, results: list[SearchResult], intent: dict) -> str:
-    """
-    Build a RAG prompt from retrieved chunks.
-    Separates KMK requirement chunks from evidence chunks
-    so the LLM understands which is the standard and which is the proof.
-    """
     if not results:
-        return _no_context_prompt(question)
+        return _no_context_prompt(question, intent)
+
+    query_type = intent.get("query_type", "general")
+    style      = _STYLE.get(query_type, _DEFAULT_STYLE)
 
     kmk_chunks      = [r for r in results if r.is_kmk]
     evidence_chunks = [r for r in results if not r.is_kmk]
@@ -31,7 +59,7 @@ def build_prompt(question: str, results: list[SearchResult], intent: dict) -> st
     if evidence_chunks:
         ev_parts = []
         for r in evidence_chunks:
-            label = f"[{r.doc_type or 'dokumen'} — {r.standar_id or ''}]"
+            label = f"[{r.doc_type or 'dokumen'} — {r.standar or ''}]"
             ev_parts.append(f"{label}\n{r.text}")
         ev_text = "\n\n---\n\n".join(ev_parts)
         sections.append(f"BUKTI DOKUMEN:\n{ev_text}")
@@ -39,51 +67,53 @@ def build_prompt(question: str, results: list[SearchResult], intent: dict) -> st
     context = "\n\n====\n\n".join(sections)
 
     return f"""Kamu adalah asisten sistem akreditasi rumah sakit.
-Gunakan HANYA konteks di bawah untuk menjawab pertanyaan.
-Jika jawaban tidak ada dalam konteks, katakan "Informasi tidak ditemukan."
+        Gunakan HANYA konteks di bawah untuk menjawab pertanyaan.
+        Jika jawaban tidak ada dalam konteks, katakan "Informasi tidak ditemukan."
 
-{context}
+        INSTRUKSI GAYA JAWABAN: {style}
 
-PERTANYAAN: {question}
+        {context}
 
-JAWABAN:"""
+        PERTANYAAN: {question}
+
+        JAWABAN:"""
 
 
 def build_gap_prompt(
     missing: list[str],
     covered: set[str],
-    intent: dict,
+    intent:  dict,
 ) -> str:
-    """
-    Build a prompt for gap analysis — no retrieved chunks, just metadata.
-    """
-    scope = f" untuk BAB {intent['bab_code']}" if intent.get("bab_code") else ""
+    scope        = f" untuk BAB {intent['bab_code']}" if intent.get("bab_code") else ""
     covered_list = "\n".join(f"- {ep}" for ep in sorted(covered)) or "Belum ada"
-    missing_list = "\n".join(f"- {ep}" for ep in missing) or "Semua sudah terpenuhi"
+    missing_list = "\n".join(f"- {ep}" for ep in missing)         or "Semua sudah terpenuhi"
 
     return f"""Kamu adalah asisten sistem akreditasi rumah sakit.
-Berikut adalah hasil analisis kelengkapan dokumen bukti{scope}.
+        Berikut hasil analisis kelengkapan dokumen bukti{scope}.
 
-SUDAH ADA BUKTI:
-{covered_list}
+        SUDAH ADA BUKTI:
+        {covered_list}
 
-BELUM ADA BUKTI:
-{missing_list}
+        BELUM ADA BUKTI:
+        {missing_list}
 
-Berikan ringkasan yang jelas tentang status kelengkapan dokumen akreditasi,
-sebutkan EP yang masih perlu dilengkapi dan prioritaskan yang belum ada sama sekali.
+        INSTRUKSI: Buat ringkasan singkat status kelengkapan. Prioritaskan EP yang belum ada.
+        Gunakan format daftar. Maksimal 150 kata.
 
-JAWABAN:"""
+        JAWABAN:"""
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _no_context_prompt(question: str) -> str:
+def _no_context_prompt(question: str, intent: dict) -> str:
+    style = _STYLE.get(intent.get("query_type", "general"), _DEFAULT_STYLE)
     return f"""Kamu adalah asisten sistem akreditasi rumah sakit.
-Tidak ditemukan dokumen yang relevan untuk pertanyaan ini.
+        Tidak ditemukan dokumen yang relevan untuk pertanyaan ini.
 
-PERTANYAAN: {question}
+        INSTRUKSI GAYA JAWABAN: {style}
 
-JAWABAN: Informasi tidak ditemukan dalam sistem. Pastikan dokumen terkait sudah diunggah."""
+        PERTANYAAN: {question}
+
+        JAWABAN: Informasi tidak ditemukan dalam sistem. Pastikan dokumen terkait sudah diunggah."""

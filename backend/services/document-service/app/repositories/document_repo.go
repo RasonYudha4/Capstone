@@ -481,7 +481,7 @@ func (s *DocumentRepo) Check_document_owner(documentId, userId uuid.UUID) (bool,
 	return authorized, nil
 }
 
-func (s *DocumentRepo) GetGroupNameByServiceId(serviceId string) (string, error) {
+func (s *DocumentRepo) Get_group_name_by_serviceid(serviceId string) (string, error) {
 	var groupName string
 	err := s.db.QueryRow(context.Background(), `
 		SELECT g.group_name 
@@ -493,4 +493,36 @@ func (s *DocumentRepo) GetGroupNameByServiceId(serviceId string) (string, error)
 		return "", err
 	}
 	return groupName, nil
+}
+
+func (s *DocumentRepo) Get_service_name_byid(serviceId string) (string, error) {
+	var description string
+	err := s.db.QueryRow(context.Background(), `
+		SELECT description FROM services WHERE service_id = $1
+	`, serviceId).Scan(&description)
+	return description, err
+}
+
+func (s *DocumentRepo) Get_standard_name_byid(standardId string) (string, string, error) {
+    var description, code string
+    err := s.db.QueryRow(context.Background(), `
+        SELECT description, standard_code FROM standard WHERE standard_id = $1
+    `, standardId).Scan(&description, &code)
+    return description, code, err
+}
+
+func (s *DocumentRepo) Get_assessment_name_byid(assessmentId string) (string, string, error) {
+    var description, code string
+    err := s.db.QueryRow(context.Background(), `
+        SELECT description, assessment_code FROM assessment WHERE assessment_id = $1
+    `, assessmentId).Scan(&description, &code)
+    return description, code, err
+}
+
+func (s *DocumentRepo) Get_document_type_byid(documentTypeId string) (string, error) {
+	var name string
+	err := s.db.QueryRow(context.Background(), `
+		SELECT name FROM document_types WHERE document_type_id = $1
+	`, documentTypeId).Scan(&name)
+	return name, err
 }
