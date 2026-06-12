@@ -23,6 +23,8 @@ axioHandler.interceptors.request.use(
     }
 );
 
+let refreshPromise: Promise<string> | null = null;
+
 axioHandler.interceptors.response.use(
     (response: AxiosResponse) => {
         return response;
@@ -43,20 +45,38 @@ axioHandler.interceptors.response.use(
 
             const refreshToken = localStorage.getItem('refreshToken');
             if (refreshToken) {
-                try {
-                    const { data } = await axios.post(
+                if (!refreshPromise) {
+                    refreshPromise = axios.post(
                         `${API_BASE_URL}/auth/refresh`,
                         { refresh_token: refreshToken }
-                    );
-                    const newAccessToken = data.data.access_token;
-                    localStorage.setItem('accessToken', newAccessToken);
+                    ).then((res) => {
+                        const newAccessToken = res.data.data.access_token;
+                        const newRefreshToken = res.data.data.refresh_token;
+                        localStorage.setItem('accessToken', newAccessToken);
+                        if (newRefreshToken) {
+                            localStorage.setItem('refreshToken', newRefreshToken);
+                        }
+                        refreshPromise = null;
+                        return newAccessToken;
+                    }).catch((err) => {
+                        refreshPromise = null;
+                        localStorage.removeItem('accessToken');
+                        localStorage.removeItem('refreshToken');
+                        localStorage.removeItem('user');
+                        throw err;
+                    });
+                }
+
+                try {
+                    const newAccessToken = await refreshPromise;
                     originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
                     return axioHandler(originalRequest);
-                } catch {
-                    // Refresh also failed — clear storage and redirect
-                    localStorage.removeItem('accessToken');
-                    localStorage.removeItem('refreshToken');
-                    localStorage.removeItem('user');
+                } catch (refreshError) {
+                    // Only redirect if not already on login page
+                    if (window.location.pathname !== '/login') {
+                        window.location.href = '/login';
+                    }
+                    return Promise.reject(refreshError);
                 }
             }
 

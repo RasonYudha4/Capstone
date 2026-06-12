@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     #     --weight-format int8 `
     #     ./models/qwen3-0.6b-ov-int8
     embed_model_path:  str = "./data/models/qwen3-0.6b-ov-int8"
-    embed_device:      str = "GPU"
+    embed_device:      str = "CPU"
     embed_batch_size:  int = 128
 
     # ── Chat / generation model (OpenVINO) ────────────────────────────────
@@ -46,10 +46,11 @@ class Settings(BaseSettings):
     # --task text-generation-with-past  → enables KV cache reuse between tokens
     # --weight-format int4              → ~650MB, fastest decode
     # --group-size 128 --ratio 1.0      → quality-preserving INT4 (≈ Q4_K_M)
+    #
     chat_model_path:   str = "./data/models/qwen3-4b-instruct-2507-ov-int4"
 
     # OpenVINO device: "CPU" | "GPU" | "NPU" | "AUTO"
-    chat_device:       str = "GPU"
+    chat_device:       str = "CPU"
 
     # Generation parameters
     chat_max_new_tokens:      int   = 512

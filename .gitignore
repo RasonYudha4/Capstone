@@ -4,9 +4,13 @@ backend/data_db/
 backend/pgadmin/
 backend/minio.license
 
+
 # Environment files
 frontend/.env
 backend/.env
 *.env
 *.env.local
 *.env.*.local
+
+# Database
+backend/init-db/02-seed.sql

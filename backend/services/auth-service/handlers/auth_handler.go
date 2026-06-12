@@ -137,71 +137,48 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	// role-based login branching
-
-	// for "staff" role:
-	if user.Role == config.RoleStaff {
-		// If staff is not verified (first login), they require OTP!
-		if !user.Verified {
-			preAuthToken, err := h.otpService.GenerateAndStore(user.Email, "login")
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, models.APIResponse{
-					Success: false,
-					Message: "Failed to generate OTP.",
-				})
-				return
-			}
-
-			c.JSON(http.StatusOK, models.APIResponse{
-				Success: true,
-				Message: "OTP has been sent to your email. Please verify to complete login.",
-				Data: models.LoginResponse{
-					RequiresOTP:  true,
-					PreAuthToken: preAuthToken,
-				},
-			})
-			return
-		}
-
-		// If already verified, log in immediately.
-		accessToken, refreshToken, err := h.issueTokens(user)
+	// Admin and Master Admin require OTP verification if they are not verified yet.
+	// Staff role bypasses OTP verification entirely (optional verification).
+	if (user.Role == config.RoleAdmin || user.Role == config.RoleMasterAdmin) && !user.Verified {
+		preAuthToken, err := h.otpService.GenerateAndStore(user.Email, "login")
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, models.APIResponse{
 				Success: false,
-				Message: "Failed to generate tokens.",
+				Message: "Failed to generate OTP.",
 			})
 			return
 		}
 
-		h.auditService.Log("insert", "login", &user.UserID, "client")
 		c.JSON(http.StatusOK, models.APIResponse{
 			Success: true,
-			Message: "Login successful.",
+			Message: "OTP has been sent to your email. Please verify to complete login.",
 			Data: models.LoginResponse{
-				RequiresOTP:  false,
-				AccessToken:  accessToken,
-				RefreshToken: refreshToken,
-				ExpiresIn:    config.AccessTokenExpiry.String(),
+				RequiresOTP:  true,
+				PreAuthToken: preAuthToken,
 			},
 		})
 		return
 	}
 
-	// for "admin" and "master-admin", require OTP as a second factor.
-	preAuthToken, err := h.otpService.GenerateAndStore(user.Email, "login")
+	// For verified admins/master-admins and all staff members: log in immediately.
+	accessToken, refreshToken, err := h.issueTokens(user)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
-			Message: "Failed to generate OTP.",
+			Message: "Failed to generate tokens.",
 		})
 		return
 	}
 
+	h.auditService.Log("insert", "login", &user.UserID, "client")
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
-		Message: "OTP has been sent to your email. Please verify to complete login.",
+		Message: "Login successful.",
 		Data: models.LoginResponse{
-			RequiresOTP: true,
-			PreAuthToken: preAuthToken,
+			RequiresOTP:  false,
+			AccessToken:  accessToken,
+			RefreshToken: refreshToken,
+			ExpiresIn:    config.AccessTokenExpiry.String(),
 		},
 	})
 }
@@ -248,10 +225,10 @@ func (h *AuthHandler) VerifyOTP(c *gin.Context) {
 		return
 	}
 
-	// If role is staff and not verified yet, mark them as verified now!
-	if user.Role == config.RoleStaff && !user.Verified {
+	// If the user has not been marked as verified yet, mark them as verified now!
+	if !user.Verified {
 		if err := h.userService.MarkAsVerified(user.UserID); err != nil {
-			log.Printf("⚠️  Failed to mark staff %s as verified: %v", user.Email, err)
+			log.Printf("⚠️  Failed to mark user %s as verified: %v", user.Email, err)
 			c.JSON(http.StatusInternalServerError, models.APIResponse{
 				Success: false,
 				Message: "Failed to update verification status.",

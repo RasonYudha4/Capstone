@@ -2,8 +2,8 @@ import axioHandler from '@/cores/axios'
 import type {
     GetNotificationsResponse,
     SSEEvent,
-} from '@/schemas/notification.schema'
-import type { ApiResponse } from '@/schemas/document.schema'
+} from '@/dtos/notification_dto'
+import type { ApiResponse } from '@/dtos/document_dto'
 
 export const notificationService = {
 

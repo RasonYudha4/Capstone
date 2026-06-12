@@ -37,8 +37,8 @@ export const useLogin = () => {
 export const useVerifyOtp = () => {
     const queryClient = useQueryClient()
 
-    return useMutation<TokenResponse, Error, OTPFormValues>({
-        mutationFn: ({ email, otp }) => authService.verifyOtp(email, otp),
+    return useMutation<TokenResponse, Error, OTPFormValues & { preAuthToken: string }>({
+        mutationFn: ({ email, otp, preAuthToken }) => authService.verifyOtp(email, otp, preAuthToken),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: authKeys.me() })
         },

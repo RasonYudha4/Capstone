@@ -12,17 +12,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const stored = localStorage.getItem('user')
         const refreshToken = localStorage.getItem('refreshToken')
         if (stored && refreshToken) {
-            authService.refresh(refreshToken).then((data) => {
-                localStorage.setItem('accessToken', data.access_token);
-                // Update refresh token jika backend mengembalikan yang baru
-                if (data.refresh_token) {
-                    localStorage.setItem('refreshToken', data.refresh_token);
-                }
-                setUser(JSON.parse(stored) as User);
+            authService.me().then((userData) => {
+                setUser(userData);
+                localStorage.setItem('user', JSON.stringify(userData));
             }).catch(() => {
-                localStorage.removeItem('user');
-                localStorage.removeItem('accessToken');
-                localStorage.removeItem('refreshToken');
+                logout();
             }).finally(() => {
                 setLoading(false);
             });
