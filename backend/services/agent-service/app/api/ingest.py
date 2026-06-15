@@ -48,7 +48,6 @@ def ingest_evidence(
     deskripsi:              str = Form(""),
 ):
     suffix = Path(file.filename).suffix
-    tmp_path = None
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             shutil.copyfileobj(file.file, tmp)
@@ -69,8 +68,7 @@ def ingest_evidence(
         result = run_ingest_evidence(tmp_path, form_metadata)
 
     finally:
-        if tmp_path and os.path.exists(tmp_path):
-            os.unlink(tmp_path)
+        os.unlink(tmp_path)
 
     if not result.success:
         raise HTTPException(

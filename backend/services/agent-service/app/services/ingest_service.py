@@ -14,8 +14,8 @@ Two public entry points:
 Embedder lifecycle
 ------------------
 OVModelForFeatureExtraction is expensive to load (~seconds).
-_embedder initialises it exactly once per process and caches the
-instance at module level.  Both pipeline functions call _embedder
+embedder initialises it exactly once per process and caches the
+instance at module level.  Both pipeline functions call embedder
 transparently — callers never manage the model lifetime themselves.
 """
 from __future__ import annotations
@@ -24,7 +24,7 @@ import time
 
 from app.core.config import settings
 from app.repositories.ingestion.chunker import chunk_document
-from app.repositories.ingestion.embedder import EmbedderModel, EmbeddingError, embed_chunks
+from app.repositories.ingestion.embedder import embedder, EmbeddingError, embed_chunks
 from app.repositories.ingestion.enricher import enrich_document
 from app.repositories.ingestion.parser import parse_single
 from app.models import IngestResult
@@ -32,16 +32,6 @@ from app.core.logger import get_logger, timer
 from app.core.store.chromadb import ChromaStore
 
 log = get_logger("ingest_pipeline")
-
-
-# ---------------------------------------------------------------------------
-# Module-level embedder singleton
-# ---------------------------------------------------------------------------
-
-_embedder = EmbedderModel.from_pretrained(
-    settings.embed_model_path,
-    device=settings.embed_device,
-)
 
 # ---------------------------------------------------------------------------
 # KMK ingestion — called once at system setup
@@ -58,7 +48,7 @@ def run_ingest_kmk(kmk_path: str) -> IngestResult:
 
     # ── Parse ────────────────────────────────────────────────────────────────
     with timer(log, "parsing KMK"):
-        doc = parse_single(kmk_path)
+        doc = parse_single(kmk_path, is_kmk=True)
 
     if not doc:
         log.error("failed to parse KMK at %s", kmk_path)
@@ -81,7 +71,7 @@ def run_ingest_kmk(kmk_path: str) -> IngestResult:
         try:
             embed_chunks(
                 chunks,
-                embedder=_embedder,
+                embedder=embedder,
                 batch_size=settings.embed_batch_size,
             )
         except EmbeddingError as exc:
@@ -153,7 +143,7 @@ def run_ingest_evidence(
         try:
             embed_chunks(
                 chunks,
-                embedder=_embedder,
+                embedder=embedder,
                 batch_size=settings.embed_batch_size,
             )
         except EmbeddingError as exc:

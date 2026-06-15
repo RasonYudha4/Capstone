@@ -126,8 +126,8 @@ def _run_gap_analysis(intent: dict) -> str:
 
     extra = {"bab_code": intent["bab_code"]} if intent.get("bab_code") else {}
 
-    all_ep     = set(store.get_all_unique_values("standar", {"is_kmk": True,  **extra}))
-    covered_ep = set(store.get_all_unique_values("standar", {"is_kmk": False, **extra}))
+    all_ep     = set(store.get_all_unique_values("standar_code", {"is_kmk": True,  **extra}))
+    covered_ep = set(store.get_all_unique_values("standar_code", {"is_kmk": False, **extra}))
     missing    = sorted(all_ep - covered_ep)
 
     prompt = build_gap_prompt(missing, covered_ep, intent)

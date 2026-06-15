@@ -49,14 +49,14 @@ _SIGNATURE_HINTS = [
 # Public interface
 # ---------------------------------------------------------------------------
 
-def parse_single(file_path: str) -> ParsedDocument | None:
+def parse_single(file_path: str, is_kmk: bool = False) -> ParsedDocument | None:
     """Parse a single file. Used by ingest_pipeline for individual uploads."""
     path = Path(file_path)
     if path.suffix not in _SUPPORTED_EXTENSIONS:
         log.warning("unsupported file type: %s", path.suffix)
         return None
     try:
-        return _parse_file(path)
+        return _parse_file(path, is_kmk=is_kmk)
     except Exception as exc:
         log.warning("failed to parse %s: %s", path, exc)
         return None
@@ -92,9 +92,9 @@ def load_documents(folder: str) -> tuple[list[ParsedDocument], list[str]]:
 # Dispatch
 # ---------------------------------------------------------------------------
 
-def _parse_file(path: Path) -> ParsedDocument | None:
+def _parse_file(path: Path, is_kmk: bool = False) -> ParsedDocument | None:
     if path.suffix == ".pdf":
-        return _parse_pdf(path)
+        return _parse_pdf(path, is_kmk=is_kmk)
 
     text = path.read_text(encoding="utf-8", errors="ignore").strip()
     if not text:
@@ -113,12 +113,17 @@ def _parse_file(path: Path) -> ParsedDocument | None:
 # PDF extraction — three-tier fallback chain
 # ---------------------------------------------------------------------------
 
-def _parse_pdf(path: Path) -> ParsedDocument | None:
+def _parse_pdf(path: Path, is_kmk: bool = False) -> ParsedDocument | None:
     """
     Try extractors in priority order.
     Each extractor returns (pages_text, full_text) or raises on hard failure.
     """
-    for extractor in (_extract_pymupdf4llm, _extract_pdfplumber, _extract_pypdf):
+    extractors = (
+        [_extract_pdfplumber, _extract_pypdf]
+        if is_kmk else
+        [_extract_pymupdf4llm, _extract_pdfplumber, _extract_pypdf]
+    )
+    for extractor in extractors:
         try:
             pages_text, full_text = extractor(path)
             if full_text.strip():

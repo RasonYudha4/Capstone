@@ -127,7 +127,7 @@ def chunk_kmk(
             chunk_index = len(chunks),
             is_kmk      = True,
             bab_code    = bab_code,
-            standar  = section["standar"],
+            standar_code = section["standar"],
             kelompok    = kelompok,
         ))
 
