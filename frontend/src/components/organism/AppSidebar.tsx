@@ -79,8 +79,7 @@ export default function AppSidebar() {
                     <SidebarMenuItem>
                         <SidebarMenuButton
                             onClick={() => {
-                                // TODO: plug in logout via auth context
-                                console.log('logout triggered')
+                                logout()
                             }}
                             className="w-full flex items-center gap-3 px-4 py-2.5 rounded-full text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-all cursor-pointer"
                         >
