@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"io"
 
 )
 
@@ -41,33 +42,52 @@ func (d *DocumentHandler)Get_all_documents_Handler(c *gin.Context) {
         "limit":  limit,
     })
 }*/
+func(d *DocumentHandler) Get_public_document_by_id_handler(c *gin.Context){
+	documentId, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error" :"invalid Document ID"})
+		return
+	}
+
+	filepath, err := d.documentService.Get_public_document_by_id(documentId, "public")
+	if err != nil{
+		c.JSON(500, gin.H{"error" : "Failed to get filepath"})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"url" : filepath,
+	})
+}
 
 func (d *DocumentHandler) Get_document_by_id_handler(c *gin.Context) {
-	documentId, err := uuid.Parse(c.Param("id"))	
-	if err != nil {
-		log.Print("error to parse document id: ", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid document ID"})
-		return
-	}
+    documentId, err := uuid.Parse(c.Param("id"))
+    if err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid document ID"})
+        return
+    }
 
-	createdById, err := uuid.Parse(c.GetString("user_id"))
-	if err != nil {
-		log.Print("error parse user id: ", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
-		return
-	}
+    createdById, err := uuid.Parse(c.GetString("user_id"))
+    if err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+        return
+    }
 
-	role := c.GetString("role")
-	docs, status, err := d.documentService.Get_document_by_id(documentId, createdById, role)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "Internal error"})
-		return
-	}
-	if !status.Status {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "Internal server error"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"Data": docs})
+    object, stat, err := d.documentService.Get_document_by_id(c.Request.Context(), documentId, createdById, c.GetString("role"))
+    if err != nil {
+		 log.Printf("StreamDocument error: %v", err) 
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to stream document"})
+        return
+    }
+    defer object.Close()
+	 contentType := stat.ContentType
+	 log.Printf("streaming file: '%s', content-type: '%s', size: %d", stat.Key, contentType, stat.Size)
+
+    c.Header("Content-Type", stat.ContentType)
+    c.Header("Content-Disposition", "inline; filename="+stat.Key)
+    c.Header("Content-Length", strconv.FormatInt(stat.Size, 10))
+
+    io.Copy(c.Writer, object)
 }
 
 func (d *DocumentHandler) Get_document_by_status_handler(c *gin.Context) {
@@ -271,7 +291,14 @@ func (d *DocumentHandler) Create_document_handler(c *gin.Context) {
 	}
 
 	if !result.Status {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		switch result.Message{
+		case "filename already exist":
+			c.JSON(409, result)
+		case "Not Authorized, service/standard/assessment is not under the current group":
+			c.JSON(401, result)
+		default:
+			c.JSON(http.StatusInternalServerError, result)
+		}
 		return
 	}
 
@@ -283,7 +310,7 @@ func (d *DocumentHandler) Update_document_handler(c *gin.Context) {
 
     if err := c.ShouldBind(&req); err != nil {
         log.Print("Error binding request: ", err)
-        c.JSON(http.StatusBadRequest, gin.H{"status": false, "message": err.Error()})
+        c.JSON(400, gin.H{"status": false, "message": err.Error()})
         return
     }
 
@@ -295,14 +322,14 @@ func (d *DocumentHandler) Update_document_handler(c *gin.Context) {
             fileHeader = nil
         } else {
             log.Print("Error reading file: ", err)
-            c.JSON(http.StatusBadRequest, gin.H{"status": false, "message": "Failed to read file"})
+            c.JSON(400, gin.H{"status": false, "message": "Failed to read file"})
             return
         }
     } else {
         file, err = fileHeader.Open()
         if err != nil {
             log.Print("Error opening file: ", err)
-            c.JSON(http.StatusInternalServerError, gin.H{"status": false, "message": "Failed to open file"})
+            c.JSON(500, gin.H{"status": false, "message": "Failed to open file"})
             return
         }
         defer file.Close()
@@ -312,22 +339,30 @@ func (d *DocumentHandler) Update_document_handler(c *gin.Context) {
     userRole := c.GetString("role")
     if err != nil {
         log.Print("Failed parse user id: ", err)
-        c.JSON(http.StatusBadRequest, gin.H{"status": false, "message": "Invalid user"})
+        c.JSON(400, gin.H{"status": false, "message": "Invalid user"})
         return
     }
     
     result, err := d.documentService.Update_document(req, file, fileHeader, userId, userRole)
     if err != nil {
         log.Print("Failed update document: ", err)
-        c.JSON(http.StatusInternalServerError, gin.H{"status": false, "message": "Internal server error"})
+        c.JSON(500, gin.H{"status": false, "message": "Internal server error"})
         return
     }
 
     if !result.Status {
-        c.JSON(http.StatusBadRequest, result)
+		switch result.Message{
+		case "Cannot Edit Approved Document":
+			c.JSON(409, result)
+		case "Unauthorized: cannot edit this document":
+			c.JSON(401,result)
+		default:
+			c.JSON(500,result)
+		}
         return
     }
-    c.JSON(http.StatusOK, result)
+
+    c.JSON(200, result)
 }
 
 

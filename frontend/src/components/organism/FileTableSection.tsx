@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Upload, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -20,12 +20,11 @@ import {
   useDocumentsByService,
   useDocumentsByStandard,
   useDocumentsByAssessment,
-  useDocument,
   documentKeys,
 } from '@/hooks/useDocument'
 import type { DocumentResponse } from '@/dtos/document_dto'
 import { documentService } from '@/services/document_services'
-
+import { useMe } from '@/hooks/useAuth'
 interface FileTableSectionProps {
   onUploadClick: () => void
 }
@@ -50,16 +49,14 @@ interface PaginationProps {
 function Pagination({ page, hasMore, onChange }: PaginationProps) {
   if (page === 1 && !hasMore) return null
 
-  // Show up to current page number buttons + next if available
   const getPages = (): number[] => {
     const start = Math.max(1, page - 2)
-    const end   = page  // never show a future page we haven't confirmed exists
+    const end   = page
     return Array.from({ length: end - start + 1 }, (_, i) => start + i)
   }
 
   return (
     <div className="flex items-center gap-1 py-2">
-      {/* Prev */}
       <button
         onClick={() => onChange(page - 1)}
         disabled={page === 1}
@@ -68,7 +65,6 @@ function Pagination({ page, hasMore, onChange }: PaginationProps) {
         <ChevronLeft className="w-4 h-4" />
       </button>
 
-      {/* Page numbers */}
       {getPages().map((p) => (
         <button
           key={p}
@@ -83,7 +79,6 @@ function Pagination({ page, hasMore, onChange }: PaginationProps) {
         </button>
       ))}
 
-      {/* Next */}
       <button
         onClick={() => onChange(page + 1)}
         disabled={!hasMore}
@@ -108,6 +103,7 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
   const [selectedDocId,        setSelectedDocId]        = useState<string | null>(null)
   const [selectedDocument,     setSelectedDocument]     = useState<DocumentResponse | null>(null)
   const [page,                 setPage]                 = useState(1)
+  const { data: me } = useMe() 
 
   // ─────────────────────────────────────────────
   // Options
@@ -157,28 +153,43 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
   // ─────────────────────────────────────────────
 
   const rawDocs = docData?.data ?? []
-
-  // API returns { page, limit, data[] } — no total field.
-  // A full page means there are likely more pages; a partial page means we're at the end.
-  const hasMore    = rawDocs.length === PAGE_SIZE
-  const totalPages = hasMore ? page + 1 : page  // we only know current + maybe next
+  const hasMore = rawDocs.length === PAGE_SIZE
 
   const handlePageChange = (newPage: number) => {
     if (newPage < 1) return
     if (newPage > page && !hasMore) return
     setPage(newPage)
-    // Scroll table back to top
     document.getElementById('file-table-top')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   // ─────────────────────────────────────────────
-  // Detail — GET /documents/:id  →  { Data: "<presigned-url>" }
+  // File URL — fetch as blob so auth headers are included
   // ─────────────────────────────────────────────
 
-  const { data: detailData, isLoading: detailLoading } =
-    useDocument(selectedDocId ?? '')
+  const [fileUrl,       setFileUrl]       = useState('')
+  const [detailLoading, setDetailLoading] = useState(false)
 
-  const fileUrl: string = (detailData as any)?.Data ?? ''
+  useEffect(() => {
+    if (!selectedDocId) {
+      setFileUrl('')
+      return
+    }
+
+    let objectUrl = ''
+    setDetailLoading(true)
+
+    documentService.getById(selectedDocId)
+      .then(({ url }) => {
+        objectUrl = url
+        setFileUrl(url)
+      })
+      .catch(() => toast.error('Gagal memuat berkas.'))
+      .finally(() => setDetailLoading(false))
+
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [selectedDocId])
 
   // ─────────────────────────────────────────────
   // Table data
@@ -232,9 +243,9 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
   const closeModal = () => {
     setSelectedDocId(null)
     setSelectedDocument(null)
+    setFileUrl('')
   }
 
-  // Reset to page 1 whenever the filter changes
   const resetPage = () => setPage(1)
 
   // ─────────────────────────────────────────────
@@ -282,7 +293,6 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
       toast.success('Berkas berhasil dihapus.')
       invalidateList()
       closeModal()
-      // If we deleted the last item on this page, go back one
       if (files.length === 1 && page > 1) setPage(p => p - 1)
     } catch {
       toast.error('Gagal menghapus berkas.')
@@ -340,6 +350,7 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
         onReject={handleReject}
         onUpdate={handleUpdate}
         onDelete={handleDelete}
+        role={me?.role}
       />
 
       {/* Toolbar */}
@@ -395,11 +406,11 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
           </div>
         </div>
 
-        {/* Pagination — shown only when there's data */}
+        {/* Pagination */}
         {!docsLoading && files.length > 0 && (
           <div className="flex items-center justify-between mt-3 px-1">
             <p className="text-xs text-gray-400">
-                Halaman {page}{!hasMore && ` · ${(page - 1) * PAGE_SIZE + rawDocs.length} berkas total`}
+              Halaman {page}{!hasMore && ` · ${(page - 1) * PAGE_SIZE + rawDocs.length} berkas total`}
             </p>
             <Pagination
               page={page}

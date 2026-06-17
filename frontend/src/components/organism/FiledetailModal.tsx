@@ -32,6 +32,7 @@ interface FileDetailModalProps {
     open: boolean
     isLoading?: boolean
     fileUrl?: string
+    role?: 'staff' | 'admin' | 'master-admin'
     onOpenChange: (open: boolean) => void
     onApprove?: (file: FileRecord, catatan: string, attachment?: File) => void
     onReject?: (file: FileRecord, catatan: string, attachment?: File) => void
@@ -69,12 +70,16 @@ export default function FileDetailModal({
     open,
     isLoading = false,
     fileUrl,
+    role,
     onOpenChange,
     onApprove,
     onReject,
     onUpdate,
     onDelete,
 }: FileDetailModalProps) {
+    // ── role-based permission ──
+    const canReview = role === 'master-admin'
+
     // ── display values ──
     const displayName      = document?.filename     ?? file?.name       ?? '—'
     const displayCreatedBy = document?.created_by   ?? file?.uploadedBy ?? '—'
@@ -126,6 +131,11 @@ export default function FileDetailModal({
         onOpenChange(false)
     }
 
+    // ── file type detection (based on filename, not URL) ──
+    const ext = (document?.filename ?? file?.name ?? '').split('.').pop()?.toLowerCase() ?? ''
+    const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)
+    const isPdf   = ext === 'pdf'
+
     // ── action handlers ──
 
     const handleApprove = handleSubmit((data) => {
@@ -159,7 +169,6 @@ export default function FileDetailModal({
     const handleUpdate = handleSubmit((data) => {
         if (!file) return
 
-        // always send filename — backend handles same-name check
         const newFilename = data.filename?.trim() || undefined
 
         console.log('[FileDetailModal] handleUpdate called')
@@ -180,7 +189,6 @@ export default function FileDetailModal({
                 try {
                     await onUpdate?.(file, data.catatan ?? '', attachedFile ?? undefined, newFilename)
                     console.log('[FileDetailModal] update success, reloading page...')
-                    // close modal first then reload so user sees the result
                     onOpenChange(false)
                     window.location.reload()
                 } catch (err) {
@@ -206,22 +214,7 @@ export default function FileDetailModal({
         })
     }
 
-    // ── preview helpers ──
-
-    const isImage =
-        file?.type?.match(/image|jpg|jpeg|png|gif|webp/i) ||
-        document?.filename?.match(/\.(jpg|jpeg|png|gif|webp)$/i) ||
-        fileUrl?.match(/\.(jpg|jpeg|png|gif|webp)(\?|#|$)/i)
-
-    const isPdf =
-        file?.type?.match(/pdf/i) ||
-        file?.name?.endsWith('.pdf') ||
-        document?.filename?.endsWith('.pdf') ||
-        document?.filename?.match(/\.pdf$/i) ||
-        fileUrl?.match(/\.pdf(\?|#|$)/i) ||
-        fileUrl?.includes('.pdf') ||
-        document?.document_type?.match(/pdf/i)
-
+    // ── preview url ──
     const embedUrl = fileUrl
         ? isPdf ? `${fileUrl}#toolbar=0&zoom=${zoom}` : fileUrl
         : null
@@ -270,11 +263,11 @@ export default function FileDetailModal({
                                     </div>
                                 )}
 
-                                {embedUrl && (
+                                {fileUrl && (
                                     <a
-                                        href={embedUrl}
+                                        href={fileUrl}
                                         download={displayName}
-                                        className="text-white/60 hover:text-white transition-colors ml-auto shrink-0"
+                                        className={`text-white/60 hover:text-white transition-colors shrink-0 ${!isPdf ? 'ml-auto' : ''}`}
                                         title="Download"
                                     >
                                         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -336,7 +329,7 @@ export default function FileDetailModal({
                                             Pratinjau tidak didukung untuk tipe berkas ini.
                                         </p>
                                         <a
-                                            href={embedUrl}
+                                            href={fileUrl}
                                             download={displayName}
                                             className="text-xs text-white/60 underline hover:text-white transition-colors"
                                         >
@@ -420,55 +413,59 @@ export default function FileDetailModal({
                                 )}
                             </ScrollArea>
 
-                            {/* Action buttons */}
-                            <div className="flex flex-col gap-2 px-5 py-4 shrink-0 border-t border-white/20">
+                           {/* Action buttons */}
+<div className="flex flex-col gap-2 px-5 py-4 shrink-0 border-t border-white/20">
 
-                                {/* Primary row: Approve + Reject */}
-                                <div className="flex gap-2">
-                                    <Button
-                                        type="button"
-                                        onClick={handleApprove}
-                                        disabled={disabled}
-                                        className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-semibold text-xs h-9 disabled:opacity-40 gap-1.5"
-                                    >
-                                        <CheckCircle className="w-3.5 h-3.5" />
-                                        Setujui
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        onClick={handleReject}
-                                        disabled={disabled}
-                                        className="flex-1 bg-red-500 hover:bg-red-600 text-white rounded-xl font-semibold text-xs h-9 disabled:opacity-40 gap-1.5"
-                                    >
-                                        <XCircle className="w-3.5 h-3.5" />
-                                        Tolak
-                                    </Button>
-                                </div>
+    {/* Approve + Reject — master-admin only, hidden when approved */}
+    {canReview && displayStatus !== 'approved' && (
+        <div className="flex gap-2">
+            <Button
+                type="button"
+                onClick={handleApprove}
+                disabled={disabled}
+                className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-semibold text-xs h-9 disabled:opacity-40 gap-1.5"
+            >
+                <CheckCircle className="w-3.5 h-3.5" />
+                Setujui
+            </Button>
+            <Button
+                type="button"
+                onClick={handleReject}
+                disabled={disabled}
+                className="flex-1 bg-red-500 hover:bg-red-600 text-white rounded-xl font-semibold text-xs h-9 disabled:opacity-40 gap-1.5"
+            >
+                <XCircle className="w-3.5 h-3.5" />
+                Tolak
+            </Button>
+        </div>
+    )}
 
-                                {/* Secondary row: Update + Delete */}
-                                <div className="flex gap-2">
-                                    <Button
-                                        type="button"
-                                        onClick={handleUpdate}
-                                        disabled={disabled}
-                                        className="flex-1 bg-white/20 hover:bg-white/30 text-white rounded-xl font-semibold text-xs h-9 disabled:opacity-40 gap-1.5"
-                                    >
-                                        {isUpdating
-                                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                            : <RefreshCw className="w-3.5 h-3.5" />
-                                        }
-                                        {isUpdating ? 'Menyimpan...' : 'Update'}
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        onClick={handleDelete}
-                                        disabled={disabled}
-                                        className="flex-1 bg-white/10 hover:bg-red-500/40 text-white/70 hover:text-white rounded-xl font-semibold text-xs h-9 disabled:opacity-40 gap-1.5 transition-colors"
-                                    >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                        Hapus
-                                    </Button>
-                                </div>
+    {/* Update + Delete — Update hidden when approved */}
+    <div className="flex gap-2">
+        {displayStatus !== 'approved' && (
+            <Button
+                type="button"
+                onClick={handleUpdate}
+                disabled={disabled}
+                className="flex-1 bg-white/20 hover:bg-white/30 text-white rounded-xl font-semibold text-xs h-9 disabled:opacity-40 gap-1.5"
+            >
+                {isUpdating
+                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    : <RefreshCw className="w-3.5 h-3.5" />
+                }
+                {isUpdating ? 'Menyimpan...' : 'Update'}
+            </Button>
+        )}
+        <Button
+            type="button"
+            onClick={handleDelete}
+            disabled={disabled}
+            className="flex-1 bg-white/10 hover:bg-red-500/40 text-white/70 hover:text-white rounded-xl font-semibold text-xs h-9 disabled:opacity-40 gap-1.5 transition-colors"
+        >
+            <Trash2 className="w-3.5 h-3.5" />
+            Hapus
+        </Button>
+    </div>
                             </div>
                         </div>
                     </div>

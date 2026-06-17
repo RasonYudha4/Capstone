@@ -1,7 +1,8 @@
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { X } from "lucide-react";
+import { X, AlertCircle } from "lucide-react";
+import axios from "axios";
 import {
   Dialog,
   DialogContent,
@@ -9,24 +10,22 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Button } from "@/components/ui/button"
-import { Separator } from "@/components/ui/separator"
-import FileDropzone from "../molecules/FileDropzone"
-import { useState, useEffect } from "react"
-import ConfirmDialog from "../molecules/ConfirmDialog"
-import { useFormOptions } from "@/hooks/useFormOption"
-import { useUploadDocument } from "@/hooks/useDocument"
-import { useQueryClient } from '@tanstack/react-query'
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import FileDropzone from "../molecules/FileDropzone";
+import { useState, useEffect } from "react";
+import ConfirmDialog from "../molecules/ConfirmDialog";
+import { useFormOptions } from "@/hooks/useFormOption";
+import { useUploadDocument } from "@/hooks/useDocument";
 
 const uploadSchema = z.object({
   serviceId: z.string().uuid("Wajib dipilih"),
@@ -50,18 +49,34 @@ const fieldClass =
 const labelClass = "text-sm font-bold text-[#6B5FAE]";
 const errorClass = "text-xs text-red-500 mt-1";
 
+function getErrorMessage(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    switch (error.response?.status) {
+      case 409:
+        return "Nama berkas sudah digunakan. Silakan gunakan nama lain.";
+      case 403:
+        return "Anda tidak memiliki akses untuk mengunggah ke grup ini.";
+      case 400:
+        return "Data yang dikirim tidak valid. Periksa kembali isian formulir.";
+      case 500:
+        return "Terjadi kesalahan pada server. Silakan coba beberapa saat lagi.";
+      default: {
+        // Fallback: check message from backend body (while handler is WIP)
+        const msg = error.response?.data?.message as string | undefined;
+        if (msg === "filename already exist")
+          return "Nama berkas sudah digunakan. Silakan gunakan nama lain.";
+        if (msg?.toLowerCase().includes("not authorized"))
+          return "Anda tidak memiliki akses untuk mengunggah ke grup ini.";
+        return "Terjadi kesalahan. Silakan coba lagi.";
+      }
+    }
+  }
+  return "Terjadi kesalahan. Silakan coba lagi.";
+}
+
 export default function UploadModal({ open, onOpenChange }: UploadModalProps) {
-  const {
-    services,
-    documentTypes,
-    getStandards,
-    getAssessments,
-    isLoading,
-    isError,
-  } = useFormOptions();
-  console.log("services:", services);
-  console.log("isLoading:", isLoading);
-  console.log("isError", isError);
+  const { services, documentTypes, getStandards, getAssessments, isLoading } =
+    useFormOptions();
 
   const {
     register,
@@ -95,8 +110,12 @@ export default function UploadModal({ open, onOpenChange }: UploadModalProps) {
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingData, setPendingData] = useState<UploadFormValues | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
   const { mutateAsync: uploadDocument, isPending } = useUploadDocument();
-  const onSubmit = async (data: UploadFormValues) => {
+
+  const onSubmit = (data: UploadFormValues) => {
+    setSubmitError(null);
     setPendingData(data);
     setConfirmOpen(true);
   };
@@ -120,13 +139,15 @@ export default function UploadModal({ open, onOpenChange }: UploadModalProps) {
       reset();
       onOpenChange(false);
     } catch (error) {
-      console.error("Upload failed:", error);
-      // TODO: show toast error
+      setConfirmOpen(false);
+      setSubmitError(getErrorMessage(error));
     }
   };
 
   const handleClose = () => {
     reset();
+    setSubmitError(null);
+    setPendingData(null);
     onOpenChange(false);
   };
 
@@ -167,6 +188,14 @@ export default function UploadModal({ open, onOpenChange }: UploadModalProps) {
         </DialogHeader>
 
         <div className="overflow-y-auto max-h-[65vh] pr-2">
+          {/* Error banner */}
+          {submitError && (
+            <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-600 rounded-xl px-4 py-3 mb-4">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+              <p className="text-sm">{submitError}</p>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit(onSubmit)}>
             {/* Dropzone */}
             <div className="flex flex-col gap-2 mb-6">
@@ -189,7 +218,7 @@ export default function UploadModal({ open, onOpenChange }: UploadModalProps) {
             </div>
 
             <div className="flex flex-col gap-4">
-              {/* Row 1 — Fungsi Pelayanan (Service) */}
+              {/* Row 1 — Fungsi Pelayanan + Standar Akreditasi */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className={labelClass}>Fungsi Pelayanan</p>
@@ -224,7 +253,6 @@ export default function UploadModal({ open, onOpenChange }: UploadModalProps) {
                   )}
                 </div>
 
-                {/* Standar Akreditasi (Standard) */}
                 <div>
                   <p className={labelClass}>Standar Akreditasi</p>
                   <Controller
@@ -261,7 +289,7 @@ export default function UploadModal({ open, onOpenChange }: UploadModalProps) {
                 </div>
               </div>
 
-              {/* Row 2 — Elemen Penilaian (Assessment) + Nama Berkas */}
+              {/* Row 2 — Elemen Penilaian + Nama Berkas */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className={labelClass}>Elemen Penilaian</p>

@@ -6,9 +6,10 @@ import (
 
 	"context"
 	"fmt"
-	"log"
 	"strings"
 	"time"
+	"log"
+	"path/filepath"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -70,7 +71,6 @@ func(s *DocumentRepo) fetchingData(query string, args ...any)([]schemas.Document
 		)
 
 		if err != nil {
-			log.Print("Error scanning row", err)
 			return nil, err
 		}
 		documents = append(documents, doc)
@@ -170,19 +170,30 @@ func(s *DocumentRepo) Get_document_by_id(documentId, createdById uuid.UUID, role
     		}
 			return filePath,schemas.UploadResponse{} ,err
 	}
-		return filePath,schemas.UploadResponse{
-			Status: true,
-			Message: "Getting the file path",
-			FileName: filePath,
-			FileSize: 0,
-		} ,nil
-	}
-	
-	return filePath,schemas.UploadResponse{} ,nil
-}
 
-func (s *DocumentRepo) Create_document(assessmeentId,documentTypeId,createdById,standardId,serviceId uuid.UUID, filename, filepath string, role string)(string,bool,bool,error){
+	default:
+		query = query + " AND is_deleted = false"
+    	err := s.db.QueryRow(context.Background(), query, documentId).Scan(&filePath)
+    	if err != nil {
+        	if err == pgx.ErrNoRows {
+            return "", schemas.UploadResponse{}, nil
+        }
+        return "", schemas.UploadResponse{}, err
+    	}
+    	return filePath, schemas.UploadResponse{}, nil
+	}
+
+	return filePath,schemas.UploadResponse{
+		Status: true,
+		Message: "Getting the file path",
+		FileName: filePath,
+		FileSize: 0,
+		} ,nil
+}
 	
+
+func (s *DocumentRepo) Create_document(assessmentId, documentTypeId, createdById, standardId, serviceId uuid.UUID, filename, filepath string, role string, isPublic bool) (string, bool, bool, error) {
+
 	if role != "master-admin" {
 		var authorized bool
 		err := s.db.QueryRow(context.Background(), `
@@ -196,7 +207,7 @@ func (s *DocumentRepo) Create_document(assessmeentId,documentTypeId,createdById,
 				AND st.standard_id = $2
 				AND a.assessment_id = $3
 				AND u.user_id = $4
-			)`, serviceId, standardId, assessmeentId, createdById).Scan(&authorized)
+			)`, serviceId, standardId, assessmentId, createdById).Scan(&authorized)
 		if err != nil {
 			return "", false, false, err
 		}
@@ -204,29 +215,34 @@ func (s *DocumentRepo) Create_document(assessmeentId,documentTypeId,createdById,
 			return "", false, false, nil
 		}
 	}
-	
+
 	var serviceGroupId uuid.UUID
 	err := s.db.QueryRow(context.Background(),
-	`SELECT group_id from services
-		WHERE service_id = $1 `, serviceId).Scan(&serviceGroupId)
-	if err!= nil{
-		log.Print("error getting group id from service", err)
-		return "", false,false,nil
+		`SELECT group_id FROM services WHERE service_id = $1`, serviceId).Scan(&serviceGroupId)
+	if err != nil {
+		return "", false, false, fmt.Errorf("error getting group_id: %w", err)
 	}
-	
-	var document_id string
+
+	status := "pending"
+	if isPublic {
+		status = "approved"
+	}
+
+	var documentId string
 	err = s.db.QueryRow(context.Background(), `
-	INSERT INTO documents
-	(assessment_id,filename,filepath,document_type_id,status,created_at,updated_at,created_by,group_id,service_id,standard_id,is_deleted) 
-	VALUES
-	($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING document_id`,assessmeentId,filename,filepath,documentTypeId,"pending",time.Now(),time.Now(),createdById,serviceGroupId,serviceId,standardId,false).Scan(&document_id)
-
-	if err != nil{
-		log.Print("error inserting to db", err)
-		return "",false ,false,err
+		INSERT INTO documents
+			(assessment_id, filename, filepath, document_type_id, status, created_at, updated_at, created_by, group_id, service_id, standard_id, is_deleted)
+		VALUES
+			($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		RETURNING document_id`,
+		assessmentId, filename, filepath, documentTypeId, status,
+		time.Now(), time.Now(), createdById, serviceGroupId, serviceId, standardId, false,
+	).Scan(&documentId)
+	if err != nil {
+		return "", false, false, fmt.Errorf("error inserting document: %w", err)
 	}
 
-	return document_id,true,true,nil
+	return documentId, true, true, nil
 }
 
 func (s *DocumentRepo) Update_document(documentId, createdById uuid.UUID, filename, filepath, description string) (int64, error) {
@@ -241,7 +257,11 @@ func (s *DocumentRepo) Update_document(documentId, createdById uuid.UUID, filena
 		UPDATE documents SET
 			filename = COALESCE($1, filename),
 			filepath = COALESCE($2, filepath),
-			updated_at = NOW()
+			updated_at = NOW(),
+			status = CASE
+				WHEN status = 'rejected' THEN 'pending'
+				ELSE status
+			END
 		WHERE document_id = $3
 		AND is_deleted = false
 	`, toText(filename), toText(filepath), documentId)
@@ -251,6 +271,7 @@ func (s *DocumentRepo) Update_document(documentId, createdById uuid.UUID, filena
 	}
 	return result.RowsAffected(), nil
 }
+
 func (s *DocumentRepo) Delete_document(documentId, userId uuid.UUID, role string)(string,bool ,error){
 	var filename string
 	if role == "master-admin"{
@@ -305,7 +326,7 @@ func (s *DocumentRepo) Approval_document(documentId uuid.UUID, status string, fi
             AND is_deleted = false
         `
         result, err = s.db.Exec(context.Background(), query, status, filePath, documentId)
-    }else if status == "approve" && file == nil{
+    }else if status == "approved" && file == nil{
 		 query := `
             UPDATE documents SET
                 status = $1,
@@ -326,7 +347,6 @@ func (s *DocumentRepo) Approval_document(documentId uuid.UUID, status string, fi
     }
 
     if err != nil {
-        log.Print("Error update status", err)
         return 0, err
     }
 
@@ -402,25 +422,23 @@ func (s *DocumentRepo) Get_stats(userId uuid.UUID, role string) ([]schemas.Group
     return groups, stats, nil
 }
 
-func (s *DocumentRepo) Get_document_fileName(documentId, createdById uuid.UUID)(string, error){
-	var fileName string 
+func (s *DocumentRepo) Get_document_filePath(documentId, createdById uuid.UUID)(string, error){
+	var filePath string 
 
 	query := `
 	SELECT
-		filename
-		FROM documents
+		filepath FROM documents
 		WHERE document_id = $1
 		AND created_by = $2
 		AND is_deleted = false
 	`
 
-	err := s.db.QueryRow(context.Background(),query,documentId,createdById).Scan(&fileName)
+	err := s.db.QueryRow(context.Background(),query,documentId,createdById).Scan(&filePath)
 	if err != nil{
-		log.Print("Error fetching filepath: ", err)
-		return "", err
+		return "Error fetching filepath", err
 	}
 
-	return fileName, nil
+	return filePath, nil
 }
 
 func (s *DocumentRepo) Get_admin_email()([]string,[]uuid.UUID, error){
@@ -443,7 +461,6 @@ func (s *DocumentRepo) Get_admin_email()([]string,[]uuid.UUID, error){
 			var email string
 			var id uuid.UUID
 			if err := rows.Scan(&id,&email); err != nil {
-				log.Print("Error scanning row", err)
 				return nil,nil,err
 			}
 			masterAdminEmail = append(masterAdminEmail, email)
@@ -465,7 +482,6 @@ func (s *DocumentRepo) Check_document_owner(documentId, userId uuid.UUID) (bool,
 			AND u.user_id = $2
 			AND doc.created_by = $2
 			AND doc.is_deleted = false
-			AND doc.status = 'pending'
 		),
 		(SELECT status FROM documents WHERE document_id = $1)	
 		`, documentId, userId).Scan(&authorized, &status)
@@ -481,7 +497,7 @@ func (s *DocumentRepo) Check_document_owner(documentId, userId uuid.UUID) (bool,
 	return authorized, nil
 }
 
-func (s *DocumentRepo) Get_group_name_by_serviceid(serviceId string) (string, error) {
+func (s *DocumentRepo) Get_group_name_by_serviceId(serviceId string) (string, error) {
 	var groupName string
 	err := s.db.QueryRow(context.Background(), `
 		SELECT g.group_name 
@@ -525,4 +541,51 @@ func (s *DocumentRepo) Get_document_type_byid(documentTypeId string) (string, er
 		SELECT name FROM document_types WHERE document_type_id = $1
 	`, documentTypeId).Scan(&name)
 	return name, err
+}
+
+func (s *DocumentRepo) Is_public_document(documentTypeId uuid.UUID)(bool, error){
+	var isPublic bool
+	err := s.db.QueryRow(context.Background(),
+		`
+		SELECT is_public FROM document_types
+			WHERE document_type_id = $1
+		`,documentTypeId).Scan(&isPublic)
+	if err != nil {
+		return false, err
+	}
+	return isPublic, nil
+}
+
+func(s *DocumentRepo) Check_document_name(filename string, header *multipart.FileHeader)(bool, error){
+	var isSameName bool
+	ext := filepath.Ext(header.Filename)
+	err := s.db.QueryRow(context.Background(),
+		`
+		SELECT EXISTS(
+			SELECT FROM documents
+				WHERE filename = $1)
+		`,filename + ext).Scan(&isSameName)
+	if err != nil{
+		return false, err
+	}
+
+	return isSameName, nil
+}
+
+func (s *DocumentRepo) Document_is_approved(documentId uuid.UUID)(bool, error){
+	var isApproved bool
+	err := s.db.QueryRow(context.Background(),
+	`
+	SELECT EXISTS(
+		SELECT FROM documents
+			WHERE document_id = $1
+			AND status = 'approved'
+	)
+	`, documentId).Scan(&isApproved)
+	if err != nil{
+		log.Print("error", err)
+		return false, err
+	}
+	log.Print("is approve :", isApproved)
+	return isApproved, nil
 }

@@ -21,15 +21,41 @@ export const documentService = {
         }
     },
 
-    getById: async (id: string): Promise<FileUrlResponse> => {
+    getById: async (id: string): Promise<{ url: string; contentType: string }> => {
         try {
-            const { data } = await axioHandler.get(`/documents/${id}`)
-            return data
+            const { data, headers } = await axioHandler.get(`/documents/${id}`, {
+                responseType: 'blob'
+            })
+            return {
+                url: URL.createObjectURL(data),
+                contentType: headers['content-type'] ?? ''
+            }
         } catch (error) {
             throw new Error('Failed to fetch document.')
         }
     },
 
+    // ── Public endpoints (no auth) ──────────────────────────────────────────
+
+    getPublicDocuments: async (query?: PaginationQuery): Promise<DocumentListResponse> => {
+        try {
+            const { data } = await axioHandler.get('/documents/public', { params: query })
+            return data
+        } catch (error) {
+            throw new Error('Failed to fetch public documents.')
+        }
+    },
+
+    getPublicDocumentById: async (id: string): Promise<{ url: string }> => {
+        try {
+            const { data } = await axioHandler.get(`/documents/public/${id}`)
+            return data
+        } catch (error) {
+            throw new Error('Failed to fetch public document URL.')
+        }
+    },
+
+    // ── Existing endpoints ──────────────────────────────────────────────────
 
     getByType: async (type: string, query?: PaginationQuery): Promise<DocumentListResponse> => {
         try {
@@ -95,70 +121,63 @@ export const documentService = {
     },
 
     upload: async (body: CreateDocumentBody, file: File): Promise<ApiResponse> => {
-        try {
-            const form = new FormData()
+    const form = new FormData()
+    form.append('uploadedFile', file)
+    Object.entries(body).forEach(([key, value]) => {
+        if (value !== undefined) form.append(key, value)
+    })
+    const { data } = await axioHandler.post<ApiResponse>('/documents/upload', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return data
+},
+
+    update: async (body: UpdateDocumentBody, file?: File): Promise<ApiResponse> => {
+        const form = new FormData()
+
+        if (file && file.size > 0) {
             form.append('uploadedFile', file)
-            Object.entries(body).forEach(([key, value]) => {
-                if (value !== undefined) form.append(key, value)
-            })
-            const { data } = await axioHandler.post('/documents/upload', form, {
+        }
+
+        Object.entries(body).forEach(([key, value]) => {
+            console.log(`FormData: key=${key} value=${String(value)} included=${value !== undefined && value !== ''}`)
+            if (value !== undefined && value !== '') {
+                form.append(key, String(value))
+            }
+        })
+
+        for (const [key, value] of form.entries()) {
+            console.log(`Final FormData: ${key} =`, value)
+        }
+
+        try {
+            const { data } = await axioHandler.patch('/documents/edit', form, {
                 headers: { 'Content-Type': 'multipart/form-data' },
             })
             return data
         } catch (error) {
-            throw new Error('Failed to upload document.')
+            throw new Error('Failed to update document.')
         }
     },
 
-  update: async (body: UpdateDocumentBody, file?: File): Promise<ApiResponse> => {
-    const form = new FormData()
-
-    if (file && file.size > 0) {
-        form.append('uploadedFile', file)
-    }
-
-    Object.entries(body).forEach(([key, value]) => {
-        console.log(`FormData: key=${key} value=${String(value)} included=${value !== undefined && value !== ''}`)
-        if (value !== undefined && value !== '') {
-            form.append(key, String(value))
-        }
-    })
-
-    // log final FormData contents
-    for (const [key, value] of form.entries()) {
-        console.log(`Final FormData: ${key} =`, value)
-    }
-
-    try {
-        const { data } = await axioHandler.patch('/documents/edit', form, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-        })
-        return data
-    } catch (error) {
-        throw new Error('Failed to update document.')
-    }
-},
-   approve: async (body: ApprovalRequest, signedFile?: File): Promise<ApiResponse> => {
-    try {
-        // If there's a signed file attachment, use multipart
-        if (signedFile && signedFile.size > 0) {
-            const form = new FormData()
-            form.append('document_id', body.document_id)
-            form.append('status', body.status)
-            form.append('file', signedFile)
-            const { data } = await axioHandler.post('/documents/status/update', form, {
-                headers: { 'Content-Type': 'multipart/form-data' },
-            })
+    approve: async (body: ApprovalRequest, signedFile?: File): Promise<ApiResponse> => {
+        try {
+            if (signedFile && signedFile.size > 0) {
+                const form = new FormData()
+                form.append('document_id', body.document_id)
+                form.append('status', body.status)
+                form.append('file', signedFile)
+                const { data } = await axioHandler.post('/documents/status/update', form, {
+                    headers: { 'Content-Type': 'multipart/form-data' },
+                })
+                return data
+            }
+            const { data } = await axioHandler.post('/documents/status/update', body)
             return data
+        } catch (error) {
+            throw new Error('Failed to update document status.')
         }
-
-        // No file — send as JSON (what the backend expects)
-        const { data } = await axioHandler.post('/documents/status/update', body)
-        return data
-    } catch (error) {
-        throw new Error('Failed to update document status.')
-    }
-},
+    },
 
     delete: async (documentId: string): Promise<ApiResponse> => {
         try {

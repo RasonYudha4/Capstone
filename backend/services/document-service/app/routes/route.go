@@ -1,7 +1,7 @@
 package routes
 
 import (
-	"capstone/app/api"
+	"capstone/app/handler"
 	"capstone/app/middleware"
 
 	"github.com/gin-gonic/gin"
@@ -14,6 +14,13 @@ func DocumentRoute(r *gin.Engine, documentHandler *api.DocumentHandler, jwtSecre
 		"/documents/public",
 		documentHandler.Get_document_by_type_handler,
 	)
+
+	
+	documentsRoute.GET(
+		"/documents/public/:id", 
+		documentHandler.Get_public_document_by_id_handler,
+	)
+		
 
 	documentsRoute.GET(
 		"/documents/:id", 
@@ -111,7 +118,7 @@ func AuditRoute(r *gin.Engine, auditHandler *api.AuditHandler, jwtSecret string)
 
 func NotificationRoute(r *gin.Engine, notificationHandler *api.NotificationHandler, jwtSecret string){
 
-	notification := r.Group("/notifications", middleware.Extract_JWT_data(jwtSecret))
+	notification := r.Group("/notifications", middleware.Extract_JWT_data(jwtSecret), middleware.AllowedRole("master-admin", "admin"))
 	{
 		notification.GET("/events", notificationHandler.SSEHandler)
 		notification.GET("", notificationHandler.GetAll)

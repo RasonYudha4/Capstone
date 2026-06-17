@@ -2,11 +2,11 @@ import { createBrowserRouter } from 'react-router'
 import { lazy } from 'react'
 import AuthGuard from '../cores/AuthGuard'
 import wrap from '../lib/component-wrapper-helper'
-import Root from '../pages/Root'
 import AppLayout from '../pages/AppLayout'
 
 const Login = lazy(() => import('../pages/auth/Login'))
 const Verification = lazy(() => import('../pages/auth/Verification'))
+const UserLanding = lazy(() => import('../pages/user/Dashboard'))
 const Dashboard = lazy(() => import('../pages/Dashboard'))
 const Unauthorized = lazy(() => import('../pages/Unauthorized'))
 const NotFound = lazy(() => import('../pages/Notfound'))
@@ -15,7 +15,9 @@ const Admins = lazy(() => import('../pages/admin/master-admin/Admins'))
 const Activity = lazy(() => import('../pages/admin/master-admin/ActivityLog'))
 
 export const router = createBrowserRouter([
-    { path: '/', element: <Root /> },
+    // Public landing page — no auth required
+    { path: '/', element: wrap(UserLanding) },
+
     { path: '/login', element: wrap(Login) },
     { path: '/verify', element: wrap(Verification) },
 

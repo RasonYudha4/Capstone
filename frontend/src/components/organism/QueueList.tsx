@@ -87,13 +87,6 @@ function DocCard({ doc, onView }: DocCardProps) {
             </div>
 
             <div className="flex items-center border-t border-gray-100 pt-3">
-                <a
-                    href={doc.filepath}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 py-1.5 hover:bg-gray-50 transition-colors"
-                >
-                </a>
                 <button
                     onClick={() => onView(doc)}
                     className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-sm bg-[#6B5FAE]/10 border border-[#6B5FAE]/20 text-[#6B5FAE] hover:bg-[#6B5FAE]/20 transition-colors cursor-pointer active:bg-purple-100"
@@ -111,7 +104,6 @@ function DocCard({ doc, onView }: DocCardProps) {
 export default function QueueList() {
     const [docs, setDocs]             = useState<DocumentResponse[]>([])
     const [loading, setLoading]       = useState(true)
-    const [error, setError]           = useState<string | null>(null)
 
     const [selected, setSelected]         = useState<DocumentResponse | null>(null)
     const [fileUrl, setFileUrl]           = useState<string | undefined>()
@@ -121,12 +113,11 @@ export default function QueueList() {
     // ── fetch / refetch ──
     async function fetchQueue() {
         setLoading(true)
-        setError(null)
         try {
             const res = await documentService.getByStatus('pending')
-            setDocs(res.data ?? [])  // ← null/undefined safely falls back to []
-        } catch (err: any) {
-            setDocs([])              // ← on error, clear docs and show empty state
+            setDocs(res.data ?? [])
+        } catch {
+            setDocs([])
         } finally {
             setLoading(false)
         }
@@ -134,21 +125,21 @@ export default function QueueList() {
 
     useEffect(() => { fetchQueue() }, [])
 
-    // ── close modal + refetch ──
-    async function afterAction() {
-        setModalOpen(false)
-        setSelected(null)
-        setFileUrl(undefined)
-        await fetchQueue()
-    }
+    // ── cleanup blob URL on unmount ──
+    useEffect(() => {
+        return () => {
+            if (fileUrl) URL.revokeObjectURL(fileUrl)
+        }
+    }, [fileUrl])
 
+    // ── open modal + fetch blob ──
     async function handleView(doc: DocumentResponse) {
         setSelected(doc)
         setModalOpen(true)
         setModalLoading(true)
         try {
-            const res = await documentService.getById(doc.document_id)
-            setFileUrl(res.Data)
+            const { url } = await documentService.getById(doc.document_id)
+            setFileUrl(url)
         } catch {
             setFileUrl(undefined)
         } finally {
@@ -156,12 +147,23 @@ export default function QueueList() {
         }
     }
 
+    // ── close modal ──
     function handleModalClose(open: boolean) {
         if (!open) {
+            if (fileUrl) URL.revokeObjectURL(fileUrl)
             setModalOpen(false)
             setSelected(null)
             setFileUrl(undefined)
         }
+    }
+
+    // ── after approve / reject / update / delete ──
+    async function afterAction() {
+        if (fileUrl) URL.revokeObjectURL(fileUrl)
+        setModalOpen(false)
+        setSelected(null)
+        setFileUrl(undefined)
+        await fetchQueue()
     }
 
     if (loading) {
@@ -204,6 +206,7 @@ export default function QueueList() {
                     document={selected}
                     isLoading={modalLoading}
                     fileUrl={fileUrl}
+                    role="master-admin"
                     onApprove={async (file, _catatan, attachment) => {
                         await documentService.approve(
                             { document_id: file.id, status: 'approved' },

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"capstone/app/api"
+	"capstone/app/handler"
 	"capstone/app/core/db"
 	"capstone/app/core/objectStorage"
 	"capstone/app/repositories"

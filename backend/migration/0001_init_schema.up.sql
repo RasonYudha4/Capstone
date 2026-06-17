@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS document_types (
 CREATE TABLE IF NOT EXISTS documents (
     document_id UUID PRIMARY KEY DEFAULT gen_random_uuid() ,
     assessment_id UUID,
-    filename VARCHAR(255),
+    filename VARCHAR(255) UNIQUE,
     filepath VARCHAR(5024),
     document_type_id UUID,
     status VARCHAR(20),

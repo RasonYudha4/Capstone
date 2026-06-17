@@ -19,7 +19,7 @@ func (s *DocumentService) TriggerIngestEvidence(file io.Reader, fileName string,
 		return
 	}
 
-	kelompok, err := s.repo.Get_group_name_by_serviceid(req.ServicesId)
+	kelompok, err := s.repo.Get_group_name_by_serviceId(req.ServicesId)
 	if err != nil {
 		log.Printf("[ingest] could not resolve kelompok for service %s: %v", req.ServicesId, err)
 		kelompok = ""

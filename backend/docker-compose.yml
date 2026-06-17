@@ -12,6 +12,8 @@ services:
       - document-service
       - minio
       - auth-service
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - server
   postgres:
