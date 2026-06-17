@@ -19,6 +19,7 @@ export const queryService = {
         body: QueryRequest,
         onChunk: (chunk: string) => void,
         onDone?: () => void,
+        onSessionId?: (sessionId: string) => void,
     ): Promise<void> => {
         try {
             const response = await fetch(
@@ -32,6 +33,11 @@ export const queryService = {
 
             if (!response.ok || !response.body) {
                 throw new Error('Stream request failed.')
+            }
+
+            const sessionId = response.headers.get('X-Session-Id')
+            if (sessionId) {
+                onSessionId?.(sessionId)
             }
 
             const reader = response.body.getReader()

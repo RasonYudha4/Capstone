@@ -6,6 +6,7 @@ import { z } from "zod"
 
 export const queryRequestSchema = z.object({
     question: z.string().min(1, "Question is required"),
+    session_id: z.string().nullable().optional()
 })
 
 // ─────────────────────────────────────────────

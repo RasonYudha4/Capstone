@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.repositories.generation.generator import generator, generate, generate_stream
 from app.repositories.generation.intent_extractor import IntentClassifier, extract_intent
 from app.repositories.generation.prompt_builder import build_prompt, build_gap_prompt
+from app.repositories.generation.query_rewriter import rewrite_query_with_history
 from app.repositories.ingestion.embedder import embedder, embed_query
 from app.core.logger import get_logger
 from app.repositories.retrieval.retriever import retrieve
@@ -54,11 +55,15 @@ def run_query(question: str) -> str:
     return answer
 
 
-def run_query_stream(question: str) -> Generator[str, None, None]:
+def run_query_stream(question: str, chat_history: list[dict]) -> Generator[str, None, None]:
     log.info("=== stream query start: '%s' ===", question[:80])
     t_start = time.perf_counter()
 
-    intent  = extract_intent(question, _classifier)
+    resolved_question = rewrite_query_with_history(chat_history, question)
+    if resolved_question != question:
+        log.info("query rewritten: '%s' → '%s'", question[:60], resolved_question[:60])
+
+    intent = extract_intent(resolved_question, _classifier)
     log.info(
         "intent: query_type=%s standar=%s bab_code=%s",
         intent["query_type"],
@@ -83,14 +88,14 @@ def run_query_stream(question: str) -> Generator[str, None, None]:
     filters = _build_filters(intent)
 
     t_embed_start = time.perf_counter()
-    q_vec = embed_query(question, embedder)
+    q_vec = embed_query(resolved_question, embedder)
     log.info("query embed=%.1fms", (time.perf_counter() - t_embed_start) * 1000)
 
     t_retrieve_start = time.perf_counter()
     results = retrieve(q_vec, top_k=settings.top_k, filters=filters)
     log.info("retrieval=%.1fms chunks=%d", (time.perf_counter() - t_retrieve_start) * 1000, len(results))
 
-    prompt = build_prompt(question, results, intent)
+    prompt = build_prompt(resolved_question, results, intent)
     log.info(
         "pipeline overhead=%.1fms | prompt_chars=%d",
         (time.perf_counter() - t_start) * 1000,
