@@ -15,13 +15,11 @@ func DocumentRoute(r *gin.Engine, documentHandler *api.DocumentHandler, jwtSecre
 		documentHandler.Get_document_by_type_handler,
 	)
 
-	
 	documentsRoute.GET(
 		"/documents/public/:id", 
 		documentHandler.Get_public_document_by_id_handler,
 	)
 		
-
 	documentsRoute.GET(
 		"/documents/:id", 
 		middleware.Extract_JWT_data(jwtSecret),

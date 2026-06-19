@@ -192,7 +192,7 @@ func(s *DocumentRepo) Get_document_by_id(documentId, createdById uuid.UUID, role
 }
 	
 
-func (s *DocumentRepo) Create_document(assessmentId, documentTypeId, createdById, standardId, serviceId uuid.UUID, filename, filepath string, role string, isPublic bool) (string, bool, bool, error) {
+func (s *DocumentRepo) Create_document(assessmentId, documentTypeId, createdById, standardId, serviceId uuid.UUID, filename, filepath, fileHash, objectId string, role string, isPublic bool) (string, bool, bool, error) {
 
 	if role != "master-admin" {
 		var authorized bool
@@ -231,15 +231,15 @@ func (s *DocumentRepo) Create_document(assessmentId, documentTypeId, createdById
 	var documentId string
 	err = s.db.QueryRow(context.Background(), `
 		INSERT INTO documents
-			(assessment_id, filename, filepath, document_type_id, status, created_at, updated_at, created_by, group_id, service_id, standard_id, is_deleted)
+			(assessment_id, filename, filepath,filehash, object_id, document_type_id, status, created_at, updated_at, created_by, group_id, service_id, standard_id, is_deleted)
 		VALUES
-			($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+			($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,$13,$14)
 		RETURNING document_id`,
-		assessmentId, filename, filepath, documentTypeId, status,
+		assessmentId, filename, filepath,fileHash,objectId, documentTypeId, status,
 		time.Now(), time.Now(), createdById, serviceGroupId, serviceId, standardId, false,
 	).Scan(&documentId)
 	if err != nil {
-		return "", false, false, fmt.Errorf("error inserting document: %w", err)
+		return "", false, false, err
 	}
 
 	return documentId, true, true, nil
@@ -588,4 +588,31 @@ func (s *DocumentRepo) Document_is_approved(documentId uuid.UUID)(bool, error){
 	}
 	log.Print("is approve :", isApproved)
 	return isApproved, nil
+}
+
+func(s *DocumentRepo) Check_document_hash(documentId uuid.UUID)(string, error){
+	var hash string
+	err := s.db.QueryRow(context.Background(), 
+	`
+		SELECT filehash FROM documents
+			WHERE document_id = $1
+	`, documentId).Scan(&hash)
+	if err != nil{
+		return "", err
+	}
+
+	return hash, nil
+}
+
+func (s *DocumentRepo) Get_object_id(documentId uuid.UUID)(string, error){
+	var objectId string 
+	err := s.db.QueryRow(context.Background(), `
+		SELECT object_id FROM documents
+			WHERE document_id = $1 
+	`, objectId).Scan(&objectId)
+
+	if err != nil {
+		return "", err 
+	}
+	return objectId, nil
 }

@@ -1,6 +1,7 @@
 package repositories
 
 import (
+	"capstone/app/core/utils"
 	"context"
 	"mime/multipart"
 	"os"
@@ -25,45 +26,42 @@ func NewStorageRepo(minio *minio.Client) *StorageRepo{
 var privateBucket = os.Getenv("PRIVATE_BUCKET")
 var publicBucket = os.Getenv("PUBLIC_BUCKET")
 
-func (s *StorageRepo) Upload_document(file io.Reader, header *multipart.FileHeader, filename string,isPublic bool)(string, string, error){
-	extension := filepath.Ext(header.Filename)
-	fileName := strings.Join(strings.Fields(filename), "_") + extension
-
+func (s *StorageRepo) Upload_document(file io.Reader, objectId string ,isPublic bool, size int64 , contentType string, )(string, error){
 	var err error
 	var filepath string
 	if isPublic{
 		_, err = s.minio.PutObject(
 			context.Background(),
 			publicBucket,
-			fileName,
+			objectId,
 			file,
-			header.Size,
+			size,
 			minio.PutObjectOptions{
-				ContentType: header.Header.Get("Content-Type"),
+				ContentType: contentType,
 				ContentDisposition: "inline",
 			},
 		)
-		filepath = fmt.Sprintf(os.Getenv("PUBLIC_BUCKET_URL"), filename + extension)
+		filepath = fmt.Sprintf(os.Getenv("PUBLIC_BUCKET_URL"), objectId)
 	}else{
 		_, err = s.minio.PutObject(
 			context.Background(),
 			privateBucket,
-			fileName,
+			objectId,
 			file,
-			header.Size,
+			size,
 			minio.PutObjectOptions{
-				ContentType: header.Header.Get("Content-Type"),
+				ContentType: contentType,
 				ContentDisposition: "inline",
 			},
 		)
-		filepath = fmt.Sprintf(os.Getenv("PRIVATE_BUCKET_URL"), filename + extension)
+		filepath = fmt.Sprintf(os.Getenv("PRIVATE_BUCKET_URL"), objectId)
 	}
 
 	if err != nil{
-		return "", "", err
+		return "", err
 	}
 
-	return fileName, filepath, nil
+	return filepath, nil
 }
 
 func (s *StorageRepo) Update_document(file multipart.File, header *multipart.FileHeader, oldFilePath, newFileName string) (string, string, error) {
@@ -166,6 +164,26 @@ func (s *StorageRepo) GetMinioObject(ctx context.Context, minioPath string) (*mi
     }
 
     return object, &stat, nil
+}
+
+func (s *StorageRepo) GenerateObjectHMAC(objectId string, minioPath string)(string, error){
+	 bucket, objectName := s.resolveBucket(minioPath)
+
+    object, err := s.minio.GetObject(
+		context.Background(),
+        bucket,
+        objectName,
+        minio.GetObjectOptions{},
+    )
+    if err != nil {
+        return "", err
+    }
+    defer object.Close()
+
+	fileBytes, _ := io.ReadAll(object)
+    hash := utils.GenerateHMAC(fileBytes)
+   
+    return hash, nil
 }
 
 func (s *StorageRepo) bucket(isPublic bool) string {

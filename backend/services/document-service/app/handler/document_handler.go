@@ -286,7 +286,7 @@ func (d *DocumentHandler) Create_document_handler(c *gin.Context) {
 
 	result, err := d.documentService.Create_document(req, file, fileHeader, userId, role)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		c.JSON(500, gin.H{"error": "Internal server error"})
 		return
 	}
 
@@ -297,12 +297,12 @@ func (d *DocumentHandler) Create_document_handler(c *gin.Context) {
 		case "Not Authorized, service/standard/assessment is not under the current group":
 			c.JSON(401, result)
 		default:
-			c.JSON(http.StatusInternalServerError, result)
+			c.JSON(500, result)
 		}
 		return
 	}
 
-	c.JSON(http.StatusOK, result)
+	c.JSON(200, result)
 }
  
 func (d *DocumentHandler) Update_document_handler(c *gin.Context) {
@@ -371,29 +371,29 @@ func (d *DocumentHandler) Delete_document_handler(c *gin.Context) {
 	documentId, err := uuid.Parse(documentIdParam)
 	if err != nil {
 		log.Print("error parse documentid: ", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid document ID"})
+		c.JSON(400, gin.H{"error": "Invalid document ID"})
 		return
 	}
 	userId, err := uuid.Parse(c.GetString("user_id"))
 	if err != nil {
 		log.Print("error parsing user id: ", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		c.JSON(400, gin.H{"error": "Invalid user ID"})
 		return
 	}
 	userRole := c.GetString("role")
 
 	result, err := d.documentService.Delete_document(documentId, userId, userRole)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, result)
+		c.JSON(500, result)
 		return
 	}
 
 	if !result.Status {
-		c.JSON(http.StatusInternalServerError, result)
+		c.JSON(500, result)
 		return
 	}
 
-	c.JSON(http.StatusOK, result)
+	c.JSON(200, result)
 }
 
 
@@ -401,21 +401,21 @@ func (d *DocumentHandler) Approval_document_handler(c *gin.Context) {
 	var req schemas.ApprovalRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		log.Print("error json: ", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
 	documentId, err := uuid.Parse(req.DocumentId)
 	if err != nil {
 		log.Print("error parsing document id: ", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid document id"})
+		c.JSON(400, gin.H{"error": "invalid document id"})
 		return
 	}
 
 	userId, err := uuid.Parse(c.GetString("user_id"))
 	if err != nil {
 		log.Print("error parsing user id: ", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+		c.JSON(400, gin.H{"error": "invalid user id"})
 		return
 	}
 
@@ -431,16 +431,21 @@ func (d *DocumentHandler) Approval_document_handler(c *gin.Context) {
 	result, err := d.documentService.Approval_document(documentId, userId, req.Status, file, fileHeader)
 	if err != nil {
 		log.Print("error ", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		c.JSON(500, gin.H{"error": "internal server error"})
 		return
 	}
 
 	if !result.Status {
-		c.JSON(http.StatusBadRequest, result)
+		switch result.Message{
+		case "Document integrity check failed. The file hash does not match the original document fingerprint":
+			c.JSON(400, result)
+		default:
+			c.JSON(500, result)
+		}
 		return
 	}
 
-	c.JSON(http.StatusOK, result)
+	c.JSON(200, result)
 }
 
 func (h *DocumentHandler) GetStats(c *gin.Context) {

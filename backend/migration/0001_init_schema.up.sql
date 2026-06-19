@@ -68,6 +68,8 @@ CREATE TABLE IF NOT EXISTS documents (
     assessment_id UUID,
     filename VARCHAR(255) UNIQUE,
     filepath VARCHAR(5024),
+    filehash VARCHAR(255),
+    object_id UUID,
     document_type_id UUID,
     status VARCHAR(20),
     created_at TIMESTAMP,

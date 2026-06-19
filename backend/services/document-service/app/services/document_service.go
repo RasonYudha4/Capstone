@@ -1,18 +1,20 @@
 package services
 
 import (
+	"bytes"
+	"capstone/app/core/utils"
 	"capstone/app/repositories"
 	"capstone/app/schemas"
-	"bytes"
-	"fmt"
 	"context"
+	"crypto/hmac"
+	"fmt"
+	"io"
 	"log"
 	"mime/multipart"
 	"time"
-	"io"
+
 	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7"
-
 )
 type DocumentService struct {
 	repo *repositories.DocumentRepo
@@ -155,7 +157,11 @@ func (d *DocumentService) Create_document(req schemas.DocumentRequest, file mult
 
 	isSameName, err := d.repo.Check_document_name(req.FileName, header)
 	if err != nil {
-		return schemas.Response{}, err
+		log.Print("1", err)
+		return schemas.Response{
+			Status: false,
+			Message: "Internal Database Error",
+		}, nil
 	}
 
 	if isSameName{
@@ -167,19 +173,31 @@ func (d *DocumentService) Create_document(req schemas.DocumentRequest, file mult
 
 	isPublic, err := d.repo.Is_public_document(documentTypeId)
 	if err != nil{
-		return schemas.Response{}, err
+		log.Print("error public")
+		return schemas.Response{
+			Status: false,
+			Message: "Internal Database Error",
+		}, nil
 	}
 	fileBytes, _ := io.ReadAll(file)
+	fileHash := utils.GenerateHMAC(fileBytes)
 
-	var filename, filepath string 
+	var filepath string 
+	objectId := uuid.NewString()
+	fileSize := header.Size
+	contentType := header.Header.Get("Content-Type")
 	if isPublic {
-		filename, filepath, err = d.storage.Upload_document(bytes.NewReader(fileBytes), header, req.FileName, isPublic)
+		filepath, err = d.storage.Upload_document(bytes.NewReader(fileBytes), objectId, isPublic, fileSize, contentType)
 	}else{
-		filename, filepath, err = d.storage.Upload_document(bytes.NewReader(fileBytes), header, req.FileName, isPublic)
+		filepath, err = d.storage.Upload_document(bytes.NewReader(fileBytes), objectId, isPublic, fileSize, contentType)
 	}
 
 	if err != nil {
-		return schemas.Response{}, err 
+		log.Print("error minio upload")
+		return schemas.Response{
+			Status: false,
+			Message: "Interal Storage Object Error",
+		}, err 
 	}
 	
 	assessmentId, _ := uuid.Parse(req.AssessmentId)
@@ -191,8 +209,10 @@ func (d *DocumentService) Create_document(req schemas.DocumentRequest, file mult
 		createdById,
 		standardId,
 		serviceId,
-		filename,
+		req.FileName,
 		filepath,
+		fileHash,
+		objectId,
 		role,
 		isPublic,
 	)
@@ -200,7 +220,7 @@ func (d *DocumentService) Create_document(req schemas.DocumentRequest, file mult
 
 	if err != nil {
 		d.storage.Delete_document(filepath)
-		log.Print("error delete document at storage", err)
+		log.Print("error inerting data into db", err)
 		return schemas.Response{}, err
 	}
 
@@ -214,6 +234,7 @@ func (d *DocumentService) Create_document(req schemas.DocumentRequest, file mult
 	if !isCreated {
 		d.storage.Delete_document(filepath)
 		_, err = d.audit.SaveAudit("error", "error inserting data into database", createdById, documentId, "system", time.Now(), time.Now())
+		log.Print("error audit", err)
 		return schemas.Response{
 			Status:  false,
 			Message: "Error insert data",
@@ -227,7 +248,7 @@ func (d *DocumentService) Create_document(req schemas.DocumentRequest, file mult
 
 	adminEmail, adminId, err := d.repo.Get_admin_email()
 	if err != nil {
-		log.Print("Error getting master admin email")
+		log.Print("Error getting master admin email", err)
 	}
 
 	go d.TriggerIngestEvidence(bytes.NewReader(fileBytes), header.Filename, req, document_Id)
@@ -241,7 +262,7 @@ func (d *DocumentService) Create_document(req schemas.DocumentRequest, file mult
 		Type:       "new_document",
 		DocumentId: documentId.String(),
 		Status:     "Pending",
-		Message:    fmt.Sprintf("A new document (%s) requires your approval", filename),
+		Message:    fmt.Sprintf("A new document (%s) requires your approval", req.FileName),
 	})
 
 	return schemas.Response{
@@ -360,6 +381,25 @@ func (d *DocumentService) Delete_document(documentId uuid.UUID, userId uuid.UUID
 
 func (d *DocumentService) Approval_document(documentId, userId uuid.UUID, status string, file multipart.File, fileHeader *multipart.FileHeader) (schemas.Response, error) {
 
+	storedHash, err := d.repo.Check_document_hash(documentId)
+	if err != nil{
+		return schemas.Response{}, err
+	}
+
+	objectId, _  := d.repo.Get_object_id(documentId)
+	filepath, _ := d.repo.Get_document_filePath(documentId, userId)
+	objectHash, _ := d.storage.GenerateObjectHMAC(objectId, filepath)
+
+	if !hmac.Equal(
+		[]byte(storedHash),
+    	[]byte(objectHash),
+	){
+		return schemas.Response{
+			Status: false,
+			Message: "Document integrity check failed. The file hash does not match the original document fingerprint",
+		}, nil
+	}
+
 	isApproved, err := d.repo.Document_is_approved(documentId)
 	if err != nil{
 		return schemas.Response{}, err
@@ -372,11 +412,14 @@ func (d *DocumentService) Approval_document(documentId, userId uuid.UUID, status
 		}, nil
 	}
 
+
 	var rows int64
+	
 	if status == "approved" && file != nil && fileHeader != nil {
-    
+		fileSize := fileHeader.Size
+		contentType := fileHeader.Header.Get("Content-Type") 
 		var signedDocPath string
-    	_, signedDocPath, err = d.storage.Upload_document(file, fileHeader, fileHeader.Filename, false)
+    	_, err = d.storage.Upload_document(file,objectId, false, fileSize, contentType)
     
 		if err != nil {
         	return schemas.Response{}, err
