@@ -28,20 +28,10 @@ export default function PublicDocumentModal({
 
     const displayName = document?.filename ?? 'Unknown File'
 
-    const ext =
-        displayName.split('.').pop()?.toLowerCase() ?? ''
-
-    const isPdf = ext === 'pdf'
-
-    const isImage = [
-        'jpg',
-        'jpeg',
-        'png',
-        'gif',
-        'webp',
-        'bmp',
-        'svg',
-    ].includes(ext)
+    // We no longer branch on file extension (the backend only returns the
+    // object name without an extension), so we always embed the document
+    // in an iframe and let the browser/viewer figure out how to render it.
+    const embedUrl = fileUrl ? `${fileUrl}#toolbar=0&zoom=${zoom}` : null
 
     return (
         <Dialog
@@ -74,44 +64,40 @@ export default function PublicDocumentModal({
                             {displayName}
                         </span>
 
-                        {isImage && (
-                            <div className="flex items-center gap-2 ml-auto">
+                        <div className="flex items-center gap-2 ml-auto">
 
-                                <button
-                                    onClick={() =>
-                                        setZoom((z) =>
-                                            Math.max(50, z - 10)
-                                        )
-                                    }
-                                    className="text-white/70 hover:text-white"
-                                >
-                                    <Minus className="w-4 h-4" />
-                                </button>
+                            <button
+                                onClick={() =>
+                                    setZoom((z) =>
+                                        Math.max(50, z - 10)
+                                    )
+                                }
+                                className="text-white/70 hover:text-white"
+                            >
+                                <Minus className="w-4 h-4" />
+                            </button>
 
-                                <span className="text-white/70 text-xs w-12 text-center">
-                                    {zoom}%
-                                </span>
+                            <span className="text-white/70 text-xs w-12 text-center">
+                                {zoom}%
+                            </span>
 
-                                <button
-                                    onClick={() =>
-                                        setZoom((z) =>
-                                            Math.min(300, z + 10)
-                                        )
-                                    }
-                                    className="text-white/70 hover:text-white"
-                                >
-                                    <Plus className="w-4 h-4" />
-                                </button>
-                            </div>
-                        )}
+                            <button
+                                onClick={() =>
+                                    setZoom((z) =>
+                                        Math.min(300, z + 10)
+                                    )
+                                }
+                                className="text-white/70 hover:text-white"
+                            >
+                                <Plus className="w-4 h-4" />
+                            </button>
+                        </div>
 
                         {fileUrl && (
                             <a
                                 href={fileUrl}
                                 download={displayName}
-                                className={`text-white/70 hover:text-white ${
-                                    !isImage ? 'ml-auto' : ''
-                                }`}
+                                className="text-white/70 hover:text-white"
                                 title="Download"
                             >
                                 <svg
@@ -148,7 +134,7 @@ export default function PublicDocumentModal({
                             </div>
                         )}
 
-                        {!isLoading && !fileUrl && (
+                        {!isLoading && !embedUrl && (
                             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
                                 <FileText className="w-10 h-10 text-white/20" />
                                 <p className="text-white/30">
@@ -157,55 +143,17 @@ export default function PublicDocumentModal({
                             </div>
                         )}
 
-                        {/* PDF */}
-                        {!isLoading && fileUrl && isPdf && (
+                        {/* Always render the document in an iframe — we don't
+                            have a reliable extension to branch on, since the
+                            backend only returns the object name. */}
+                        {!isLoading && embedUrl && (
                             <iframe
-                                src={`${fileUrl}#toolbar=0&zoom=page-width`}
+                                key={embedUrl}
+                                src={embedUrl}
                                 title={displayName}
                                 className="w-full h-full border-0"
                             />
                         )}
-
-                        {/* Images */}
-                        {!isLoading && fileUrl && isImage && (
-                            <div className="w-full h-full overflow-auto flex items-center justify-center p-6">
-                                <img
-                                    src={fileUrl}
-                                    alt={displayName}
-                                    className="rounded-lg shadow-lg"
-                                    style={{
-                                        maxWidth: '100%',
-                                        maxHeight: '100%',
-                                        transform: `scale(${zoom / 100})`,
-                                        transformOrigin: 'center',
-                                        transition:
-                                            'transform 0.15s ease',
-                                    }}
-                                />
-                            </div>
-                        )}
-
-                        {/* Unsupported */}
-                        {!isLoading &&
-                            fileUrl &&
-                            !isPdf &&
-                            !isImage && (
-                                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
-                                    <FileText className="w-12 h-12 text-white/20" />
-
-                                    <p className="text-white/40 text-center">
-                                        Preview is not supported for this file type.
-                                    </p>
-
-                                    <a
-                                        href={fileUrl}
-                                        download={displayName}
-                                        className="text-white underline"
-                                    >
-                                        Download File
-                                    </a>
-                                </div>
-                            )}
                     </div>
                 </div>
             </DialogContent>

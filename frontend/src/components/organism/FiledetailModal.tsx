@@ -131,11 +131,6 @@ export default function FileDetailModal({
         onOpenChange(false)
     }
 
-    // ── file type detection (based on filename, not URL) ──
-    const ext = (document?.filename ?? file?.name ?? '').split('.').pop()?.toLowerCase() ?? ''
-    const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)
-    const isPdf   = ext === 'pdf'
-
     // ── action handlers ──
 
     const handleApprove = handleSubmit((data) => {
@@ -215,9 +210,10 @@ export default function FileDetailModal({
     }
 
     // ── preview url ──
-    const embedUrl = fileUrl
-        ? isPdf ? `${fileUrl}#toolbar=0&zoom=${zoom}` : fileUrl
-        : null
+    // We no longer branch on file extension (the backend only returns the
+    // object name without an extension), so we always embed the document
+    // in an iframe and let the browser/viewer figure out how to render it.
+    const embedUrl = fileUrl ? `${fileUrl}#toolbar=0&zoom=${zoom}` : null
 
     const disabled = isLoading || isUpdating || !file
 
@@ -245,29 +241,27 @@ export default function FileDetailModal({
                                 <FileText className="w-4 h-4 text-white/60 shrink-0" />
                                 <span className="text-white/80 text-xs font-medium truncate">{displayName}</span>
 
-                                {isPdf && (
-                                    <div className="flex items-center gap-2 ml-auto shrink-0">
-                                        <button
-                                            onClick={() => setZoom((z) => Math.max(50, z - 10))}
-                                            className="text-white/60 hover:text-white transition-colors"
-                                        >
-                                            <Minus className="w-3.5 h-3.5" />
-                                        </button>
-                                        <span className="text-white/60 text-xs w-10 text-center">{zoom}%</span>
-                                        <button
-                                            onClick={() => setZoom((z) => Math.min(200, z + 10))}
-                                            className="text-white/60 hover:text-white transition-colors"
-                                        >
-                                            <Plus className="w-3.5 h-3.5" />
-                                        </button>
-                                    </div>
-                                )}
+                                <div className="flex items-center gap-2 ml-auto shrink-0">
+                                    <button
+                                        onClick={() => setZoom((z) => Math.max(50, z - 10))}
+                                        className="text-white/60 hover:text-white transition-colors"
+                                    >
+                                        <Minus className="w-3.5 h-3.5" />
+                                    </button>
+                                    <span className="text-white/60 text-xs w-10 text-center">{zoom}%</span>
+                                    <button
+                                        onClick={() => setZoom((z) => Math.min(200, z + 10))}
+                                        className="text-white/60 hover:text-white transition-colors"
+                                    >
+                                        <Plus className="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
 
                                 {fileUrl && (
                                     <a
                                         href={fileUrl}
                                         download={displayName}
-                                        className={`text-white/60 hover:text-white transition-colors shrink-0 ${!isPdf ? 'ml-auto' : ''}`}
+                                        className="text-white/60 hover:text-white transition-colors shrink-0"
                                         title="Download"
                                     >
                                         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -295,47 +289,16 @@ export default function FileDetailModal({
                                     </div>
                                 )}
 
-                                {/* PDF preview */}
-                                {!isLoading && !isUpdating && embedUrl && isPdf && (
+                                {/* Always render the document in an iframe — we don't
+                                    have a reliable extension to branch on, since the
+                                    backend only returns the object name. */}
+                                {!isLoading && !isUpdating && embedUrl && (
                                     <iframe
                                         key={embedUrl}
                                         src={embedUrl}
                                         className="w-full h-full border-0"
                                         title={displayName}
                                     />
-                                )}
-
-                                {/* Image preview */}
-                                {!isLoading && !isUpdating && embedUrl && isImage && (
-                                    <div className="w-full h-full overflow-auto flex items-center justify-center p-6">
-                                        <img
-                                            src={embedUrl}
-                                            alt={displayName}
-                                            className="max-w-full max-h-full object-contain rounded shadow-lg"
-                                            style={{
-                                                transform: `scale(${zoom / 100})`,
-                                                transformOrigin: 'center',
-                                                transition: 'transform 0.15s',
-                                            }}
-                                        />
-                                    </div>
-                                )}
-
-                                {/* Unsupported file type */}
-                                {!isLoading && !isUpdating && embedUrl && !isPdf && !isImage && (
-                                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-                                        <FileText className="w-10 h-10 text-white/20" />
-                                        <p className="text-white/40 text-xs text-center px-6">
-                                            Pratinjau tidak didukung untuk tipe berkas ini.
-                                        </p>
-                                        <a
-                                            href={fileUrl}
-                                            download={displayName}
-                                            className="text-xs text-white/60 underline hover:text-white transition-colors"
-                                        >
-                                            Download berkas
-                                        </a>
-                                    </div>
                                 )}
                             </div>
                         </div>

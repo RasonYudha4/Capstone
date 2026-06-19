@@ -25,6 +25,7 @@ export const documentKeys = {
     mine:         (query?: PaginationQuery) => [...documentKeys.all, 'mine', query] as const,
     public:       (query?: PaginationQuery) => [...documentKeys.all, 'public', query] as const,
     publicDetail: (id: string) => [...documentKeys.all, 'public', 'detail', id] as const,
+    stats:        ['documents', 'stats'] as const,
 }
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
@@ -125,6 +126,16 @@ export const useDocumentsByStatus = (status: string, query?: PaginationQuery) =>
 }
 
 // ─── Mutations ────────────────────────────────────────────────────────────────
+//
+// IMPORTANT: every mutation below invalidates `documentKeys.all` (the root
+// key, ['documents']), not just `documentKeys.lists()`. React Query's
+// invalidateQueries does a PREFIX match — invalidating ['documents','list']
+// only catches useDocuments. It does NOT catch ['documents','service',...],
+// ['documents','standard',...], ['documents','assessment',...], or
+// ['documents','stats'], because those are sibling branches, not children
+// of 'list'. Invalidating the root ['documents'] key catches everything
+// (lists, filtered views, details, stats) in one call, and React Query will
+// only actually refetch the ones currently mounted/active.
 
 export const useUploadDocument = () => {
     const queryClient = useQueryClient()
@@ -135,7 +146,7 @@ export const useUploadDocument = () => {
     >({
         mutationFn: ({ body, file }) => documentService.upload(body, file),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: documentKeys.lists() })
+            queryClient.invalidateQueries({ queryKey: documentKeys.all })
         },
     })
 }
@@ -150,7 +161,7 @@ export const useUpdateDocument = () => {
         mutationFn: ({ body, file }) => documentService.update(body, file),
         onSuccess: (_, { body }) => {
             queryClient.invalidateQueries({ queryKey: documentKeys.detail(body.document_id) })
-            queryClient.invalidateQueries({ queryKey: documentKeys.lists() })
+            queryClient.invalidateQueries({ queryKey: documentKeys.all })
         },
     })
 }
@@ -180,14 +191,14 @@ export const useDeleteDocument = () => {
         mutationFn: (documentId) => documentService.delete(documentId),
         onSuccess: (_, documentId) => {
             queryClient.removeQueries({ queryKey: documentKeys.detail(documentId) })
-            queryClient.invalidateQueries({ queryKey: documentKeys.lists() })
+            queryClient.invalidateQueries({ queryKey: documentKeys.all })
         },
     })
 }
 
 export function useStats() {
     return useQuery<StatsResponse>({
-        queryKey: ['documents', 'stats'],
+        queryKey: documentKeys.stats,
         queryFn: statsService.getStats,
         staleTime: 1000 * 60 * 5,
         refetchInterval: 1000 * 30,
