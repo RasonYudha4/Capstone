@@ -46,6 +46,10 @@ def ingest_evidence(
     doc_type:               str = Form(...),
     nama_berkas:            str = Form(...),
     deskripsi:              str = Form(""),
+    service_id:             str = Form(...),
+    standard_id:            str = Form(...),
+    assessment_id:          str = Form(...),
+    document_id:            str = Form(...),
 ):
     suffix = Path(file.filename).suffix
     try:
@@ -63,6 +67,10 @@ def ingest_evidence(
             "doc_type":                 doc_type,
             "nama_berkas":              nama_berkas,
             "deskripsi":                deskripsi,
+            "service_id":               service_id,
+            "standard_id":              standard_id,
+            "assessment_id":            assessment_id,
+            "document_id":              document_id
         }
 
         result = run_ingest_evidence(tmp_path, form_metadata)

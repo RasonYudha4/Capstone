@@ -55,7 +55,7 @@ def run_query(question: str) -> str:
     return answer
 
 
-def run_query_stream(question: str, chat_history: list[dict]) -> Generator[str, None, None]:
+def run_query_stream(question: str, chat_history: list[dict], app_context=None) -> Generator[str, None, None]:
     log.info("=== stream query start: '%s' ===", question[:80])
     t_start = time.perf_counter()
 
@@ -71,38 +71,53 @@ def run_query_stream(question: str, chat_history: list[dict]) -> Generator[str, 
         intent.get("bab_code"),
     )
 
-    # ── Routed handlers — yield as single chunk to keep interface consistent ──
-    if intent["query_type"] == "gap_analysis":
-        answer = _run_gap_analysis(intent)
-        log.info("=== stream gap analysis done in %.1fms ===", (time.perf_counter() - t_start) * 1000)
-        yield answer
-        return
+    all_intents = intent.get("all_intents", [intent["query_type"]])
 
-    if intent["query_type"] == "inventory":
-        answer = _run_inventory(intent)
-        log.info("=== stream inventory done in %.1fms ===", (time.perf_counter() - t_start) * 1000)
-        yield answer
-        return
+    log.info("active intents: %s", all_intents)
 
-    # ── RAG streaming path ────────────────────────────────────────────────────
-    filters = _build_filters(intent)
+    parts: list[str] = []
 
-    t_embed_start = time.perf_counter()
-    q_vec = embed_query(resolved_question, embedder)
-    log.info("query embed=%.1fms", (time.perf_counter() - t_embed_start) * 1000)
+    needs_rag = any(i in all_intents for i in ("requirement_lookup", "evidence_check"))
 
-    t_retrieve_start = time.perf_counter()
-    results = retrieve(q_vec, top_k=settings.top_k, filters=filters)
-    log.info("retrieval=%.1fms chunks=%d", (time.perf_counter() - t_retrieve_start) * 1000, len(results))
+    if needs_rag:
+        filters = _build_filters(intent)
+        q_vec   = embed_query(resolved_question, embedder)
+        results = retrieve(q_vec, top_k=settings.top_k, filters=filters)
+        prompt  = build_prompt(resolved_question, results, intent)
 
-    prompt = build_prompt(resolved_question, results, intent)
-    log.info(
-        "pipeline overhead=%.1fms | prompt_chars=%d",
-        (time.perf_counter() - t_start) * 1000,
-        len(prompt),
-    )
+        # Collect the full RAG answer first (we need it before appending commands)
+        rag_answer = "".join(generate_stream(prompt, generator))
+        parts.append(rag_answer)
 
-    yield from generate_stream(prompt, generator)
+        # 2. Navigation commands — derived from what RAG actually found
+        if "ui_navigation" in all_intents or _should_navigate(all_intents, results):
+            nav_block = _build_navigation_block(intent, results, app_context)
+            if nav_block:
+                parts.append(nav_block)
+
+    # ── Pure navigation (no RAG needed) ───────────────────────────────────────
+    elif "ui_navigation" in all_intents:
+        nav_block = _build_navigation_block(intent, [], app_context)
+        if nav_block:
+            parts.append(nav_block)
+
+    # ── Unchanged single-intent paths ─────────────────────────────────────────
+    elif intent["query_type"] == "gap_analysis":
+        parts.append(_run_gap_analysis(intent))
+    elif intent["query_type"] == "inventory":
+        parts.append(_run_inventory(intent))
+    else:
+        q_vec   = embed_query(resolved_question, embedder)
+        results = retrieve(q_vec, top_k=settings.top_k, filters=None)
+        prompt  = build_prompt(resolved_question, results, intent)
+        parts.append("".join(generate_stream(prompt, generator)))
+
+    yield "\n\n".join(parts)
+
+
+def _should_navigate(all_intents: list[str], results: list) -> bool:
+    """Automatically add navigation if evidence was found — user probably wants to open it."""
+    return "evidence_check" in all_intents and len(results) > 0
 
 
 # ---------------------------------------------------------------------------
@@ -165,3 +180,76 @@ def _run_inventory(intent: dict) -> str:
         for m in files
     ]
     return f"Dokumen yang tersedia ({len(files)} berkas):\n" + "\n".join(lines)
+
+def _build_navigation_block(intent: dict, results: list, ctx=None) -> str:
+    lines = []
+
+    # Navigate to storage if not already there
+    if not ctx or ctx.current_path != "/storage":
+        lines.append('<command>{"type":"NAVIGATE","path":"/storage"}</command>')
+
+    # Set filters from intent
+    if intent.get("standar") and ctx:
+        matched_service = _match_service(intent, ctx)
+        if matched_service:
+            lines.append(
+                f'<command>{{"type":"SET_SERVICE_FILTER",'
+                f'"serviceId":"{matched_service.id}","label":"{matched_service.label}"}}</command>'
+            )
+
+    # If RAG found actual evidence chunks, open the first matching document
+    evidence_results = [r for r in results if not r.is_kmk]
+    if evidence_results:
+        # metadata on the chunk tells us the real document id
+        doc_id       = evidence_results[0].metadata.get("document_id")
+        doc_filename = evidence_results[0].metadata.get("nama_berkas", "dokumen")
+
+        if doc_id:
+            lines.append(
+                f'<command>{{"type":"OPEN_DOCUMENT","documentId":"{doc_id}"}}</command>'
+            )
+            lines.append(f"\n📄 Membuka **{doc_filename}** yang relevan...")
+        else:
+            lines.append(
+                "\n⚠️ Dokumen ditemukan dalam indeks tetapi belum memiliki ID — "
+                "pastikan metadata `document_id` disimpan saat ingestion."
+            )
+    elif "evidence_check" in intent.get("all_intents", []):
+        lines.append(
+            "\n📭 Tidak ditemukan berkas bukti untuk standar ini. "
+            "Silakan upload dokumen yang relevan."
+        )
+
+    log.info("nav block output: %s", "\n".join(lines))
+
+    return "\n".join(lines)
+
+def _match_service(intent: dict, ctx) -> object | None:
+    """
+    Tries to find the matching service option from AppContext
+    based on the bab_code or standar code in the intent.
+
+    Returns the first ServiceOption whose label contains the bab prefix,
+    or None if no match is found.
+    """
+    if not ctx or not ctx.available_services:
+        return None
+
+    bab = (intent.get("bab_code") or "").upper()
+    standar = (intent.get("standar") or "").upper()
+
+    search_terms = []
+    if bab:
+        # "BAB TKRS" → "TKRS"
+        parts = bab.split()
+        search_terms.extend(parts[1:] if len(parts) > 1 else parts)
+    if standar:
+        # "AP 1.1" → "AP"
+        search_terms.append(standar.split()[0])
+
+    for term in search_terms:
+        for svc in ctx.available_services:
+            if term in svc.label.upper():
+                return svc
+
+    return None

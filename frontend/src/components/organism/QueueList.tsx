@@ -11,7 +11,7 @@ function StatusBadge({ status }: { status: string }) {
     const map: Record<string, string> = {
         approved: 'bg-green-100 text-green-800',
         rejected: 'bg-red-100 text-red-800',
-        pending:  'bg-amber-100 text-amber-800',
+        pending: 'bg-amber-100 text-amber-800',
     }
     return (
         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${map[status] ?? map.pending}`}>
@@ -35,13 +35,12 @@ function shortId(id: string) {
 
 function toFileRecord(doc: DocumentResponse): FileRecord {
     return {
-        id:         doc.document_id,
-        name:       doc.filename,
-        type:       doc.document_type ?? '',
-        size:       '',
+        id: doc.document_id,
+        name: doc.filename,
+        type: doc.document_type ?? '',
         uploadedBy: doc.created_by,
-        date:       doc.updated_at,
-        status:     (doc.status as FileRecord['status']) ?? 'pending',
+        lastUpdated: doc.updated_at,
+        status: (doc.status as FileRecord['status']) ?? 'pending',
     }
 }
 
@@ -102,12 +101,12 @@ function DocCard({ doc, onView }: DocCardProps) {
 // ── QueueList ──────────────────────────────────────────────────────────────
 
 export default function QueueList() {
-    const [docs, setDocs]             = useState<DocumentResponse[]>([])
-    const [loading, setLoading]       = useState(true)
+    const [docs, setDocs] = useState<DocumentResponse[]>([])
+    const [loading, setLoading] = useState(true)
 
-    const [selected, setSelected]         = useState<DocumentResponse | null>(null)
-    const [fileUrl, setFileUrl]           = useState<string | undefined>()
-    const [modalOpen, setModalOpen]       = useState(false)
+    const [selected, setSelected] = useState<DocumentResponse | null>(null)
+    const [fileUrl, setFileUrl] = useState<string | undefined>()
+    const [modalOpen, setModalOpen] = useState(false)
     const [modalLoading, setModalLoading] = useState(false)
 
     // ── fetch / refetch ──

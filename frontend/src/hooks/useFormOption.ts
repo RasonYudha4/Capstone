@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import { formOptionsService } from '@/services/formOption_service'
-import type { StandardOption, AssessmentOption, DocumentTypeOption } from '@/dtos/formOption_dto'
+import type { StandardOption, AssessmentOption } from '@/dtos/formOption_dto'
 
 export const formOptionKeys = {
     all: ['form-options'] as const,
@@ -25,7 +25,7 @@ export const useFormOptions = () => {
 
     return {
         services,
-        documentTypes,       // ← new
+        documentTypes,
         getStandards,
         getAssessments,
         isLoading: query.isLoading,

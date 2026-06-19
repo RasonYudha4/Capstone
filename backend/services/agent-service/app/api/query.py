@@ -28,7 +28,7 @@ def query_stream(req: QueryRequest):
  
     def _stream_and_record():
         chunks: list[str] = []
-        for chunk in run_query_stream(req.question, history):
+        for chunk in run_query_stream(req.question, history, req.app_context):
             chunks.append(chunk)
             yield chunk
         conversation_store.append_turn(
@@ -36,8 +36,5 @@ def query_stream(req: QueryRequest):
         )
  
     response = StreamingResponse(_stream_and_record(), media_type="text/plain")
-    # Client reads this once on first reply and echoes it back on subsequent
-    # requests in the same conversation. Opaque to the client — not constructed
-    # or interpreted by it, just stored and replayed.
     response.headers["X-Session-Id"] = session_id
     return response

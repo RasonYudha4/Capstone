@@ -1,65 +1,25 @@
-import { useEffect, useRef, useState } from 'react'
+// ChatPanel.tsx — now a "dumb" controlled component
+import { useEffect, useRef } from 'react'
 import { FileSearch } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { queryService } from '@/services/query_service'
 import PanelHeader from '../atoms/PanelHeader'
 import InputBar from '../molecules/InputBar'
 import MessageBubble, { type Message } from '../molecules/MessageBubble'
 
-const INITIAL_MESSAGE: Message = {
-    id: 'init',
-    role: 'assistant',
-    content: 'Halo, ada yang bisa dibantu?',
-    timestamp: new Date(),
-}
-
 interface ChatPanelProps {
     onClose: () => void
+    messages: Message[]
+    isLoading: boolean
+    error: Error | null
+    onSend: (content: string) => void
 }
 
-export default function ChatPanel({ onClose }: ChatPanelProps) {
-    const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE])
-    const [isLoading, setIsLoading] = useState(false)
-    const [error, setError] = useState<Error | null>(null)
+export default function ChatPanel({ onClose, messages, isLoading, error, onSend }: ChatPanelProps) {
     const bottomRef = useRef<HTMLDivElement>(null)
-    const streamingIdRef = useRef<string | null>(null)
 
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     }, [messages])
-
-    const handleSend = async (content: string) => {
-        setError(null)
-        setIsLoading(true)
-
-        const assistantId = crypto.randomUUID()
-        streamingIdRef.current = assistantId
-
-        setMessages((prev) => [
-            ...prev,
-            { id: crypto.randomUUID(), role: 'user', content, timestamp: new Date() },
-            { id: assistantId, role: 'assistant', content: '', timestamp: new Date() },
-        ])
-
-        try {
-            await queryService.queryStream(
-                { question: content },
-                (chunk) => {
-                    setMessages((prev) =>
-                        prev.map((m) =>
-                            m.id === streamingIdRef.current
-                                ? { ...m, content: m.content + chunk }
-                                : m
-                        )
-                    )
-                },
-            )
-        } catch (err) {
-            setError(err instanceof Error ? err : new Error('Stream failed.'))
-        } finally {
-            setIsLoading(false)
-        }
-    }
 
     return (
         <div className="flex flex-col w-85 h-120 bg-gray-50 rounded-2xl shadow-2xl overflow-hidden border border-gray-100">
@@ -80,7 +40,7 @@ export default function ChatPanel({ onClose }: ChatPanelProps) {
                     <div ref={bottomRef} />
                 </div>
             </ScrollArea>
-            <InputBar onSend={handleSend} disabled={isLoading} showAttachment />
+            <InputBar onSend={onSend} disabled={isLoading} showAttachment />
         </div>
     )
 }

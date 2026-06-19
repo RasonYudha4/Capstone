@@ -230,7 +230,7 @@ func (d *DocumentService) Create_document(req schemas.DocumentRequest, file mult
 		log.Print("Error getting master admin email")
 	}
 
-	go d.TriggerIngestEvidence(bytes.NewReader(fileBytes), header.Filename, req)
+	go d.TriggerIngestEvidence(bytes.NewReader(fileBytes), header.Filename, req, document_Id)
 
 	go func() {
 		log.Printf("[email] NotifyDeptHead done for document %s", documentId)

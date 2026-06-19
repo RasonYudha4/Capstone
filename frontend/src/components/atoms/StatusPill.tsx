@@ -1,5 +1,3 @@
-import React from 'react'
-
 export type FileStatus = 'pending' | 'approved' | 'rejected'
 
 type StatusConfig = {

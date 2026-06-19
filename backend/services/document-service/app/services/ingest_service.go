@@ -12,7 +12,7 @@ import (
 	"capstone/app/schemas"
 )
 
-func (s *DocumentService) TriggerIngestEvidence(file io.Reader, fileName string, req schemas.DocumentRequest) {
+func (s *DocumentService) TriggerIngestEvidence(file io.Reader, fileName string, req schemas.DocumentRequest, documentId string) {
 	agentURL := os.Getenv("AGENT_SERVICE_URL")
 	if agentURL == "" {
 		log.Println("[ingest] AGENT_SERVICE_URL not set, skipping evidence ingest")
@@ -72,6 +72,10 @@ func (s *DocumentService) TriggerIngestEvidence(file io.Reader, fileName string,
 		"doc_type":          		docType,
 		"nama_berkas":       		req.FileName,
 		"deskripsi":         		req.Description,
+		"service_id":               req.ServicesId,
+		"standard_id":              req.StandardId,
+		"assessment_id":            req.AssessmentId,
+		"document_id":              documentId,
 	}
 	for k, v := range fields {
 		if err := mw.WriteField(k, v); err != nil {

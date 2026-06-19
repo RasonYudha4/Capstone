@@ -1,4 +1,3 @@
-import { Card, CardContent } from '@/components/ui/card'
 import Avatar from '../atoms/Avatar'
 import GradientCard from '../atoms/GradientCard'
 

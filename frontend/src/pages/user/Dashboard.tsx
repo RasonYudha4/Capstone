@@ -11,7 +11,7 @@ import {
     TableCell,
 } from '@/components/ui/table'
 import PublicDocumentModal from '@/components/organism/PublicDocumentModal'
-import ChatWidget  from '@/components/organism/ChatWidget'
+import ChatWidget from '@/components/organism/ChatWidget'
 import { usePublicDocuments, usePublicDocumentUrl } from '@/hooks/useDocument'
 import type { DocumentResponse } from '@/dtos/document_dto'
 
@@ -163,11 +163,10 @@ export default function UserDashboard() {
                             <button
                                 key={t}
                                 onClick={() => setActiveType(t)}
-                                className={`px-5 py-2 rounded-xl text-sm font-semibold transition-colors ${
-                                    activeType === t
+                                className={`px-5 py-2 rounded-xl text-sm font-semibold transition-colors ${activeType === t
                                         ? 'bg-[#6B5FAE] text-white'
                                         : 'bg-white border border-gray-200 text-gray-500 hover:border-[#6B5FAE] hover:text-[#6B5FAE]'
-                                }`}
+                                    }`}
                             >
                                 {t}
                             </button>

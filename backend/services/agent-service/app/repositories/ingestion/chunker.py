@@ -154,18 +154,22 @@ def chunk_evidence(
     # Attach form metadata to every chunk
     enriched = []
     for chunk in raw_chunks:
-        chunk.is_kmk           = False
-        chunk.bab_code         = form_metadata.get("bab_code")
-        chunk.standar       = form_metadata.get("standar")
-        chunk.kelompok         = form_metadata.get("kelompok")
-        chunk.element_penilaian            = form_metadata.get("element_penilaian")
-        chunk.fungsi_pelayanan = form_metadata.get("fungsi_pelayanan")
-        chunk.doc_type         = form_metadata.get("doc_type")
-        chunk.nama_berkas      = form_metadata.get("nama_berkas")
-        chunk.deskripsi        = form_metadata.get("deskripsi", "")
-        chunk.is_signed        = doc.signature_status.value
-        chunk.standar_code           = form_metadata.get("standar_code")
-        chunk.element_penilaian_code = form_metadata.get("element_penilaian_code")
+        chunk.is_kmk                    = False
+        chunk.bab_code                  = form_metadata.get("bab_code")
+        chunk.standar                   = form_metadata.get("standar")
+        chunk.kelompok                  = form_metadata.get("kelompok")
+        chunk.element_penilaian         = form_metadata.get("element_penilaian")
+        chunk.fungsi_pelayanan          = form_metadata.get("fungsi_pelayanan")
+        chunk.doc_type                  = form_metadata.get("doc_type")
+        chunk.nama_berkas               = form_metadata.get("nama_berkas")
+        chunk.deskripsi                 = form_metadata.get("deskripsi", "")
+        chunk.is_signed                 = doc.signature_status.value
+        chunk.standar_code              = form_metadata.get("standar_code")
+        chunk.element_penilaian_code    = form_metadata.get("element_penilaian_code")
+        chunk.service_id                = form_metadata.get("service_id")
+        chunk.standard_id               = form_metadata.get("standard_id")
+        chunk.assessment_id             = form_metadata.get("assessment_id")
+        chunk.document_id               = form_metadata.get("document_id")
         enriched.append(chunk)
 
     return enriched

@@ -1,8 +1,10 @@
 import axioHandler from '@/cores/axios'
+import type { AgentCommand } from '@/cores/types'
 import type {
     QueryRequest,
     QueryResponse,
 } from '@/dtos/query_dto'
+import { createCommandParser, type CommandHandler } from '@/lib/command-stream-parser'
 
 export const queryService = {
 
@@ -18,6 +20,7 @@ export const queryService = {
     queryStream: async (
         body: QueryRequest,
         onChunk: (chunk: string) => void,
+        onCommand?: (cmd: AgentCommand) => void,
         onDone?: () => void,
         onSessionId?: (sessionId: string) => void,
     ): Promise<void> => {
@@ -43,10 +46,17 @@ export const queryService = {
             const reader = response.body.getReader()
             const decoder = new TextDecoder()
 
+            const commandHandler: CommandHandler = onCommand 
+                ? (cmd) => {
+                    onCommand(cmd)
+                }
+                : () => {}
+
+            const parser = createCommandParser(onChunk, commandHandler) 
             while (true) {
                 const { done, value } = await reader.read()
                 if (done) break
-                onChunk(decoder.decode(value, { stream: true }))
+                parser(decoder.decode(value, { stream: true }))
             }
 
             onDone?.()

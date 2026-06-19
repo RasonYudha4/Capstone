@@ -85,6 +85,20 @@ _INTENT_LABELS: dict[str, list[str]] = {
         "apa itu KARS",
         "jelaskan proses akreditasi secara umum",
     ],
+    "ui_navigation": [
+        "tunjukkan dokumen untuk standar ini",
+        "buka halaman storage",
+        "navigasi ke berkas untuk bab TKRS",
+        "tampilkan file untuk fungsi pelayanan ini",
+        "bawa saya ke dokumen yang relevan",
+        "pergi ke halaman penyimpanan",
+        "filter berkas berdasarkan standar AP",
+        "arahkan saya ke berkas yang ada",
+        "buka filter untuk elemen penilaian ini",
+        "tunjukkan cara menemukan dokumen tersebut",
+        "bagaimana cara mengakses berkas itu",
+        "dimana saya bisa lihat dokumen untuk bab ini",
+    ],
 }
 
 
@@ -122,16 +136,38 @@ class IntentClassifier:
             best,
         )
         return best
+    
+    def classify_multi(self, question: str, threshold: float = 0.70) -> list[str]:
+        q_vec = np.array(embed_query(question, self._embedder))
+        scores = {
+            label: float(np.dot(q_vec, centroid))
+            for label, centroid in self._centroids.items()
+        }
+        # Return all labels that pass the threshold, sorted by score descending
+        active = [
+            label for label, score in scores.items()
+            if score >= threshold
+        ]
+        active.sort(key=lambda l: scores[l], reverse=True)
+
+        log.info(
+            "multi-intent scores: %s → active=%s",
+            {k: f"{v:.3f}" for k, v in scores.items()},
+            active,
+        )
+        return active if active else [max(scores, key=scores.__getitem__)]
 
 
 def extract_intent(question: str, classifier: IntentClassifier) -> dict:
     query_type = classifier.classify(question)
 
+    all_intents = classifier.classify_multi(question, threshold=0.70)
     standar_match = re.search(r'\b([A-Z]{2,5}\.?\s?\d+\.?\d*)\b', question)
     bab_match     = re.search(r'\bBAB\s+([A-Z]+|\d+)\b', question, re.IGNORECASE)
 
     return {
         "query_type": query_type,
+        "all_intents": all_intents, 
         "standar":    standar_match.group(1) if standar_match else None,
         "bab_code":   bab_match.group(0).upper() if bab_match else None,
         "filters":    {},

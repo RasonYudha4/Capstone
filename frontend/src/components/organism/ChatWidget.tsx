@@ -1,13 +1,23 @@
 import { useState } from 'react'
 import { MessageCircleQuestion, X } from 'lucide-react'
 import ChatPanel from './ChatPanel'
+import { useAgentChat } from '@/hooks/useAgentChat'
 
 export default function ChatWidget() {
     const [isOpen, setIsOpen] = useState(false)
+    const { messages, isLoading, error, send } = useAgentChat()
 
     return (
         <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
-            {isOpen && <ChatPanel onClose={() => setIsOpen(false)} />}
+            {isOpen && (
+                <ChatPanel
+                    onClose={() => setIsOpen(false)}
+                    messages={messages}
+                    isLoading={isLoading}
+                    error={error}
+                    onSend={send}
+                />
+            )}
 
             <div className="relative">
                 <button

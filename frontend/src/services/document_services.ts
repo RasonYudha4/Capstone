@@ -1,7 +1,6 @@
 import axioHandler from '@/cores/axios'
 import type {
     DocumentListResponse,
-    FileUrlResponse,
     CreateDocumentBody,
     UpdateDocumentBody,
     ApprovalRequest,
@@ -121,16 +120,16 @@ export const documentService = {
     },
 
     upload: async (body: CreateDocumentBody, file: File): Promise<ApiResponse> => {
-    const form = new FormData()
-    form.append('uploadedFile', file)
-    Object.entries(body).forEach(([key, value]) => {
-        if (value !== undefined) form.append(key, value)
-    })
-    const { data } = await axioHandler.post<ApiResponse>('/documents/upload', form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-    })
-    return data
-},
+        const form = new FormData()
+        form.append('uploadedFile', file)
+        Object.entries(body).forEach(([key, value]) => {
+            if (value !== undefined) form.append(key, value)
+        })
+        const { data } = await axioHandler.post<ApiResponse>('/documents/upload', form, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        })
+        return data
+    },
 
     update: async (body: UpdateDocumentBody, file?: File): Promise<ApiResponse> => {
         const form = new FormData()
