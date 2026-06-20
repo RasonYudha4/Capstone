@@ -137,16 +137,18 @@ class IntentClassifier:
         )
         return best
     
-    def classify_multi(self, question: str, threshold: float = 0.70) -> list[str]:
+    def classify_multi(self, question: str, threshold: float = 0.02) -> list[str]:
         q_vec = np.array(embed_query(question, self._embedder))
         scores = {
             label: float(np.dot(q_vec, centroid))
             for label, centroid in self._centroids.items()
         }
-        # Return all labels that pass the threshold, sorted by score descending
+
+        best_score = max(scores.values())
+
         active = [
             label for label, score in scores.items()
-            if score >= threshold
+            if best_score - score <= threshold
         ]
         active.sort(key=lambda l: scores[l], reverse=True)
 
@@ -161,7 +163,7 @@ class IntentClassifier:
 def extract_intent(question: str, classifier: IntentClassifier) -> dict:
     query_type = classifier.classify(question)
 
-    all_intents = classifier.classify_multi(question, threshold=0.70)
+    all_intents = classifier.classify_multi(question)
     standar_match = re.search(r'\b([A-Z]{2,5}\.?\s?\d+\.?\d*)\b', question)
     bab_match     = re.search(r'\bBAB\s+([A-Z]+|\d+)\b', question, re.IGNORECASE)
 

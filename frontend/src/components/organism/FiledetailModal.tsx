@@ -81,10 +81,10 @@ export default function FileDetailModal({
     const canReview = role === 'master-admin'
 
     // ── display values ──
-    const displayName      = document?.filename     ?? file?.name       ?? '—'
-    const displayCreatedBy = document?.created_by   ?? file?.uploadedBy ?? '—'
+    const displayName = document?.filename ?? file?.name ?? '—'
+    const displayCreatedBy = document?.created_by ?? file?.uploadedBy ?? '—'
     const displayUpdatedAt = formatDate(document?.updated_at)
-    const displayStatus    = (document?.status ?? file?.status) as FileStatus | undefined
+    const displayStatus = (document?.status ?? file?.status) as FileStatus | undefined
 
     // strip extension for display and form default
     const strippedName = displayName.replace(/\.[^.]+$/, '')
@@ -108,12 +108,11 @@ export default function FileDetailModal({
         confirmLabel: string
         variant: 'danger' | 'warning' | 'default'
         onConfirm: () => void
-    }>({ open: false, title: '', description: '', confirmLabel: '', variant: 'default', onConfirm: () => {} })
+    }>({ open: false, title: '', description: '', confirmLabel: '', variant: 'default', onConfirm: () => { } })
 
     // ── sync form when document/file changes ──
     useEffect(() => {
         const name = (document?.filename ?? file?.name ?? '').replace(/\.[^.]+$/, '')
-        console.log('[FileDetailModal] syncing form, name:', name)
         reset({
             filename: name,
             catatan: '',
@@ -134,7 +133,7 @@ export default function FileDetailModal({
     // ── file type detection (based on filename, not URL) ──
     const ext = (document?.filename ?? file?.name ?? '').split('.').pop()?.toLowerCase() ?? ''
     const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)
-    const isPdf   = ext === 'pdf'
+    const isPdf = ext === 'pdf'
 
     // ── action handlers ──
 
@@ -171,13 +170,6 @@ export default function FileDetailModal({
 
         const newFilename = data.filename?.trim() || undefined
 
-        console.log('[FileDetailModal] handleUpdate called')
-        console.log('  file:', file)
-        console.log('  data.filename:', data.filename)
-        console.log('  newFilename (sent to backend):', newFilename)
-        console.log('  attachedFile:', attachedFile?.name ?? 'none')
-        console.log('  catatan:', data.catatan)
-
         openConfirm({
             title: 'Update Status Berkas?',
             description: `Anda akan memperbarui berkas "${file.name}". Pastikan data sudah benar.`,
@@ -188,7 +180,6 @@ export default function FileDetailModal({
                 setIsUpdating(true)
                 try {
                     await onUpdate?.(file, data.catatan ?? '', attachedFile ?? undefined, newFilename)
-                    console.log('[FileDetailModal] update success, reloading page...')
                     onOpenChange(false)
                     window.location.reload()
                 } catch (err) {
@@ -413,59 +404,59 @@ export default function FileDetailModal({
                                 )}
                             </ScrollArea>
 
-                           {/* Action buttons */}
-<div className="flex flex-col gap-2 px-5 py-4 shrink-0 border-t border-white/20">
+                            {/* Action buttons */}
+                            <div className="flex flex-col gap-2 px-5 py-4 shrink-0 border-t border-white/20">
 
-    {/* Approve + Reject — master-admin only, hidden when approved */}
-    {canReview && displayStatus !== 'approved' && (
-        <div className="flex gap-2">
-            <Button
-                type="button"
-                onClick={handleApprove}
-                disabled={disabled}
-                className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-semibold text-xs h-9 disabled:opacity-40 gap-1.5"
-            >
-                <CheckCircle className="w-3.5 h-3.5" />
-                Setujui
-            </Button>
-            <Button
-                type="button"
-                onClick={handleReject}
-                disabled={disabled}
-                className="flex-1 bg-red-500 hover:bg-red-600 text-white rounded-xl font-semibold text-xs h-9 disabled:opacity-40 gap-1.5"
-            >
-                <XCircle className="w-3.5 h-3.5" />
-                Tolak
-            </Button>
-        </div>
-    )}
+                                {/* Approve + Reject — master-admin only, hidden when approved */}
+                                {canReview && displayStatus !== 'approved' && (
+                                    <div className="flex gap-2">
+                                        <Button
+                                            type="button"
+                                            onClick={handleApprove}
+                                            disabled={disabled}
+                                            className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-semibold text-xs h-9 disabled:opacity-40 gap-1.5"
+                                        >
+                                            <CheckCircle className="w-3.5 h-3.5" />
+                                            Setujui
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            onClick={handleReject}
+                                            disabled={disabled}
+                                            className="flex-1 bg-red-500 hover:bg-red-600 text-white rounded-xl font-semibold text-xs h-9 disabled:opacity-40 gap-1.5"
+                                        >
+                                            <XCircle className="w-3.5 h-3.5" />
+                                            Tolak
+                                        </Button>
+                                    </div>
+                                )}
 
-    {/* Update + Delete — Update hidden when approved */}
-    <div className="flex gap-2">
-        {displayStatus !== 'approved' && (
-            <Button
-                type="button"
-                onClick={handleUpdate}
-                disabled={disabled}
-                className="flex-1 bg-white/20 hover:bg-white/30 text-white rounded-xl font-semibold text-xs h-9 disabled:opacity-40 gap-1.5"
-            >
-                {isUpdating
-                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    : <RefreshCw className="w-3.5 h-3.5" />
-                }
-                {isUpdating ? 'Menyimpan...' : 'Update'}
-            </Button>
-        )}
-        <Button
-            type="button"
-            onClick={handleDelete}
-            disabled={disabled}
-            className="flex-1 bg-white/10 hover:bg-red-500/40 text-white/70 hover:text-white rounded-xl font-semibold text-xs h-9 disabled:opacity-40 gap-1.5 transition-colors"
-        >
-            <Trash2 className="w-3.5 h-3.5" />
-            Hapus
-        </Button>
-    </div>
+                                {/* Update + Delete — Update hidden when approved */}
+                                <div className="flex gap-2">
+                                    {displayStatus !== 'approved' && (
+                                        <Button
+                                            type="button"
+                                            onClick={handleUpdate}
+                                            disabled={disabled}
+                                            className="flex-1 bg-white/20 hover:bg-white/30 text-white rounded-xl font-semibold text-xs h-9 disabled:opacity-40 gap-1.5"
+                                        >
+                                            {isUpdating
+                                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                : <RefreshCw className="w-3.5 h-3.5" />
+                                            }
+                                            {isUpdating ? 'Menyimpan...' : 'Update'}
+                                        </Button>
+                                    )}
+                                    <Button
+                                        type="button"
+                                        onClick={handleDelete}
+                                        disabled={disabled}
+                                        className="flex-1 bg-white/10 hover:bg-red-500/40 text-white/70 hover:text-white rounded-xl font-semibold text-xs h-9 disabled:opacity-40 gap-1.5 transition-colors"
+                                    >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                        Hapus
+                                    </Button>
+                                </div>
                             </div>
                         </div>
                     </div>

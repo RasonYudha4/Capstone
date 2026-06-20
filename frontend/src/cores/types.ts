@@ -6,7 +6,6 @@ export type AgentCommand =
   | { type: 'SET_STANDARD_FILTER'; standardId: string }
   | { type: 'SET_ASSESSMENT_FILTER'; assessmentId: string }
   | { type: 'OPEN_DOCUMENT'; documentId: string }
-  | { type: 'HIGHLIGHT_ELEMENT'; elementId: string }
 
 // Re-export UserResponse as User — the Zod schema is the source of truth.
 export type User = UserResponse

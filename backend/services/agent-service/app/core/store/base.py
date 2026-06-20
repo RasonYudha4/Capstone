@@ -26,6 +26,11 @@ class SearchResult:
     kelompok:   str | None = None
     page_ref:   int | None = None
     is_signed:  str | None = None
+    nama_berkas:    str | None = None
+    document_id:    str | None = None
+    service_id:     str | None = None
+    standard_id:    str | None = None
+    assessment_id:  str | None = None
 
     @classmethod
     def from_payload(cls, payload: dict, score: float) -> "SearchResult":
@@ -42,6 +47,11 @@ class SearchResult:
             kelompok   = payload.get("kelompok"),
             page_ref   = payload.get("page_ref"),
             is_signed  = payload.get("is_signed"),
+            nama_berkas    = payload.get("nama_berkas"),
+            document_id    = payload.get("document_id"),
+            service_id     = payload.get("service_id"),
+            standard_id    = payload.get("standard_id"),
+            assessment_id  = payload.get("assessment_id"),
         )
 
 
