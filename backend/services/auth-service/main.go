@@ -85,6 +85,12 @@ func main() {
 		// current user profile — accessible by ALL authenticated roles.
 		protected.GET("/auth/me", authHandler.Me)
 
+		// assign admin role — only "master-admin" can assign admin role.
+		protected.POST("/auth/assign-admin",
+			middleware.RequireRoles(config.RoleMasterAdmin),
+			authHandler.AssignAdmin,
+		)
+
 		// document listing — accessible by ALL authenticated roles.
 		protected.GET("/documents", documentHandler.ListDocuments)
 

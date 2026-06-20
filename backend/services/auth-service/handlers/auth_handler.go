@@ -441,6 +441,58 @@ func (h *AuthHandler) Me(c *gin.Context) {
 	})
 }
 
+// POST /auth/assign-admin
+
+// AssignAdmin updates a target user's role to 'admin'.
+// Accessible only by master-admin.
+func (h *AuthHandler) AssignAdmin(c *gin.Context) {
+	var req models.AssignAdminRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Message: "Invalid request: " + err.Error(),
+		})
+		return
+	}
+
+	// 1. Verify target user exists
+	targetUser, err := h.userService.GetByID(req.UserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Message: "Internal server error.",
+		})
+		return
+	}
+
+	if targetUser == nil {
+		c.JSON(http.StatusNotFound, models.APIResponse{
+			Success: false,
+			Message: "Target user not found.",
+		})
+		return
+	}
+
+	// 2. Perform role update to admin
+	err = h.userService.UpdateRole(targetUser.UserID, config.RoleAdmin)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Message: "Failed to assign admin role.",
+		})
+		return
+	}
+
+	// 3. Log event to audit table
+	h.auditService.Log("update", "assign_admin", &targetUser.UserID, "system")
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Message: "User role successfully updated to admin.",
+	})
+}
+
 // helpers
 
 // generates both an access token (JWT) and a refresh token.

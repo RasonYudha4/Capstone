@@ -102,3 +102,11 @@ func (r *UserRepository) UpdatePasswordHash(userID string, passwordHash string) 
 	)
 	return err
 }
+
+func (r *UserRepository) UpdateRole(userID string, role string) error {
+	_, err := r.db.Exec(
+		`UPDATE users SET role = $1, updated_at = NOW() WHERE user_id = $2`,
+		role, userID,
+	)
+	return err
+}

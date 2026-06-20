@@ -30,6 +30,11 @@ type ResendOTPRequest struct {
 	Email string `json:"email" binding:"required,email"`
 }
 
+// for POST /auth/assign-admin.
+type AssignAdminRequest struct {
+	UserID string `json:"user_id" binding:"required"`
+}
+
 // Response DTOs
 
 // generic envelope for all JSON responses.

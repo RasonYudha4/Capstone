@@ -91,6 +91,11 @@ func (s *UserService) MarkAsVerified(userID string) error {
 	return s.userRepo.MarkAsVerified(userID)
 }
 
+// UpdateRole updates a user's role in the database.
+func (s *UserService) UpdateRole(userID string, role string) error {
+	return s.userRepo.UpdateRole(userID, role)
+}
+
 // password hashing & validation
 
 // produces a bcrypt hash of the given plaintext password.
