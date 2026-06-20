@@ -12,11 +12,18 @@ export interface FileRecord {
 interface FileTableRowProps {
     file: FileRecord
     onClick?: () => void
+    id?: string
+    isHighlighted?: boolean
 }
 
-export default function FileTableRow({ file, onClick }: FileTableRowProps) {
+export default function FileTableRow({ file, onClick, id, isHighlighted }: FileTableRowProps) {
     return (
-        <tr onClick={onClick} className="border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer">
+        <tr
+            id={id}
+            onClick={onClick}
+            className={`border-b border-gray-100 hover:bg-gray-50 transition-colors duration-700 cursor-pointer ${isHighlighted ? 'bg-[#EEEDFE]' : ''
+                }`}
+        >
             <td className="px-4 py-3 text-sm text-gray-800 font-medium">{file.name}</td>
             <td className="px-4 py-3 text-sm text-gray-500">{file.type}</td>
             <td className="px-4 py-3 text-sm text-gray-500">{file.uploadedBy}</td>

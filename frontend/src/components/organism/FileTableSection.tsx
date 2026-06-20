@@ -25,6 +25,7 @@ import {
 import type { DocumentResponse } from '@/dtos/document_dto'
 import { documentService } from '@/services/document_services'
 import { useMe } from '@/hooks/useAuth'
+import { useFilterStore } from '@/stores/filterStore'
 interface FileTableSectionProps {
   onUploadClick: () => void
 }
@@ -51,7 +52,7 @@ function Pagination({ page, hasMore, onChange }: PaginationProps) {
 
   const getPages = (): number[] => {
     const start = Math.max(1, page - 2)
-    const end   = page
+    const end = page
     return Array.from({ length: end - start + 1 }, (_, i) => start + i)
   }
 
@@ -69,11 +70,10 @@ function Pagination({ page, hasMore, onChange }: PaginationProps) {
         <button
           key={p}
           onClick={() => onChange(p)}
-          className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${
-            p === page
-              ? 'bg-[#6B5FAE] text-white'
-              : 'text-gray-600 hover:bg-gray-100'
-          }`}
+          className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${p === page
+            ? 'bg-[#6B5FAE] text-white'
+            : 'text-gray-600 hover:bg-gray-100'
+            }`}
         >
           {p}
         </button>
@@ -97,13 +97,21 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
 
   const { services, getStandards, getAssessments, isLoading: optionsLoading } = useFormOptions()
 
-  const [selectedServiceId,    setSelectedServiceId]    = useState('')
-  const [selectedStandardId,   setSelectedStandardId]   = useState('')
-  const [selectedAssessmentId, setSelectedAssessmentId] = useState('')
-  const [selectedDocId,        setSelectedDocId]        = useState<string | null>(null)
-  const [selectedDocument,     setSelectedDocument]     = useState<DocumentResponse | null>(null)
-  const [page,                 setPage]                 = useState(1)
-  const { data: me } = useMe() 
+  const {
+    serviceId: selectedServiceId,
+    standardId: selectedStandardId,
+    assessmentId: selectedAssessmentId,
+    setServiceId: setSelectedServiceId,
+    setStandardId: setSelectedStandardId,
+    setAssessmentId: setSelectedAssessmentId,
+    pendingHighlightId,
+    setPendingHighlight,
+  } = useFilterStore()
+
+  const [selectedDocId, setSelectedDocId] = useState<string | null>(null)
+  const [selectedDocument, setSelectedDocument] = useState<DocumentResponse | null>(null)
+  const [page, setPage] = useState(1)
+  const { data: me } = useMe()
 
   // ─────────────────────────────────────────────
   // Options
@@ -119,14 +127,14 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
       label: `${s.code} — ${s.description}`,
       value: s.id,
     })),
-  [selectedServiceId, getStandards])
+    [selectedServiceId, getStandards])
 
   const assessmentOptions = useMemo(() =>
     getAssessments(selectedServiceId, selectedStandardId).map(a => ({
       label: `${a.code} — ${a.description}`,
       value: a.id,
     })),
-  [selectedServiceId, selectedStandardId, getAssessments])
+    [selectedServiceId, selectedStandardId, getAssessments])
 
   // ─────────────────────────────────────────────
   // Dynamic Query Selection
@@ -134,14 +142,14 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
 
   const paginationQuery = useMemo(() => ({ page, limit: PAGE_SIZE }), [page])
 
-  const serviceQuery    = useDocumentsByService(selectedServiceId, paginationQuery)
-  const standardQuery   = useDocumentsByStandard(selectedStandardId, paginationQuery)
+  const serviceQuery = useDocumentsByService(selectedServiceId, paginationQuery)
+  const standardQuery = useDocumentsByStandard(selectedStandardId, paginationQuery)
   const assessmentQuery = useDocumentsByAssessment(selectedAssessmentId, paginationQuery)
 
   const { data: docData, isLoading: docsLoading } = useMemo(() => {
     if (selectedAssessmentId) return assessmentQuery
-    if (selectedStandardId)   return standardQuery
-    if (selectedServiceId)    return serviceQuery
+    if (selectedStandardId) return standardQuery
+    if (selectedServiceId) return serviceQuery
     return { data: undefined, isLoading: false }
   }, [
     selectedServiceId, selectedStandardId, selectedAssessmentId,
@@ -166,7 +174,7 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
   // File URL — fetch as blob so auth headers are included
   // ─────────────────────────────────────────────
 
-  const [fileUrl,       setFileUrl]       = useState('')
+  const [fileUrl, setFileUrl] = useState('')
   const [detailLoading, setDetailLoading] = useState(false)
 
   useEffect(() => {
@@ -197,14 +205,34 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
 
   const files: FileRecord[] = useMemo(() =>
     rawDocs.map(d => ({
-      id:          d.document_id,
-      name:        d.filename,
-      type:        d.document_type,
-      uploadedBy:  d.created_by,
+      id: d.document_id,
+      name: d.filename,
+      type: d.document_type,
+      uploadedBy: d.created_by,
       lastUpdated: formatDate(d.updated_at),
-      status:      d.status,
+      status: d.status,
     })),
-  [rawDocs])
+    [rawDocs])
+
+  const [highlightedId, setHighlightedId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!pendingHighlightId) return
+    const match = files.find(f => f.id === pendingHighlightId)
+
+    if (!match) return
+
+    setHighlightedId(pendingHighlightId)
+    setPendingHighlight(null)
+
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`file-row-${pendingHighlightId}`)
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    })
+
+    const timeout = setTimeout(() => setHighlightedId(null), 3000)
+    return () => clearTimeout(timeout)
+  }, [pendingHighlightId, files, setPendingHighlight])
 
   // ─────────────────────────────────────────────
   // Row click
@@ -218,13 +246,13 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
 
   const selectedFile: FileRecord | null = selectedDocument
     ? {
-        id:          selectedDocument.document_id,
-        name:        selectedDocument.filename,
-        type:        selectedDocument.document_type,
-        uploadedBy:  selectedDocument.created_by,
-        lastUpdated: formatDate(selectedDocument.updated_at),
-        status:      selectedDocument.status,
-      }
+      id: selectedDocument.document_id,
+      name: selectedDocument.filename,
+      type: selectedDocument.document_type,
+      uploadedBy: selectedDocument.created_by,
+      lastUpdated: formatDate(selectedDocument.updated_at),
+      status: selectedDocument.status,
+    }
     : null
 
   // ─────────────────────────────────────────────
@@ -398,6 +426,8 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
                       key={file.id}
                       file={file}
                       onClick={() => handleRowClick(file)}
+                      id={`file-row-${file.id}`}
+                      isHighlighted={file.id === highlightedId}
                     />
                   ))
                 )}

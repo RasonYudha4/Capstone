@@ -193,11 +193,11 @@ func (d *DocumentService) Create_document(req schemas.DocumentRequest, file mult
 	}
 
 	if err != nil {
-		log.Print("error minio upload")
+		log.Printf("error minio upload: %v", err)
 		return schemas.Response{
-			Status: false,
-			Message: "Interal Storage Object Error",
-		}, err 
+			Status:  false,
+			Message: fmt.Sprintf("Internal Storage Object Error: %v", err),
+		}, err
 	}
 	
 	assessmentId, _ := uuid.Parse(req.AssessmentId)
