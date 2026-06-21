@@ -11,6 +11,7 @@ python-multipart
 pymupdf4llm
 pdfplumber
 pypdf
+python-docx
 
 # Vector store — pick one
 chromadb

@@ -40,17 +40,20 @@ _DEFAULT_STYLE = (
 )
 
 
-def build_prompt(question: str, results: list[SearchResult], intent: dict) -> str:
-    if not results:
-        return _no_context_prompt(question, intent)
-
+def build_prompt(question: str, results: list[SearchResult], intent: dict, doc_context: str | None = None) -> str:
     query_type = intent.get("query_type", "general")
     style      = _STYLE.get(query_type, _DEFAULT_STYLE)
 
-    kmk_chunks      = [r for r in results if r.is_kmk]
-    evidence_chunks = [r for r in results if not r.is_kmk]
+    if not results and not doc_context:
+        return _no_context_prompt(question, intent)
 
     sections: list[str] = []
+
+    if doc_context:
+        sections.append(f"DOKUMEN YANG DIUNGGAH USER:\n{doc_context}")
+
+    kmk_chunks      = [r for r in results if r.is_kmk]
+    evidence_chunks = [r for r in results if not r.is_kmk]
 
     if kmk_chunks:
         kmk_text = "\n\n---\n\n".join(r.text for r in kmk_chunks)
@@ -68,6 +71,8 @@ def build_prompt(question: str, results: list[SearchResult], intent: dict) -> st
 
     return f"""Kamu adalah asisten sistem akreditasi rumah sakit.
         Gunakan HANYA konteks di bawah untuk menjawab pertanyaan.
+        Jika dokumen yang diunggah user disertakan, bandingkan isinya dengan STANDAR AKREDITASI (KMK)
+        untuk membantu menentukan standar/EP yang relevan.
         Jika jawaban tidak ada dalam konteks, katakan "Informasi tidak ditemukan."
 
         INSTRUKSI GAYA JAWABAN: {style}

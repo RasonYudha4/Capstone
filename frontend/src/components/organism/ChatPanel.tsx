@@ -11,7 +11,7 @@ interface ChatPanelProps {
     messages: Message[]
     isLoading: boolean
     error: Error | null
-    onSend: (content: string) => void
+    onSend: (content: string, file?: File) => void
 }
 
 export default function ChatPanel({ onClose, messages, isLoading, error, onSend }: ChatPanelProps) {

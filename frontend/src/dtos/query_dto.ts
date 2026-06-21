@@ -15,6 +15,7 @@ export const queryRequestSchema = z.object({
             })
         ),
     }).nullable().optional(),
+    file: z.instanceof(File).nullable().optional(),
 })
 
 export const queryResponseSchema = z.object({
