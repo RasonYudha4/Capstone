@@ -193,11 +193,11 @@ func (d *DocumentService) Create_document(req schemas.DocumentRequest, file mult
 	}
 
 	if err != nil {
-		log.Printf("error minio upload: %v", err)
+		log.Print("error minio upload ", err)
 		return schemas.Response{
-			Status:  false,
+			Status: false,
 			Message: fmt.Sprintf("Internal Storage Object Error: %v", err),
-		}, err
+		}, err 
 	}
 	
 	assessmentId, _ := uuid.Parse(req.AssessmentId)
@@ -307,15 +307,17 @@ func(d *DocumentService) Update_document(req schemas.UpdateRequest, file multipa
 
 	hasfile := file != nil
 	hasfileName := req.FileName != ""
+	
+	objectId, _  := d.repo.Get_object_id(documentId)
 
-	var newFileName, filePath string
-	if hasfile && hasfileName{
-		newFileName, filePath, err = d.storage.Update_document(file,header,oldFilePath, req.FileName)
+	var newFileName,updatedHash, filePath string
+	if hasfile && hasfileName{	
+		newFileName, updatedHash,filePath, err = d.storage.Update_document(file,header,oldFilePath, req.FileName, objectId)
 		if err != nil{
 			return schemas.Response{}, err
 		}
 	}else if hasfile{
-		newFileName, filePath, err = d.storage.Update_documentFile(file,header,oldFilePath)
+		newFileName,updatedHash, filePath, err = d.storage.Update_documentFile(file,header,oldFilePath, objectId)
 		if err != nil {
 			return schemas.Response{}, err
 		}
@@ -329,7 +331,7 @@ func(d *DocumentService) Update_document(req schemas.UpdateRequest, file multipa
 		filePath = ""
 	}
 
- 	result, err := d.repo.Update_document(documentId,createdById,newFileName,filePath, req.Description)
+ 	result, err := d.repo.Update_document(documentId,createdById,newFileName,filePath, req.Description, updatedHash)
 	if err != nil{
 		log.Print("Error updating file :", err)
 		return schemas.Response{Status: false, Message: "Error Updating document"}, nil
