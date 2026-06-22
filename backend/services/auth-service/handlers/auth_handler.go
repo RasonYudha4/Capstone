@@ -106,7 +106,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	if authenticated == nil {
 		// wrong password, increment failed attempts.
 		count, _ := h.userService.IncrementFailedAttempts(user.UserID)
-		h.auditService.Log("error", "login_fail", &user.UserID, "client")
+		h.auditService.Log("login_fail","user login error" ,&user.UserID, "client")
 
 		if count >= config.MaxLoginAttempts {
 			if lockErr := h.userService.LockAccount(user.UserID); lockErr != nil {
@@ -115,7 +115,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 			if revokeErr := h.refreshService.RevokeAllUserTokens(user.UserID); revokeErr != nil {
 				log.Printf("⚠️  Failed to revoke tokens for user %s: %v", user.UserID, revokeErr)
 			}
-			h.auditService.Log("error", "lockout", &user.UserID, "system")
+			h.auditService.Log("lockout", "Error lock out, user got lockout ", &user.UserID, "system")
 			c.JSON(http.StatusTooManyRequests, models.APIResponse{
 				Success: false,
 				Message: fmt.Sprintf("Account locked for %s due to too many failed attempts.", config.LockDuration),
@@ -170,7 +170,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	h.auditService.Log("insert", "login", &user.UserID, "client")
+	h.auditService.Log("login", "User has login", &user.UserID, "client")
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
 		Message: "Login successful.",
@@ -247,7 +247,7 @@ func (h *AuthHandler) VerifyOTP(c *gin.Context) {
 		return
 	}
 
-	h.auditService.Log("insert", "login", &user.UserID, "client")
+	h.auditService.Log("login", "user has otp and enter dashboard page", &user.UserID, "client")
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
 		Message: "Login successful.",
@@ -394,7 +394,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 		return
 	}
 
-	h.auditService.Log("delete", "logout", &userID, "client")
+	h.auditService.Log("delete", "user logout", &userID, "client")
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
 		Message: "Logged out successfully.",

@@ -37,31 +37,62 @@ export const notificationService = {
     // Opens a persistent SSE connection to /notifications/events.
     // Calls onEvent for each received event, onError on connection failure.
     // Returns a cleanup function — call it to close the connection.
-    subscribeToEvents: (
-        onEvent: (event: SSEEvent) => void,
-        onError?: (error: Event) => void,
-    ): (() => void) => {
-        const baseUrl = axioHandler.defaults.baseURL ?? ''
-        const token = axioHandler.defaults.headers.common['Authorization'] ?? ''
+  subscribeToEvents: (
+    onEvent: (event: SSEEvent) => void,
+    onError?: (error: Error) => void,
+): (() => void) => {
+    const abortController = new AbortController()
 
-        const url = new URL(`${baseUrl}/notifications/events`)
-        if (token) url.searchParams.set('token', String(token).replace('Bearer ', ''))
+    const connect = async () => {
+        try {
+            const baseUrl = axioHandler.defaults.baseURL ?? ''
+            const token = String(axioHandler.defaults.headers.common['Authorization'] ?? '')
+                .replace(/^Bearer\s+/i, '')
 
-        const source = new EventSource(url.toString())
+            const response = await fetch(`${baseUrl}/notifications/events`, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    Accept: 'text/event-stream',
+                    'Cache-Control': 'no-cache',
+                },
+                signal: abortController.signal,
+            })
 
-        source.onmessage = (e: MessageEvent) => {
-            try {
-                const parsed: SSEEvent = JSON.parse(e.data)
-                onEvent(parsed)
-            } catch {
-                console.error('Failed to parse SSE event:', e.data)
+            if (!response.ok) {
+                onError?.(new Error(`SSE failed: ${response.status}`))
+                return
             }
-        }
 
-        source.onerror = (e) => {
-            onError?.(e)
-        }
+            const reader = response.body!.getReader()
+            const decoder = new TextDecoder()
+            let buffer = ''
 
-        return () => source.close()
-    },
-}
+            while (true) {
+                const { done, value } = await reader.read()
+                if (done) break
+
+                buffer += decoder.decode(value, { stream: true })
+                const parts = buffer.split('\n\n')
+                buffer = parts.pop() ?? ''
+
+                for (const part of parts) {
+                    const dataLine = part.split('\n').find(l => l.startsWith('data:'))
+                    if (!dataLine) continue
+                    try {
+                        const parsed: SSEEvent = JSON.parse(dataLine.slice(5).trim())
+                        onEvent(parsed)
+                    } catch {
+                        console.error('[SSE] Failed to parse event:', dataLine)
+                    }
+                }
+            }
+        } catch (err) {
+            if (err instanceof Error && err.name === 'AbortError') return
+            onError?.(err instanceof Error ? err : new Error(String(err)))
+        }
+    }
+
+    connect()
+    return () => abortController.abort()
+},
+}   

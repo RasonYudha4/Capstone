@@ -38,7 +38,7 @@ const (
 
 
 const baseQuery = `
-    SELECT 
+	  SELECT 
         d.document_id,
         d.filename,
         dt.name AS document_type,
@@ -363,8 +363,8 @@ func (s *DocumentRepo) Approval_document(documentId uuid.UUID, status string, fi
     return result.RowsAffected(), nil
 }
 
-func (s *DocumentRepo) Get_document_owner_email(documentId uuid.UUID) (string,uuid.UUID, error){
-	query := `SELECT u.email, d.created_by from documents d JOIN users u ON d.created_by=u.user_id WHERE document_id = $1`
+func (s *DocumentRepo) Get_document_owner_email(documentId uuid.UUID) (string,uuid.UUID,error){
+	query := `SELECT u.email, created_by  from documents d JOIN users u ON d.created_by=u.user_id WHERE document_id = $1`
 
 	var ownerEmail string
 	var ownerId uuid.UUID
@@ -372,7 +372,7 @@ func (s *DocumentRepo) Get_document_owner_email(documentId uuid.UUID) (string,uu
 	if err != nil {
 		return "",uuid.Nil,err
 	}
-	return ownerEmail,ownerId,nil
+	return ownerEmail,ownerId, nil
 }
 
 func (s *DocumentRepo) Get_stats(userId uuid.UUID, role string) ([]schemas.GroupStat, schemas.StatusStat, error) {
@@ -451,7 +451,9 @@ func (s *DocumentRepo) Get_document_filePath(documentId, createdById uuid.UUID)(
 	return filePath, nil
 }
 
-func (s *DocumentRepo) Get_admin_email()([]string,[]uuid.UUID, error){
+func (s *DocumentRepo) Get_admin_email()(string,uuid.UUID, error){
+	var masterAdminEmail string
+	var masterAdminId uuid.UUID
 	query := `
 	SELECT 
 		user_id,
@@ -459,23 +461,11 @@ func (s *DocumentRepo) Get_admin_email()([]string,[]uuid.UUID, error){
 	FROM users
 		WHERE role = 'master-admin'`
 
-	rows, err := s.db.Query(context.Background(),query)
+	err := s.db.QueryRow(context.Background(),query).Scan(&masterAdminId, &masterAdminEmail)
 	if err != nil{
-		return nil,nil,err
+		return "", uuid.Nil,err
 	}
-	defer rows.Close()
 
-	var masterAdminEmail []string
-	var masterAdminId	[]uuid.UUID
-		for rows.Next(){
-			var email string
-			var id uuid.UUID
-			if err := rows.Scan(&id,&email); err != nil {
-				return nil,nil,err
-			}
-			masterAdminEmail = append(masterAdminEmail, email)
-			masterAdminId = append(masterAdminId, id)
-		}
 	return masterAdminEmail,masterAdminId, nil
 }
 

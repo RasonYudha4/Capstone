@@ -241,11 +241,11 @@ func (d *DocumentService) Create_document(req schemas.DocumentRequest, file mult
 		}, nil
 	}
 		
-	_, err = d.audit.SaveAudit("insert", "Upload new document", createdById, documentId, "client", time.Now(), time.Now())
+	filename, err := d.audit.SaveAudit("insert", "Upload new document", createdById, documentId, "client", time.Now(), time.Now())
 	if err != nil {
 		log.Print("Error adding create log: ", err)
 	}
-
+	
 	adminEmail, adminId, err := d.repo.Get_admin_email()
 	if err != nil {
 		log.Print("Error getting master admin email", err)
@@ -254,11 +254,12 @@ func (d *DocumentService) Create_document(req schemas.DocumentRequest, file mult
 	go d.TriggerIngestEvidence(bytes.NewReader(fileBytes), header.Filename, req, document_Id)
 
 	go func() {
-		log.Printf("[email] NotifyDeptHead done for document %s", documentId)
-		d.notification.NotifyDeptHead(adminEmail, documentId.String())
+		
+		d.notification.NotifyDeptHead(adminEmail, filename)
+		log.Printf("[email] NotifyDeptHead done for document %s", filename)
 	}()
 
-	go d.notification.NotifySSE(adminId, SSEEvent{
+	go d.notification.NotifySSE([]uuid.UUID{adminId}, SSEEvent{
 		Type:       "new_document",
 		DocumentId: documentId.String(),
 		Status:     "Pending",
@@ -392,6 +393,9 @@ func (d *DocumentService) Approval_document(documentId, userId uuid.UUID, status
 	filepath, _ := d.repo.Get_document_filePath(documentId, userId)
 	objectHash, _ := d.storage.GenerateObjectHMAC(objectId, filepath)
 
+	log.Print(objectHash, "disni")
+	log.Print(storedHash, "and" , )
+
 	if !hmac.Equal(
 		[]byte(storedHash),
     	[]byte(objectHash),
@@ -454,7 +458,7 @@ func (d *DocumentService) Approval_document(documentId, userId uuid.UUID, status
 	} else {
 		msg := fmt.Sprintf("Your Document (%s) is now %s", filename, status)
 
-		go d.notification.NotifyOwner(ownerEmail, documentId, msg)
+		go d.notification.NotifyOwner(ownerEmail, filename, msg)
 
 		go d.notification.NotifySSE([]uuid.UUID{ownerId}, SSEEvent{
 			Type:       "document_status_update",

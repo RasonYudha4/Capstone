@@ -1,5 +1,5 @@
 CREATE TYPE user_role AS ENUM ('master-admin', 'admin', 'staff');
-CREATE TYPE action_type AS ENUM ('insert', 'open', 'edit','update','delete','error');
+CREATE TYPE action_type AS ENUM ('insert', 'open', 'edit','update','delete','error','login','login_fail','lockout');
 CREATE TYPE audit_source AS ENUM ('client', 'system');
 
 CREATE TABLE IF NOT EXISTS groups (

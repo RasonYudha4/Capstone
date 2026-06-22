@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/smtp"
+	"os"
 )
 
 type EmailService struct {
@@ -14,12 +15,12 @@ type EmailService struct {
 	smtpPort string
 }
 
-func NewEmailService(from, password string) *EmailService {
+func NewEmailService() *EmailService {
 	return &EmailService{
-		from:     from,
-		password: password,
-		smtpHost: "smtp.resend.com",
-		smtpPort: "465",
+		from:     os.Getenv("SMTP_USERNAME"),
+		password: os.Getenv("SMTP_PASSWORD"),
+		smtpHost: os.Getenv("SMTP_HOST"),
+		smtpPort: os.Getenv("SMTP_PORT"),
 	}
 }
 
@@ -42,47 +43,47 @@ func (s *EmailService) SendOTP(to string, otpCode string) error {
 
 	log.Printf("[email] SendOTP: attempting to send to %s via %s:%s", to, s.smtpHost, s.smtpPort)
 
+	auth := smtp.PlainAuth("", s.from, s.password, s.smtpHost)
+
+	conn, err := smtp.Dial(s.smtpHost + ":" + s.smtpPort)
+	if err != nil {
+		log.Printf("[email] Dial FAILED: %v", err)
+		return err
+	}
+	defer conn.Quit()
+
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: false,
 		ServerName:         s.smtpHost,
 	}
 
-	conn, err := tls.Dial("tcp", s.smtpHost+":"+s.smtpPort, tlsConfig)
-	if err != nil {
-		log.Printf("[email] TLS dial FAILED: %v", err)
+	if err = conn.StartTLS(tlsConfig); err != nil {
+		log.Printf("[email] StartTLS FAILED: %v", err)
 		return err
 	}
-	defer conn.Close()
+	log.Printf("[email] StartTLS SUCCESS")
 
-	c, err := smtp.NewClient(conn, s.smtpHost)
-	if err != nil {
-		log.Printf("[email] SMTP client FAILED: %v", err)
-		return err
-	}
-	defer c.Quit()
-
-	auth := smtp.PlainAuth("", "resend", s.password, s.smtpHost)
-	if err = c.Auth(auth); err != nil {
+	if err = conn.Auth(auth); err != nil {
 		log.Printf("[email] Auth FAILED: %v", err)
 		return err
 	}
+	log.Printf("[email] Auth SUCCESS")
 
-	if err = c.Mail(s.from); err != nil {
+	if err = conn.Mail(s.from); err != nil {
 		log.Printf("[email] Mail from FAILED: %v", err)
 		return err
 	}
 
-	if err = c.Rcpt(to); err != nil {
+	if err = conn.Rcpt(to); err != nil {
 		log.Printf("[email] Rcpt to %s FAILED: %v", to, err)
 		return err
 	}
 
-	w, err := c.Data()
+	w, err := conn.Data()
 	if err != nil {
 		log.Printf("[email] Data FAILED: %v", err)
 		return err
 	}
-	defer w.Close()
 
 	msg := "From: " + s.from + "\r\n" +
 		"To: " + to + "\r\n" +
@@ -92,6 +93,11 @@ func (s *EmailService) SendOTP(to string, otpCode string) error {
 
 	if _, err = w.Write([]byte(msg)); err != nil {
 		log.Printf("[email] Write FAILED: %v", err)
+		return err
+	}
+
+	if err = w.Close(); err != nil {
+		log.Printf("[email] Close FAILED: %v", err)
 		return err
 	}
 

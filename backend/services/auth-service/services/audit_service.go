@@ -17,9 +17,9 @@ func NewAuditService(auditRepo *repositories.AuditRepository) *AuditService {
 }
 
 // records an authentication event in the audit table.
-func (s *AuditService) Log(auditType, action string, userID *string, source string) {
-	err := s.auditRepo.Save(auditType, action, userID, source)
+func (s *AuditService) Log(action,description string, userID *string, source string) {
+	err := s.auditRepo.Save(action, description, userID, source)
 	if err != nil {
-		log.Printf("⚠️  Audit log failed (type=%s, action=%s): %v", auditType, action, err)
+		log.Printf("⚠️  Audit log failed (type=%s, action=%s): %v", action, description, err)
 	}
 }
