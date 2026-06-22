@@ -301,7 +301,7 @@ func(d *DocumentService) Update_document(req schemas.UpdateRequest, file multipa
 		}
 	}
 
-	oldFilePath, err := d.repo.Get_document_filePath(documentId, createdById)
+	oldFilePath, err := d.repo.Get_document_filePath(documentId)
 	if err != nil{
 		return schemas.Response{}, err
 	}
@@ -331,6 +331,7 @@ func(d *DocumentService) Update_document(req schemas.UpdateRequest, file multipa
 		newFileName = ""
 		filePath = ""
 	}
+	log.Print(updatedHash, "update")
 
  	result, err := d.repo.Update_document(documentId,createdById,newFileName,filePath, req.Description, updatedHash)
 	if err != nil{
@@ -390,11 +391,8 @@ func (d *DocumentService) Approval_document(documentId, userId uuid.UUID, status
 	}
 
 	objectId, _  := d.repo.Get_object_id(documentId)
-	filepath, _ := d.repo.Get_document_filePath(documentId, userId)
+	filepath, err := d.repo.Get_document_filePath(documentId)
 	objectHash, _ := d.storage.GenerateObjectHMAC(objectId, filepath)
-
-	log.Print(objectHash, "disni")
-	log.Print(storedHash, "and" , )
 
 	if !hmac.Equal(
 		[]byte(storedHash),
