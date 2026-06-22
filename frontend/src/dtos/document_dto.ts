@@ -28,14 +28,17 @@ export const uploadResponseSchema = z.object({
 
 // type DocumentResponse struct
 export const documentResponseSchema = z.object({
-    document_id: uuid,
-    filename: z.string(),
-    filepath: z.string(),
-    document_type: z.string(),
-    created_by: z.string(),
-    updated_at: z.string().datetime(),
-    assessment: z.string(),
-    status: documentStatus,
+    document_id:     uuid,
+    filename:        z.string(),
+    filepath:        z.string(),
+    document_type:   z.string(),
+    created_by:      z.string(),
+    updated_at:      z.string().datetime(),
+    assessment:      z.string(),
+    status:          documentStatus,
+    service_code:    z.string(),
+    standard_code:   z.string(),
+    assessment_code: z.string(),
 });
 
 // ─────────────────────────────────────────────

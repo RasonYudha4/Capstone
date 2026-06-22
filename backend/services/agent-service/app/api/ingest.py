@@ -12,14 +12,16 @@ router = APIRouter(prefix="/ingest", tags=["ingest"])
 
 
 @router.post("/kmk", response_model=ApiResponse)
-def ingest_kmk(file: UploadFile = File(...)):
-    kmk_dir = "./data/kmk"
-    os.makedirs(kmk_dir, exist_ok=True)
+def ingest_kmk():
+    kmk_dir = "./kmk"
+    if not os.path.isdir(kmk_dir):
+        raise HTTPException(status_code=404, detail="KMK folder not found.")
 
-    file_path = os.path.join(kmk_dir, file.filename)
-    with open(file_path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+    pdf_files = [f for f in os.listdir(kmk_dir) if f.lower().endswith(".pdf")]
+    if not pdf_files:
+        raise HTTPException(status_code=404, detail="No PDF found in ./kmk folder.")
 
+    file_path = os.path.join(kmk_dir, pdf_files[0])
     result = run_ingest_kmk(file_path)
 
     if not result.success:
@@ -29,7 +31,7 @@ def ingest_kmk(file: UploadFile = File(...)):
         )
 
     return ApiResponse.created(
-        data={"filename": file.filename, "chunks_upserted": result.chunks_upserted},
+        data={"filename": pdf_files[0], "chunks_upserted": result.chunks_upserted},
         message="KMK document ingested successfully",
     )
 

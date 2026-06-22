@@ -16,12 +16,16 @@ export const useAudit = () => {
     })
 }
 
-export const useActivityLog = () => {
+export const useActivityLog = (limit?: number) => {
     const query = useAudit()
 
-    // ✅ API: { data: [...] } → query.data.data is the array
     const groups: ActivityGroup[] = query.data?.data
-        ? groupActivitiesByDate(query.data.data.map(mapAuditToActivity))
+        ? groupActivitiesByDate(
+            query.data.data
+                .map(mapAuditToActivity)
+                .sort((a, b) => b.isoTimestamp.localeCompare(a.isoTimestamp))
+                .slice(0, limit)
+          )
         : []
 
     return { ...query, groups }

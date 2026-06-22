@@ -23,7 +23,7 @@ from __future__ import annotations
 import time
 
 from app.core.config import settings
-from app.repositories.ingestion.chunker import chunk_document
+from app.repositories.ingestion.chunker import chunk_evidence, chunk_kmk
 from app.repositories.ingestion.embedder import embedder, EmbeddingError, embed_chunks
 from app.repositories.ingestion.enricher import enrich_document
 from app.repositories.ingestion.parser import parse_single
@@ -61,7 +61,7 @@ def run_ingest_kmk(kmk_path: str) -> IngestResult:
 
     # ── Chunk ────────────────────────────────────────────────────────────────
     with timer(log, "chunking KMK"):
-        chunks = chunk_document(doc)   # form_metadata=None → KMK path
+        chunks = chunk_kmk(doc)   # form_metadata=None → KMK path
 
     result.chunks_total = len(chunks)
     log.info("KMK → %d standar chunks", len(chunks))
@@ -136,7 +136,7 @@ def run_ingest_evidence(
 
     # ── Chunk ────────────────────────────────────────────────────────────────
     with timer(log, "chunking evidence document"):
-        chunks = chunk_document(doc, form_metadata=form_metadata)
+        chunks = chunk_evidence(doc, form_metadata=form_metadata)
 
     # ── Embed ────────────────────────────────────────────────────────────────
     with timer(log, "embedding evidence chunks"):

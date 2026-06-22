@@ -42,45 +42,6 @@ _KELOMPOK_MAP = {
 
 
 # ---------------------------------------------------------------------------
-# Public interface
-# ---------------------------------------------------------------------------
-
-def chunk_document(
-    doc: ParsedDocument,
-    form_metadata: dict | None = None,
-    max_tokens: int = 512,
-    overlap_tokens: int = 64,
-    min_tokens: int = 40,
-) -> list[Chunk]:
-    """
-    Main entry point.
-
-    Args:
-        doc:           parsed document from parser.py
-        form_metadata: populated from upload form for evidence documents.
-                       None means this is the KMK document.
-        max_tokens:    max tokens per chunk (generic path only)
-        overlap_tokens: overlap between consecutive chunks (generic path only)
-        min_tokens:    minimum tokens — chunks below this are dropped
-    """
-    if form_metadata:
-        log.debug("using evidence chunker for %s", doc.source)
-        chunks = chunk_evidence(doc, form_metadata, max_tokens, overlap_tokens, min_tokens)
-    else:
-        log.debug("using KMK chunker for %s", doc.source)
-        chunks = chunk_kmk(doc, min_tokens)
-
-    log.info(
-        "%s → %d chunks (signature=%s)",
-        doc.source,
-        len(chunks),
-        doc.signature_status.value if form_metadata else "n/a",
-    )
-    
-    return chunks
-
-
-# ---------------------------------------------------------------------------
 # KMK chunker — one chunk per Standar section
 # ---------------------------------------------------------------------------
 

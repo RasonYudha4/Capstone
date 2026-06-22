@@ -8,13 +8,17 @@ type Response struct {
 	Status bool	`json:"status"`
 	Message string	`json:"message"`
 }
+
 type DocumentResponse struct {
-	DocumentId uuid.UUID `json:"document_id"`
-	Filename string		 `json:"filename"`
-	DocumentType string	 `json:"document_type"` 	
-	CreatedBy string	 `json:"created_by"`
-	UpdatedAt time.Time	 `json:"updated_at"`
-	Status string		 `json:"status"`
+    DocumentId    uuid.UUID `json:"document_id"`
+    Filename      string    `json:"filename"`
+    DocumentType  string    `json:"document_type"`
+    CreatedBy     string    `json:"created_by"`
+    UpdatedAt     time.Time `json:"updated_at"`
+    Status        string    `json:"status"`
+    ServiceCode   string    `json:"service_code"`
+    StandardCode  string    `json:"standard_code"`
+    AssessmentCode string   `json:"assessment_code"`
 }
 
 type DocumentRequest struct {

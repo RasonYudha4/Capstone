@@ -26,12 +26,12 @@ interface NotificationDropdownProps {
 
 function toNotification(item: NotificationItem): Notification {
     return {
-        id:        item.NotificationID,
-        actor:     '',
-        action:    item.Message,
-        file:      '',
+        id: item.NotificationID,
+        actor: '',
+        action: item.Message,
+        file: '',
         timestamp: new Date(item.CreatedAt),
-        read:      item.Read,
+        read: item.Read,
     }
 }
 
@@ -39,8 +39,8 @@ export default function NotificationDropdown({ onViewAll }: NotificationDropdown
     const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE)
 
     const { data, isLoading } = useNotifications()
-    const markRead            = useMarkNotificationRead()
-    const markAllRead         = useMarkAllNotificationsRead()
+    const markRead = useMarkNotificationRead()
+    const markAllRead = useMarkAllNotificationsRead()
 
     useNotificationEvents(
         useCallback((event) => {
@@ -49,9 +49,9 @@ export default function NotificationDropdown({ onViewAll }: NotificationDropdown
     )
 
     const notifications = data?.data ?? []
-    const unreadCount   = notifications.filter(n => !n.Read).length
-    const visible       = notifications.slice(0, visibleCount)
-    const hasMore       = visibleCount < notifications.length
+    const unreadCount = notifications.filter(n => !n.Read).length
+    const visible = notifications.slice(0, visibleCount)
+    const hasMore = visibleCount < notifications.length
 
     function handleMarkRead(id: string) {
         markRead.mutate(id)
@@ -120,7 +120,7 @@ export default function NotificationDropdown({ onViewAll }: NotificationDropdown
 
                 <Separator />
 
-                <ScrollArea className="h-[360px]">
+                <ScrollArea className="h-90">
                     {isLoading ? (
                         <div className="flex items-center justify-center py-10">
                             <Loader2 className="w-5 h-5 text-gray-300 animate-spin" />
@@ -136,11 +136,10 @@ export default function NotificationDropdown({ onViewAll }: NotificationDropdown
                                 <div
                                     key={item.NotificationID}
                                     onClick={() => !item.Read && handleMarkRead(item.NotificationID)}
-                                    className={`cursor-pointer transition-colors ${
-                                        !item.Read
-                                            ? 'bg-[#6B5FAE]/[0.03] hover:bg-[#6B5FAE]/[0.07]'
+                                    className={`cursor-pointer transition-colors ${!item.Read
+                                            ? 'bg-[#6B5FAE]/3 hover:bg-[#6B5FAE]/[0.07]'
                                             : 'hover:bg-gray-50'
-                                    }`}
+                                        }`}
                                 >
                                     <NotificationRow
                                         notification={toNotification(item)}

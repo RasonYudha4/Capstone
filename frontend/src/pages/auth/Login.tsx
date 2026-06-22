@@ -66,14 +66,7 @@ export default function Login() {
 
                 <div className="flex flex-col items-center text-center mb-8">
                     <div className="w-12 h-12 rounded-full bg-white/15 flex items-center justify-center mb-5">
-                        <svg
-                            className="w-6 h-6 text-white"
-                            fill="currentColor"
-                            viewBox="0 0 24 24"
-                        >
-                            <path d="M12 2C8.13 2 5 5.13 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26C17.81 13.47 19 11.38 19 9c0-3.87-3.13-7-7-7z" />
-                            <path d="M9 21c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-1H9v1z" />
-                        </svg>
+                        <img src='../../../public/logo.png' height={35} width={35} />
                     </div>
                     <h1 className="text-3xl font-semibold text-white mb-2">
                         Welcome back

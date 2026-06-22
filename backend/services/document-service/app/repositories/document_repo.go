@@ -38,17 +38,23 @@ const (
 
 
 const baseQuery = `
-	SELECT 
-		d.document_id,
-		d.filename,
-		dt.name,
-		u.email AS created_by,
-		d.updated_at,
-		d.status
-	FROM documents d
-	JOIN document_types dt ON d.document_type_id = dt.document_type_id
-	JOIN users u ON d.created_by = u.user_id
-	`
+    SELECT 
+        d.document_id,
+        d.filename,
+        dt.name AS document_type,
+        u.email AS created_by,
+        d.updated_at,
+        d.status,
+        s.service_code,
+        st.standard_code,
+        a.assessment_code
+    FROM documents d
+    JOIN document_types dt ON d.document_type_id = dt.document_type_id
+    JOIN users u ON d.created_by = u.user_id
+    LEFT JOIN services s ON d.service_id = s.service_id
+    LEFT JOIN standard st ON d.standard_id = st.standard_id
+    LEFT JOIN assessment a ON d.assessment_id = a.assessment_id
+`
 
 func(s *DocumentRepo) fetchingData(query string, args ...any)([]schemas.DocumentResponse, error){
 	rows, err := s.db.Query(context.Background(), query, args...)
@@ -68,6 +74,9 @@ func(s *DocumentRepo) fetchingData(query string, args ...any)([]schemas.Document
 			&doc.CreatedBy,
 			&doc.UpdatedAt,
 			&doc.Status,
+			&doc.ServiceCode,
+			&doc.StandardCode,
+			&doc.AssessmentCode,
 		)
 
 		if err != nil {
