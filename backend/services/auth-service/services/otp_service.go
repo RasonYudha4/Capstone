@@ -16,13 +16,15 @@ import (
 
 // manages OTP generation, storage, and verification.
 type OTPService struct {
-	otpRepo *repositories.OTPRepository
+	otpRepo      *repositories.OTPRepository
+	emailService *EmailService
 }
 
 // creates a ready-to-use OTPService instance.
-func NewOTPService(otpRepo *repositories.OTPRepository) *OTPService {
+func NewOTPService(otpRepo *repositories.OTPRepository, emailService *EmailService) *OTPService {
 	return &OTPService{
-		otpRepo: otpRepo,
+		otpRepo:      otpRepo,
+		emailService: emailService,
 	}
 }
 
@@ -61,6 +63,14 @@ func (s *OTPService) GenerateAndStore(email, purpose string) (string, error) {
 	// DO NOT log the actual code in production.
 	log.Printf("📧 [OTP] Code generated for %s (purpose: %s, expires: %s) -> CODE: %s",
 		email, purpose, expiresAt.Format(time.RFC3339), code)
+
+	if s.emailService != nil {
+		go func() {
+			if err := s.emailService.SendOTP(email, code); err != nil {
+				log.Printf("⚠️  Failed to send OTP email to %s: %v", email, err)
+			}
+		}()
+	}
 
 	return preAuthToken, nil // Return pre-auth token, BUKAN OTP code
 }

@@ -23,6 +23,10 @@ var (
 	// IsDevMode is true when DEV_MODE env var is set to "true" (default false).
 	IsDevMode = strings.EqualFold(getEnv("DEV_MODE", "false"), "true")
 
+	// Email / Resend configuration
+	ResendAPIKey = getEnv("RESEND_API_KEY", "")
+	SMTPFrom     = getEnv("SMTP_FROM", "noreply@example.com")
+
 	// Seeder credentials
 	MasterAdminEmail    = getEnv("MASTER_ADMIN_EMAIL", "masteradmin@gmail.com")
 	MasterAdminPassword = getEnv("MASTER_ADMIN_PASSWORD", "password123")

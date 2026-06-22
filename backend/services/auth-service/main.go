@@ -29,7 +29,16 @@ func main() {
 
 	// services
 	userService := services.NewUserService(userRepo)
-	otpService := services.NewOTPService(otpRepo)
+
+	var emailService *services.EmailService
+	if config.ResendAPIKey != "" {
+		emailService = services.NewEmailService(config.SMTPFrom, config.ResendAPIKey)
+		log.Println("✅ EmailService initialized using SMTP Resend")
+	} else {
+		log.Println("⚠️  RESEND_API_KEY is not set. Emails will not be sent.")
+	}
+
+	otpService := services.NewOTPService(otpRepo, emailService)
 	jwtService := services.NewJWTService()
 	refreshService := services.NewRefreshService(refreshRepo) // Phase 2
 	auditService := services.NewAuditService(auditRepo)       // Phase 2
