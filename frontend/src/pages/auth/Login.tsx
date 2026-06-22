@@ -165,6 +165,20 @@ export default function Login() {
                         {isLoading ? "Signing in..." : "Sign in"}
                     </button>
                 </form>
+
+                <div className="flex items-center gap-3 my-6">
+                    <div className="flex-1 h-px bg-white/15" />
+                    <span className="text-xs text-white/50 font-medium">or</span>
+                    <div className="flex-1 h-px bg-white/15" />
+                </div>
+
+                <button
+                    type="button"
+                    onClick={() => navigate("/")}
+                    className="w-full py-3 rounded-xl bg-transparent border border-white/25 text-white text-sm font-semibold transition-colors hover:bg-white/10 active:scale-[0.98]"
+                >
+                    Akses sebagai staff
+                </button>
             </div>
         </div>
     );

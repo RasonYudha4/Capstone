@@ -41,7 +41,7 @@ export function useAgentChat() {
     }), [pathname, serviceId, standardId, assessmentId, services])
 
     // ── Send a message ────────────────────────────────────────────────────────
-    const send = useCallback(async (content: string) => {
+    const send = useCallback(async (content: string, file?: File) => {
         setError(null)
         setIsLoading(true)
 
@@ -50,7 +50,13 @@ export function useAgentChat() {
 
         setMessages(prev => [
             ...prev,
-            { id: crypto.randomUUID(), role: 'user',      content,   timestamp: new Date() },
+            {
+                id: crypto.randomUUID(),
+                role: 'user',
+                content,
+                timestamp: new Date(),
+                attachedFile: file ? { name: file.name, type: file.type } : undefined,
+            },
             { id: assistantId,         role: 'assistant', content: '', timestamp: new Date() },
         ])
 
@@ -59,7 +65,8 @@ export function useAgentChat() {
                 {
                     question:    content,
                     session_id:  sessionIdRef.current,
-                    app_context: buildAppContext(),      // ← context injected here
+                    app_context: buildAppContext(),      
+                    file,
                 },
                 // onChunk — append visible text to the streaming bubble
                 (chunk) => {

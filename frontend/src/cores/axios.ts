@@ -44,6 +44,8 @@ axioHandler.interceptors.response.use(
             originalRequest._retry = true;
 
             const refreshToken = localStorage.getItem('refreshToken');
+            const accessToken = localStorage.getItem('accessToken');
+            
             if (refreshToken) {
                 if (!refreshPromise) {
                     refreshPromise = axios.post(
@@ -78,6 +80,10 @@ axioHandler.interceptors.response.use(
                     }
                     return Promise.reject(refreshError);
                 }
+            }
+
+            if (!accessToken && !refreshToken) {
+                return Promise.reject(error);
             }
 
             // Only redirect if not already on login page

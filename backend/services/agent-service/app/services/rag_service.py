@@ -12,6 +12,7 @@ from app.repositories.generation.intent_extractor import IntentClassifier, extra
 from app.repositories.generation.prompt_builder import build_prompt, build_gap_prompt
 from app.repositories.generation.query_rewriter import rewrite_query_with_history
 from app.repositories.ingestion.embedder import embedder, embed_query
+from app.repositories.ingestion.upload_extractor import extract_text_from_upload
 from app.core.logger import get_logger
 from app.repositories.retrieval.retriever import retrieve
 from app.core.store.chromadb import ChromaStore, _build_chroma_where
@@ -55,8 +56,23 @@ def run_query(question: str) -> str:
     return answer
 
 
-def run_query_stream(question: str, chat_history: list[dict], app_context=None) -> Generator[str, None, None]:
+def run_query_stream(
+    question: str,
+    chat_history: list[dict],
+    app_context=None,
+    file_path: str | None = None,
+    content_type: str | None = None,
+) -> Generator[str, None, None]:
     log.info("=== stream query start: '%s' ===", question[:80])
+
+    doc_context = None
+    if file_path:
+        doc_context = extract_text_from_upload(file_path, content_type)
+        if doc_context is None:
+            log.warning("file extraction failed or returned empty: %s", file_path)
+            yield "Dokumen ini tidak dapat dibaca (kemungkinan hasil scan tanpa teks)."
+            return
+        log.info("file extracted: %d chars from %s", len(doc_context), file_path)
 
     resolved_question = rewrite_query_with_history(chat_history, question)
     if resolved_question != question:
@@ -77,13 +93,16 @@ def run_query_stream(question: str, chat_history: list[dict], app_context=None) 
     all_intents = intent.get("all_intents", [intent["query_type"]])
     log.info("active intents: %s", all_intents)
 
-    needs_rag = any(i in all_intents for i in ("requirement_lookup", "evidence_check"))
+    needs_rag = any(i in all_intents for i in ("requirement_lookup", "evidence_check")) or doc_context is not None
 
     if needs_rag:
         filters = _build_filters(intent)
+        if doc_context is not None and not filters:
+            filters = {"is_kmk": True}  
+
         q_vec   = embed_query(resolved_question, embedder)
         results = retrieve(q_vec, top_k=settings.top_k, filters=filters)
-        prompt  = build_prompt(resolved_question, results, intent)
+        prompt  = build_prompt(resolved_question, results, intent, doc_context=doc_context)
 
         yield from generate_stream(prompt, generator)
 

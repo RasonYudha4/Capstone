@@ -26,7 +26,7 @@ func NewStorageRepo(minio *minio.Client) *StorageRepo{
 var privateBucket = os.Getenv("PRIVATE_BUCKET")
 var publicBucket = os.Getenv("PUBLIC_BUCKET")
 
-func (s *StorageRepo) Upload_document(file io.Reader, objectId string ,isPublic bool, size int64 , contentType string, )(string, error){
+func (s *StorageRepo) Upload_document(file io.Reader, objectId string ,isPublic bool, size int64 , contentType string)(string, error){
 	var err error
 	var filepath string
 	if isPublic{
@@ -64,28 +64,28 @@ func (s *StorageRepo) Upload_document(file io.Reader, objectId string ,isPublic 
 	return filepath, nil
 }
 
-func (s *StorageRepo) Update_document(file multipart.File, header *multipart.FileHeader, oldFilePath, newFileName string) (string, string, error) {
+func (s *StorageRepo) Update_document(file multipart.File, header *multipart.FileHeader, oldFilePath, newFileName, objectId string) (string, string, string, error) {
     bucket, _ := s.resolveBucket(oldFilePath)
-    extension := filepath.Ext(header.Filename)
-    fileName := strings.Join(strings.Fields(newFileName), "_") + extension
 
-    _, err := s.minio.PutObject(context.Background(), bucket, fileName, file, header.Size,
+    _, err := s.minio.PutObject(context.Background(), bucket, objectId, file, header.Size,
         minio.PutObjectOptions{
             ContentType:        header.Header.Get("Content-Type"),
             ContentDisposition: "inline",
         },
     )
     if err != nil {
-        return "", "", err
+        return "", "", "",err
     }
 
     var newFilePath string
     if bucket == publicBucket {
-        newFilePath = fmt.Sprintf(os.Getenv("PUBLIC_BUCKET_URL"), fileName)
+        newFilePath = fmt.Sprintf(os.Getenv("PUBLIC_BUCKET_URL"), objectId)
     } else {
-        newFilePath = fmt.Sprintf(os.Getenv("PRIVATE_BUCKET_URL"), fileName)
+        newFilePath = fmt.Sprintf(os.Getenv("PRIVATE_BUCKET_URL"), objectId)
     }
-    return fileName, newFilePath, nil
+
+    updatedHash, _ := s.GenerateObjectHMAC(objectId, oldFilePath)
+    return newFileName, updatedHash ,newFilePath, nil
 }
 
 func (s *StorageRepo) Update_documentName(oldFilePath, newFileName string) (string, string, error) {
@@ -115,22 +115,23 @@ func (s *StorageRepo) Update_documentName(oldFilePath, newFileName string) (stri
     return newObjectName, newFilePath, nil
 }
 
-func (s *StorageRepo) Update_documentFile(file multipart.File, header *multipart.FileHeader, oldFilePath string) (string, string, error) {
+func (s *StorageRepo) Update_documentFile(file multipart.File, header *multipart.FileHeader, oldFilePath, objectId string) (string, string,string, error) {
     bucket, objectName := s.resolveBucket(oldFilePath)
 
-    _, err := s.minio.PutObject(context.Background(), bucket, objectName, file, header.Size,
+    _, err := s.minio.PutObject(context.Background(), bucket, objectId, file, header.Size,
         minio.PutObjectOptions{
             ContentType:        header.Header.Get("Content-Type"),
             ContentDisposition: "inline",
         },
     )
     if err != nil {
-        return "", "", err
+        return "", "","", err
     }
 	log.Print("old ", oldFilePath)
 	log.Print("object name", objectName)
 
-    return objectName, oldFilePath, nil
+    updatedHash, _ := s.GenerateObjectHMAC(objectId, oldFilePath)
+    return objectName, updatedHash, oldFilePath, nil
 }
 
 

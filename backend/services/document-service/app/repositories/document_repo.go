@@ -245,7 +245,7 @@ func (s *DocumentRepo) Create_document(assessmentId, documentTypeId, createdById
 	return documentId, true, true, nil
 }
 
-func (s *DocumentRepo) Update_document(documentId, createdById uuid.UUID, filename, filepath, description string) (int64, error) {
+func (s *DocumentRepo) Update_document(documentId, createdById uuid.UUID, filename, filepath, description, objectHash string) (int64, error) {
 	toText := func(s string) pgtype.Text {
 		if strings.TrimSpace(s) == "" {
 			return pgtype.Text{Valid: false}
@@ -257,14 +257,15 @@ func (s *DocumentRepo) Update_document(documentId, createdById uuid.UUID, filena
 		UPDATE documents SET
 			filename = COALESCE($1, filename),
 			filepath = COALESCE($2, filepath),
+			filehash = COALESCE($3, filehash),
 			updated_at = NOW(),
 			status = CASE
 				WHEN status = 'rejected' THEN 'pending'
 				ELSE status
 			END
-		WHERE document_id = $3
+		WHERE document_id = $4
 		AND is_deleted = false
-	`, toText(filename), toText(filepath), documentId)
+	`, toText(filename), toText(filepath), toText(objectHash) ,documentId)
 
 	if err != nil {
 		return 0, err
@@ -609,7 +610,7 @@ func (s *DocumentRepo) Get_object_id(documentId uuid.UUID)(string, error){
 	err := s.db.QueryRow(context.Background(), `
 		SELECT object_id FROM documents
 			WHERE document_id = $1 
-	`, objectId).Scan(&objectId)
+	`, documentId).Scan(&objectId)
 
 	if err != nil {
 		return "", err 
