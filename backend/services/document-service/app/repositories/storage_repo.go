@@ -147,7 +147,7 @@ func (s *StorageRepo) Delete_document(filepath string) error {
 	if err != nil{
 		return err
 	}
-
+    log.Print("object namenya bang", objectName)
 	return nil
 }
 
