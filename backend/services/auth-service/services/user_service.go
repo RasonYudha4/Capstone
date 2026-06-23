@@ -9,6 +9,8 @@ import (
 	"auth-service/config"
 	"auth-service/models"
 	"auth-service/repositories"
+	"crypto/rand"
+	"encoding/hex"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -178,4 +180,60 @@ func (s *UserService) SeedPasswords() error {
 	}
 
 	return nil
+}
+
+// InviteUser creates a new user in 'invited' status and returns a secure token.
+func (s *UserService) InviteUser(email, role string) (string, error) {
+	// 1. Generate secure random token
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	token := hex.EncodeToString(b)
+
+	// 2. Set expiration (24 hours)
+	expiresAt := time.Now().Add(24 * time.Hour)
+
+	// 3. Create user in DB
+	err := s.userRepo.CreateInvitedUser(email, role, token, expiresAt)
+	if err != nil {
+		return "", err
+	}
+
+	return token, nil
+}
+
+// GetByInvitationToken finds a user by token and checks expiration.
+func (s *UserService) GetByInvitationToken(token string) (*models.User, error) {
+	user, err := s.userRepo.GetByInvitationToken(token)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, nil
+	}
+
+	// Check expiration
+	if user.TokenExpiresAt != nil && time.Now().After(*user.TokenExpiresAt) {
+		return nil, fmt.Errorf("invitation token expired")
+	}
+
+	return user, nil
+}
+
+// CompleteInvitation sets the password and activates the user.
+func (s *UserService) CompleteInvitation(userID, password string) error {
+	// 1. Validate password policy
+	if err := ValidatePasswordPolicy(password); err != nil {
+		return err
+	}
+
+	// 2. Hash password
+	hash, err := HashPassword(password)
+	if err != nil {
+		return err
+	}
+
+	// 3. Update DB
+	return s.userRepo.CompleteInvitation(userID, hash)
 }

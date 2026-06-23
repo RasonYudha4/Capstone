@@ -35,6 +35,18 @@ type AssignAdminRequest struct {
 	UserID string `json:"user_id" binding:"required"`
 }
 
+// for POST /auth/invite
+type InviteRequest struct {
+	Email string `json:"email" binding:"required,email"`
+	Role  string `json:"role"  binding:"required,oneof=admin staff"`
+}
+
+// for POST /auth/complete-invitation
+type CompleteInvitationRequest struct {
+	Token    string `json:"token"    binding:"required"`
+	Password string `json:"password" binding:"required,min=8"`
+}
+
 // Response DTOs
 
 // generic envelope for all JSON responses.

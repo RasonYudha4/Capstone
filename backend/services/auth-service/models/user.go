@@ -11,6 +11,9 @@ type User struct {
 	Role             string     `json:"role"`               // user_role ENUM: 'staff', 'admin', 'master-admin'
 	VerificationCode *string    `json:"-"`                  // hidden from JSON
 	PasswordHash     *string    `json:"-"`                  // hidden from JSON (Phase 1)
+	AccountStatus    string     `json:"account_status"`     // 'invited', 'active', 'suspended'
+	InvitationToken  *string    `json:"-"`                  // hidden from JSON
+	TokenExpiresAt   *time.Time `json:"-"`                  // hidden from JSON
 	FailedAttempts   int        `json:"-"`                  // Phase 2: failed login counter
 	LockedUntil      *time.Time `json:"-"`                  // Phase 2: account lock expiry
 	CreatedAt        time.Time  `json:"created_at"`

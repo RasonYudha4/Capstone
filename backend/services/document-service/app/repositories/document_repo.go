@@ -269,9 +269,11 @@ func (s *DocumentRepo) Update_document(documentId, createdById uuid.UUID, filena
 			filehash = COALESCE($3, filehash),
 			updated_at = NOW(),
 			status = CASE
-				WHEN status = 'rejected' THEN 'pending'
-				ELSE status
-			END
+				WHEN status = 'rejected' AND $3 IS NOT NULL AND $3 != (
+            SELECT filehash FROM documents WHERE document_id = $4
+        	) THEN 'pending'
+        		ELSE status
+			END	
 		WHERE document_id = $4
 		AND is_deleted = false
 	`, toText(filename), toText(filepath), toText(objectHash) ,documentId)
@@ -432,22 +434,21 @@ func (s *DocumentRepo) Get_stats(userId uuid.UUID, role string) ([]schemas.Group
     return groups, stats, nil
 }
 
-func (s *DocumentRepo) Get_document_filePath(documentId, createdById uuid.UUID)(string, error){
+func (s *DocumentRepo) Get_document_filePath(documentId uuid.UUID)(string, error){
 	var filePath string 
 
 	query := `
 	SELECT
 		filepath FROM documents
 		WHERE document_id = $1
-		AND created_by = $2
 		AND is_deleted = false
 	`
 
-	err := s.db.QueryRow(context.Background(),query,documentId,createdById).Scan(&filePath)
+	err := s.db.QueryRow(context.Background(),query,documentId).Scan(&filePath)
 	if err != nil{
 		return "Error fetching filepath", err
 	}
-
+	log.Print("filenya jalan", filePath)
 	return filePath, nil
 }
 

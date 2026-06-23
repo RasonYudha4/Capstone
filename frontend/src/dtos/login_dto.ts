@@ -40,6 +40,18 @@ export const logoutSchema = z.object({
     refresh_token: z.string(),
 });
 
+// POST /auth/invite
+export const inviteSchema = z.object({
+    email: z.string().email("Please enter a valid email address"),
+    role: z.enum(["admin", "staff"]),
+});
+
+// POST /auth/complete-invitation
+export const completeInvitationSchema = z.object({
+    token: z.string(),
+    password: z.string().min(8, "Password must be at least 8 characters"),
+});
+
 // response schemas
 
 // generic envelope
@@ -94,6 +106,8 @@ export type OTPFormValues = z.infer<typeof otpSchema>;
 export type ResendOtpValues = z.infer<typeof resendOtpSchema>;
 export type RefreshValues = z.infer<typeof refreshSchema>;
 export type LogoutValues = z.infer<typeof logoutSchema>;
+export type InviteValues = z.infer<typeof inviteSchema>;
+export type CompleteInvitationValues = z.infer<typeof completeInvitationSchema>;
 
 export type LoginResponse = z.infer<typeof loginResponseSchema>;
 export type TokenResponse = z.infer<typeof tokenResponseSchema>;
