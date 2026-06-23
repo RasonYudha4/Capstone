@@ -14,12 +14,15 @@ const Storage = lazy(() => import('../pages/admin/Storage'))
 const Admins = lazy(() => import('../pages/admin/master-admin/Admins'))
 const Activity = lazy(() => import('../pages/admin/master-admin/ActivityLog'))
 
+const SetupPassword = lazy(() => import('../pages/auth/SetupPassword'))
+
 export const router = createBrowserRouter([
     // Public landing page — no auth required
     { path: '/', element: wrap(UserLanding) },
 
     { path: '/login', element: wrap(Login) },
     { path: '/verify', element: wrap(Verification) },
+    { path: '/setup-password', element: wrap(SetupPassword) },
 
     // All authenticated routes share ONE layout
     {

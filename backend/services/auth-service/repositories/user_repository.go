@@ -17,8 +17,8 @@ func NewUserRepository(db *sql.DB) *UserRepository {
 
 // shared column list for all user queries.
 const userColumns = `user_id, group_id, email, verified, role,
-	verification_code, password_hash, failed_attempts, locked_until,
-	created_at, updated_at`
+	verification_code, password_hash, account_status, invitation_token,
+	token_expires_at, failed_attempts, locked_until, created_at, updated_at`
 
 // scans a sql.Row into a User struct.
 func scanUser(row *sql.Row) (*models.User, error) {
@@ -26,6 +26,7 @@ func scanUser(row *sql.Row) (*models.User, error) {
 	err := row.Scan(
 		&user.UserID, &user.GroupID, &user.Email, &user.Verified,
 		&user.Role, &user.VerificationCode, &user.PasswordHash,
+		&user.AccountStatus, &user.InvitationToken, &user.TokenExpiresAt,
 		&user.FailedAttempts, &user.LockedUntil,
 		&user.CreatedAt, &user.UpdatedAt,
 	)
@@ -107,6 +108,32 @@ func (r *UserRepository) UpdateRole(userID string, role string) error {
 	_, err := r.db.Exec(
 		`UPDATE users SET role = $1, updated_at = NOW() WHERE user_id = $2`,
 		role, userID,
+	)
+	return err
+}
+
+func (r *UserRepository) CreateInvitedUser(email, role, token string, expiresAt time.Time) error {
+	_, err := r.db.Exec(
+		`INSERT INTO users (email, role, account_status, invitation_token, token_expires_at, verified, created_at, updated_at)
+		 VALUES ($1, $2, 'invited', $3, $4, false, NOW(), NOW())`,
+		email, role, token, expiresAt,
+	)
+	return err
+}
+
+func (r *UserRepository) GetByInvitationToken(token string) (*models.User, error) {
+	row := r.db.QueryRow(
+		`SELECT `+userColumns+` FROM users WHERE invitation_token = $1`, token,
+	)
+	return scanUser(row)
+}
+
+func (r *UserRepository) CompleteInvitation(userID, passwordHash string) error {
+	_, err := r.db.Exec(
+		`UPDATE users SET password_hash = $1, account_status = 'active', 
+		 invitation_token = NULL, token_expires_at = NULL, verified = true, updated_at = NOW() 
+		 WHERE user_id = $2`,
+		passwordHash, userID,
 	)
 	return err
 }
