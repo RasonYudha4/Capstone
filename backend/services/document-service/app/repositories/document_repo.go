@@ -564,7 +564,8 @@ func(s *DocumentRepo) Check_document_name(filename string, header *multipart.Fil
 		`
 		SELECT EXISTS(
 			SELECT FROM documents
-				WHERE filename = $1)
+				WHERE filename = $1
+				AND is_deleted = false)
 		`,filename + ext).Scan(&isSameName)
 	if err != nil{
 		return false, err
