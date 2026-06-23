@@ -17,10 +17,10 @@ type EmailService struct {
 
 func NewEmailService() *EmailService {
 	return &EmailService{
-		from:     os.Getenv("SMTP_USERNAME"),
-		password: os.Getenv("SMTP_PASSWORD"),
-		smtpHost: os.Getenv("SMTP_HOST"),
-		smtpPort: os.Getenv("SMTP_PORT"),
+		from:     os.Getenv("SMTP_FROM"),     // Google requires this to match auth user
+		password: os.Getenv("SMTP_PASSWORD"), // App Password
+		smtpHost: os.Getenv("SMTP_HOST"),     // smtp.gmail.com
+		smtpPort: os.Getenv("SMTP_PORT"),     // 587
 	}
 }
 
