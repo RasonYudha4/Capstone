@@ -89,7 +89,7 @@ def build_gap_prompt(
     covered: set[str],
     intent:  dict,
 ) -> str:
-    scope        = f" untuk BAB {intent['bab_code']}" if intent.get("bab_code") else ""
+    scope        = f" untuk BAB {intent['fungsi_pelayanan']}" if intent.get("fungsi_pelayanan") else ""
     covered_list = "\n".join(f"- {ep}" for ep in sorted(covered)) or "Belum ada"
     missing_list = "\n".join(f"- {ep}" for ep in missing)         or "Semua sudah terpenuhi"
 

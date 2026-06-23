@@ -50,7 +50,7 @@ INSERT INTO document_types (name, description, is_public, created_at, updated_at
 
 INSERT INTO groups (group_name, created_at, updated_at) VALUES
   ('Kelompok manajemen rumah sakit', NOW(), NOW()),
-  ('kelompok pelayanan berfokus pada pasien', NOW(), NOW()),
+  ('Kelompok pelayanan berfokus pada pasien', NOW(), NOW()),
   ('Kelompok sasaran keselamatan pasien',    NOW(), NOW()),
   ('Kelompok program nasional',  NOW(), NOW());
 

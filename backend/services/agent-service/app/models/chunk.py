@@ -12,7 +12,6 @@ class Chunk:
     chunk_index:            int
     is_kmk:                 bool = False
 
-    bab_code:               str | None = None
     standar:                str | None = None
     kelompok:               str | None = None
 
@@ -41,7 +40,6 @@ class Chunk:
             "chunk_index":              self.chunk_index,
             "token_count":              self.token_count,
             "is_kmk":                   self.is_kmk,
-            "bab_code":                 self.bab_code,
             "standar":                  self.standar,
             "kelompok":                 self.kelompok,
             "element_penilaian":        self.element_penilaian,

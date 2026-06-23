@@ -26,10 +26,10 @@ def run_query(question: str) -> str:
 
     intent = extract_intent(question, _classifier)
     log.info(
-        "intent: query_type=%s standar=%s bab_code=%s",
+        "intent: query_type=%s standar=%s fungsi_pelayanan=%s",
         intent["query_type"],
         intent.get("standar"),
-        intent.get("bab_code"),
+        intent.get("fungsi_pelayanan"),
     )
 
     # ── Routed handlers (no retrieval needed) ────────────────────────────────
@@ -80,14 +80,14 @@ def run_query_stream(
 
     intent = extract_intent(resolved_question, _classifier)
 
-    if intent["query_type"] == "ui_navigation" and not intent.get("standar") and not intent.get("bab_code"):
+    if intent["query_type"] == "ui_navigation" and not intent.get("standar") and not intent.get("fungsi_pelayanan"):
         intent["query_type"] = "general"
         if "ui_navigation" in intent.get("all_intents", []):
             intent["all_intents"].remove("ui_navigation")
 
     log.info(
-        "intent: query_type=%s standar=%s bab_code=%s",
-        intent["query_type"], intent.get("standar"), intent.get("bab_code"),
+        "intent: query_type=%s standar=%s fungsi_pelayanan=%s",
+        intent["query_type"], intent.get("standar"), intent.get("fungsi_pelayanan"),
     )
 
     all_intents = intent.get("all_intents", [intent["query_type"]])
@@ -151,15 +151,15 @@ def _build_filters(intent: dict) -> dict | None:
         filters["standar_code"] = intent["standar"]
     elif intent.get("element_penilaian"):
         filters["element_penilaian_code"] = intent["element_penilaian"]
-    elif intent.get("bab_code"):
-        filters["bab_code"] = intent["bab_code"]
+    elif intent.get("fungsi_pelayanan"):
+        filters["fungsi_pelayanan"] = intent["fungsi_pelayanan"]
 
     return filters or None
 
 def _run_gap_analysis(intent: dict) -> str:
     store = ChromaStore()
 
-    extra = {"bab_code": intent["bab_code"]} if intent.get("bab_code") else {}
+    extra = {"fungsi_pelayanan": intent["fungsi_pelayanan"]} if intent.get("fungsi_pelayanan") else {}
 
     all_ep     = set(store.get_all_unique_values("standar_code", {"is_kmk": True,  **extra}))
     covered_ep = set(store.get_all_unique_values("standar_code", {"is_kmk": False, **extra}))
@@ -196,47 +196,65 @@ def _run_inventory(intent: dict) -> str:
     ]
     return f"Dokumen yang tersedia ({len(files)} berkas):\n" + "\n".join(lines)
 
+_NAV_DEPTH_PRIORITY = ["nav_to_document", "nav_to_assessment", "nav_to_standard", "nav_to_service"]
+
+def _infer_nav_depth(all_intents: list[str]) -> str:
+    for depth_intent in _NAV_DEPTH_PRIORITY:
+        if depth_intent in all_intents:
+            return depth_intent.replace("nav_to_", "")
+    return "standard"
+
 def _build_navigation_block(intent: dict, results: list, ctx=None) -> str:
     lines = []
+    nav_depth = intent.get("nav_depth", "standard")
 
     if not ctx or ctx.current_path != "/storage":
         lines.append('<command>{"type":"NAVIGATE","path":"/storage"}</command>')
 
     evidence_results = [r for r in results if not r.is_kmk]
+    top = evidence_results[0] if evidence_results else None
 
-    if evidence_results:
-        top = evidence_results[0]
+    # ── Service ──────────────────────────────────────────────────────────────
+    service_id = (top.service_id if top else None)
+    if not service_id and intent.get("fungsi_pelayanan") and ctx:  # ← was bab_code
+        matched = _match_service(intent, ctx)
+        if matched:
+            service_id = matched.id
 
-        if top.service_id:
-            lines.append(
-                f'<command>{{"type":"SET_SERVICE_FILTER","serviceId":"{top.service_id}"}}</command>'
-            )
-        if top.standard_id:
-            lines.append(
-                f'<command>{{"type":"SET_STANDARD_FILTER","standardId":"{top.standard_id}"}}</command>'
-            )
-        if top.assessment_id:
-            lines.append(
-                f'<command>{{"type":"SET_ASSESSMENT_FILTER","assessmentId":"{top.assessment_id}"}}</command>'
-            )
+    if service_id:
+        lines.append(f'<command>{{"type":"SET_SERVICE_FILTER","serviceId":"{service_id}"}}</command>')
 
-        if top.document_id:
-            lines.append(
-                f'<command>{{"type":"OPEN_DOCUMENT","documentId":"{top.document_id}"}}</command>'
-            )
-            lines.append(f"\n📄 Membuka **{top.nama_berkas or 'dokumen'}** yang relevan...")
-        else:
-            lines.append(
-                "\n⚠️ Dokumen ditemukan dalam indeks tetapi belum memiliki ID — "
-                "pastikan metadata `document_id` disimpan saat ingestion."
-            )
+    if nav_depth == "service":
+        lines.append("\n📂 Menampilkan layanan yang relevan...")
+        return "\n".join(lines)
 
-    elif intent.get("standar") and ctx:
-        matched_service = _match_service(intent, ctx)
-        if matched_service:
-            lines.append(
-                f'<command>{{"type":"SET_SERVICE_FILTER","serviceId":"{matched_service.id}"}}</command>'
-            )
+    # ── Standard ─────────────────────────────────────────────────────────────
+    if top and top.standard_id:
+        lines.append(f'<command>{{"type":"SET_STANDARD_FILTER","standardId":"{top.standard_id}"}}</command>')
+
+    if nav_depth == "standard":
+        label = (top.standar_code if top else None) or intent.get("standar") or "ini"
+        lines.append(f"\n📂 Menampilkan dokumen untuk standar **{label}**...")
+        return "\n".join(lines)
+
+    # ── Assessment ───────────────────────────────────────────────────────────
+    if top and top.assessment_id:
+        lines.append(f'<command>{{"type":"SET_ASSESSMENT_FILTER","assessmentId":"{top.assessment_id}"}}</command>')
+
+    if nav_depth == "assessment":
+        lines.append("\n📂 Menampilkan assessment yang relevan...")
+        return "\n".join(lines)
+
+    # ── Document ─────────────────────────────────────────────────────────────
+    if top and top.document_id:
+        lines.append(f'<command>{{"type":"OPEN_DOCUMENT","documentId":"{top.document_id}"}}</command>')
+        lines.append(f"\n📄 Membuka **{top.nama_berkas or 'dokumen'}** yang relevan...")
+    elif top:
+        lines.append(
+            "\n⚠️ Dokumen ditemukan dalam indeks tetapi belum memiliki ID — "
+            "pastikan metadata `document_id` disimpan saat ingestion."
+        )
+    else:
         if "evidence_check" in intent.get("all_intents", []):
             lines.append(
                 "\n📭 Tidak ditemukan berkas bukti untuk standar ini. "
@@ -248,7 +266,7 @@ def _build_navigation_block(intent: dict, results: list, ctx=None) -> str:
 def _match_service(intent: dict, ctx) -> object | None:
     """
     Tries to find the matching service option from AppContext
-    based on the bab_code or standar code in the intent.
+    based on the fungsi_pelayanan or standar code in the intent.
 
     Returns the first ServiceOption whose label contains the bab prefix,
     or None if no match is found.
@@ -256,13 +274,13 @@ def _match_service(intent: dict, ctx) -> object | None:
     if not ctx or not ctx.available_services:
         return None
 
-    bab = (intent.get("bab_code") or "").upper()
+    fungsi = (intent.get("fungsi_pelayanan") or "").upper()
     standar = (intent.get("standar") or "").upper()
 
     search_terms = []
-    if bab:
+    if fungsi:
         # "BAB TKRS" → "TKRS"
-        parts = bab.split()
+        parts = fungsi.split()
         search_terms.extend(parts[1:] if len(parts) > 1 else parts)
     if standar:
         # "AP 1.1" → "AP"

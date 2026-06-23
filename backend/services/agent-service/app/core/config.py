@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     # ── Chunking ─────────────────────────────────────────────────────────
     chunk_size:    int = 512
     chunk_overlap: int = 64
-    top_k:         int = 5
+    top_k:         int = 10
 
     # ── Vector store ─────────────────────────────────────────────────────
     vector_path: str = "./data/vector_db"

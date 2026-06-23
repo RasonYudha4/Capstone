@@ -86,6 +86,7 @@ def run_ingest_kmk(kmk_path: str) -> IngestResult:
             store = ChromaStore()
             store.upsert(chunks)
             result.chunks_upserted = len(chunks)
+            _log_chunk_sample(chunks, "KMK") 
         except Exception as exc:
             log.error("upsert failed: %s", exc)
             result.docs_failed = 1
@@ -166,6 +167,7 @@ def run_ingest_evidence(
             })
             store.upsert(chunks)
             result.chunks_upserted = len(chunks)
+            _log_chunk_sample(chunks, "evidence")
         except Exception as exc:
             log.error("upsert failed: %s", exc)
             result.docs_failed = 1
@@ -175,3 +177,31 @@ def run_ingest_evidence(
     result.elapsed_s = time.perf_counter() - t_start
     result.log_summary(log)
     return result
+
+# ---------------------------------------------------------------------------
+# Debug helper — log one representative chunk's metadata after upsert
+# ---------------------------------------------------------------------------
+
+def _log_chunk_sample(chunks: list, label: str) -> None:
+    """Log the metadata of the first chunk so you can verify what landed in Chroma."""
+    if not chunks:
+        return
+    c = chunks[0]
+    log.info(
+        "[%s] sample chunk #0 metadata: "
+        "is_kmk=%s | fungsi_pelayanan=%s | standar_code=%s | kelompok=%s | "
+        "element_penilaian_code=%s | doc_type=%s | nama_berkas=%s | "
+        "service_id=%s | standard_id=%s | assessment_id=%s | document_id=%s | "
+        "token_count=%d | text_preview=%.80r",
+        label,
+        c.is_kmk, c.fungsi_pelayanan, c.standar_code, c.kelompok,
+        getattr(c, "element_penilaian_code", None),
+        getattr(c, "doc_type", None),
+        getattr(c, "nama_berkas", None),
+        getattr(c, "service_id", None),
+        getattr(c, "standard_id", None),
+        getattr(c, "assessment_id", None),
+        getattr(c, "document_id", None),
+        c.token_count,
+        c.text,
+    )
