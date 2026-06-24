@@ -30,54 +30,26 @@ _EP_BLOCK_RE = re.compile(r"Elemen\s+Penilaian\s+([A-Z]+\s+[\d.]+)")
 _EP_ITEM_RE  = re.compile(r"^([a-z]\))\s+(.+?)(?=^[a-z]\)|$)", re.MULTILINE | re.DOTALL)
 
 _KELOMPOK_MAP = {
-    "TKRS": "manajemen_rs", "KPS": "manajemen_rs", "MFK": "manajemen_rs",
-    "PMKP": "manajemen_rs", "MRMIK": "manajemen_rs", "PPI": "manajemen_rs",
-    "PPK": "manajemen_rs",
-    "AKP": "pelayanan_pasien", "HPK": "pelayanan_pasien", "PP": "pelayanan_pasien",
-    "PAP": "pelayanan_pasien", "PAB": "pelayanan_pasien", "PKPO": "pelayanan_pasien",
-    "KE": "pelayanan_pasien",
-    "SKP": "skp",
-    "PROGNAS": "prognas",
+    # Kelompok manajemen rumah sakit
+    "TKRS":  "Kelompok manajemen rumah sakit",
+    "KPS":   "Kelompok manajemen rumah sakit",
+    "MFK":   "Kelompok manajemen rumah sakit",
+    "PMKP":  "Kelompok manajemen rumah sakit",
+    "MRMIK": "Kelompok manajemen rumah sakit",
+    "PPI":   "Kelompok manajemen rumah sakit",
+    "PPK":   "Kelompok manajemen rumah sakit",
+    # Kelompok pelayanan berfokus pada pasien
+    "AKP":  "Kelompok pelayanan berfokus pada pasien",
+    "HPK":  "Kelompok pelayanan berfokus pada pasien",
+    "PP":   "Kelompok pelayanan berfokus pada pasien",
+    "PAP":  "Kelompok pelayanan berfokus pada pasien",
+    "PAB":  "Kelompok pelayanan berfokus pada pasien",
+    "PKPO": "Kelompok pelayanan berfokus pada pasien",
+    "KE":   "Kelompok pelayanan berfokus pada pasien",
+    # Others
+    "SKP":     "Kelompok sasaran keselamatan pasien",
+    "PROGNAS": "Kelompok program nasional",
 }
-
-
-# ---------------------------------------------------------------------------
-# Public interface
-# ---------------------------------------------------------------------------
-
-def chunk_document(
-    doc: ParsedDocument,
-    form_metadata: dict | None = None,
-    max_tokens: int = 512,
-    overlap_tokens: int = 64,
-    min_tokens: int = 40,
-) -> list[Chunk]:
-    """
-    Main entry point.
-
-    Args:
-        doc:           parsed document from parser.py
-        form_metadata: populated from upload form for evidence documents.
-                       None means this is the KMK document.
-        max_tokens:    max tokens per chunk (generic path only)
-        overlap_tokens: overlap between consecutive chunks (generic path only)
-        min_tokens:    minimum tokens — chunks below this are dropped
-    """
-    if form_metadata:
-        log.debug("using evidence chunker for %s", doc.source)
-        chunks = chunk_evidence(doc, form_metadata, max_tokens, overlap_tokens, min_tokens)
-    else:
-        log.debug("using KMK chunker for %s", doc.source)
-        chunks = chunk_kmk(doc, min_tokens)
-
-    log.info(
-        "%s → %d chunks (signature=%s)",
-        doc.source,
-        len(chunks),
-        doc.signature_status.value if form_metadata else "n/a",
-    )
-    
-    return chunks
 
 
 # ---------------------------------------------------------------------------
@@ -101,8 +73,8 @@ def chunk_kmk(
     sections = _split_into_standar_sections(doc.raw_text)
 
     for section in sections:
-        bab_code  = _extract_bab_code(section["standar"])
-        kelompok  = _KELOMPOK_MAP.get(bab_code)
+        fungsi_pelayanan  = _extract_fungsi_pelayanan(section["standar"])
+        kelompok  = _KELOMPOK_MAP.get(fungsi_pelayanan)
 
         # Build one complete self-contained chunk
         ep_lines = "\n".join(
@@ -121,14 +93,14 @@ def chunk_kmk(
             continue
 
         chunks.append(Chunk(
-            text        = text,
-            token_count = tok,
-            source      = doc.source,
-            chunk_index = len(chunks),
-            is_kmk      = True,
-            bab_code    = bab_code,
-            standar_code = section["standar"],
-            kelompok    = kelompok,
+            text                = text,
+            token_count         = tok,
+            source              = doc.source,
+            chunk_index         = len(chunks),
+            is_kmk              = True,
+            fungsi_pelayanan    = fungsi_pelayanan,
+            standar_code        = section["standar"],
+            kelompok            = kelompok,
         ))
 
     return chunks
@@ -155,7 +127,6 @@ def chunk_evidence(
     enriched = []
     for chunk in raw_chunks:
         chunk.is_kmk                    = False
-        chunk.bab_code                  = form_metadata.get("bab_code")
         chunk.standar                   = form_metadata.get("standar")
         chunk.kelompok                  = form_metadata.get("kelompok")
         chunk.element_penilaian         = form_metadata.get("element_penilaian")
@@ -310,7 +281,7 @@ def _extract_between(text: str, start_re: re.Pattern, end_re: re.Pattern) -> str
     return text[body_start:body_end].strip()
 
 
-def _extract_bab_code(standar: str) -> str:
+def _extract_fungsi_pelayanan(standar: str) -> str:
     return standar.split()[0] if standar else "UNKNOWN"
 
 

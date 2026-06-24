@@ -72,4 +72,22 @@ export const authService = {
         }
         return userResponseSchema.parse(parsed.data)
     },
+
+    // POST /auth/invite
+    inviteUser: async (email: string, role: string): Promise<void> => {
+        const { data } = await axioHandler.post('/auth/invite', { email, role })
+        const parsed = voidApiResponseSchema.parse(data)
+        if (!parsed.success) {
+            throw new Error(parsed.message)
+        }
+    },
+
+    // POST /auth/complete-invitation
+    completeInvitation: async (token: string, password: string): Promise<void> => {
+        const { data } = await axioHandler.post('/auth/complete-invitation', { token, password })
+        const parsed = voidApiResponseSchema.parse(data)
+        if (!parsed.success) {
+            throw new Error(parsed.message)
+        }
+    },
 }

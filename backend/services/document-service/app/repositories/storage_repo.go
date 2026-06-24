@@ -147,7 +147,7 @@ func (s *StorageRepo) Delete_document(filepath string) error {
 	if err != nil{
 		return err
 	}
-
+    log.Print("object namenya bang", objectName)
 	return nil
 }
 
@@ -168,8 +168,7 @@ func (s *StorageRepo) GetMinioObject(ctx context.Context, minioPath string) (*mi
 }
 
 func (s *StorageRepo) GenerateObjectHMAC(objectId string, minioPath string)(string, error){
-	 bucket, objectName := s.resolveBucket(minioPath)
-
+	bucket, objectName := s.resolveBucket(minioPath)
     object, err := s.minio.GetObject(
 		context.Background(),
         bucket,

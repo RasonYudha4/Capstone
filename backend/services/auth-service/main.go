@@ -29,7 +29,10 @@ func main() {
 
 	// services
 	userService := services.NewUserService(userRepo)
-	otpService := services.NewOTPService(otpRepo)
+
+	
+	emailService := services.NewEmailService()
+	otpService := services.NewOTPService(otpRepo, emailService)
 	jwtService := services.NewJWTService()
 	refreshService := services.NewRefreshService(refreshRepo) // Phase 2
 	auditService := services.NewAuditService(auditRepo)       // Phase 2
@@ -44,7 +47,7 @@ func main() {
 		log.Printf("⚠️  Failed to seed passwords: %v", err)
 	}
 	authHandler := handlers.NewAuthHandler(
-		userService, otpService, jwtService, refreshService, auditService,
+		userService, otpService, emailService, jwtService, refreshService, auditService,
 	)
 	documentHandler := handlers.NewDocumentHandler()
 
@@ -76,6 +79,9 @@ func main() {
 		auth.GET("/health", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"status": "UP"})
 		})
+
+		// complete invitation (setup password) - PUBLIC
+		auth.POST("/complete-invitation", authHandler.CompleteInvitation)
 	}
 
 	// protected routes
@@ -89,6 +95,12 @@ func main() {
 		protected.POST("/auth/assign-admin",
 			middleware.RequireRoles(config.RoleMasterAdmin),
 			authHandler.AssignAdmin,
+		)
+
+		// invite new user — only "master-admin" can invite.
+		protected.POST("/auth/invite",
+			middleware.RequireRoles(config.RoleMasterAdmin),
+			authHandler.Invite,
 		)
 
 		// document listing — accessible by ALL authenticated roles.

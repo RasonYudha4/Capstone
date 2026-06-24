@@ -20,7 +20,7 @@ class SearchResult:
     is_kmk:     bool = False
     doc_type: str | None = None
     chunk_type: str | None = None
-    bab_code:   str | None = None
+    fungsi_pelayanan:   str | None = None
     standar: str | None = None
     element_penilaian:      str | None = None
     kelompok:   str | None = None
@@ -41,7 +41,7 @@ class SearchResult:
             is_kmk     = bool(payload.get("is_kmk", False)),
             doc_type   = payload.get("doc_type"),
             chunk_type = payload.get("chunk_type"),
-            bab_code   = payload.get("bab_code"),
+            fungsi_pelayanan   = payload.get("fungsi_pelayanan"),
             standar = payload.get("standar"),
             element_penilaian      = payload.get("element_penilaian"),
             kelompok   = payload.get("kelompok"),
@@ -84,7 +84,7 @@ class VectorStore(ABC):
             embedding:  query vector, same dim as indexed vectors
             top_k:      number of results to return
             filters:    optional metadata filters, e.g.
-                        {"bab_code": "TKRS", "chunk_type": "ep_unit"}
+                        {"fungsi_pelayanan": "TKRS", "chunk_type": "ep_unit"}
                         Implementation behaviour varies by backend —
                         ChromaStore supports this natively, FaissStore
                         applies post-hoc filtering.

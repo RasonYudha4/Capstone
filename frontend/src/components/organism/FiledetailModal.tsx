@@ -166,7 +166,7 @@ export default function FileDetailModal({
         const newFilename = data.filename?.trim() || undefined
 
         openConfirm({
-            title: 'Update Status Berkas?',
+            title: 'Update Berkas?',
             description: `Anda akan memperbarui berkas "${file.name}". Pastikan data sudah benar.`,
             confirmLabel: 'Ya, Update',
             variant: 'warning',

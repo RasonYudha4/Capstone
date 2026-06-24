@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react'
 import { InboxIcon, DownloadIcon, FileSearch } from 'lucide-react'
 import StatCard from '../molecules/StatCard'
-import { statsService } from '@/services/document_services'
-import { auditService } from '@/services/audit_service'
-import type { StatsResponse } from '@/dtos/document_dto'
+import { useStats } from '@/hooks/useDocument'
+import { useAudit } from '@/hooks/useAudit'
+import { useMe } from '@/hooks/useAuth'
 
 interface LastOpened {
     name: string
@@ -32,44 +31,29 @@ function getWeeklyCount(current: number, key: string): number {
 }
 
 export default function StatRow() {
-    const [stats, setStats]           = useState<StatsResponse | null>(null)
-    const [lastOpened, setLastOpened] = useState<LastOpened | null>(null)
+    const { data: stats } = useStats()
+    const { data: audit } = useAudit()
+    const { data: me } = useMe()
 
-    useEffect(() => {
-        // fetch stats
-        statsService.getStats().then(setStats).catch(console.error)
+    const lastOpened: LastOpened | null = (() => {
+        if (!audit?.data || !me?.email) return null
 
-        // fetch audit and find last "open" for current user
-        auditService.getAll().then(res => {
-            // get current user email from localStorage/session
-            // adjust the key to wherever your auth stores the email
-            const currentUser =
-                localStorage.getItem('userEmail') ??
-                sessionStorage.getItem('userEmail') ??
-                null
+        const lastOpen = audit.data
+            .filter(a =>
+                a.action.toLowerCase() === 'open' &&
+                a.username === me.email
+            )
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+            .at(0)
 
-            const lastOpen = res.data
-                .filter(a =>
-                    a.action.toLowerCase() === 'open' &&
-                    (currentUser ? a.username === currentUser : true)
-                )
-                // sort descending by created_at — take the most recent
-                .sort((a, b) => b.created_at.localeCompare(a.created_at))
-                .at(0)
+        if (!lastOpen) return null
+        return { name: lastOpen.document_name, date: lastOpen.created_at }
+    })()
 
-            if (lastOpen) {
-                setLastOpened({
-                    name: lastOpen.document_name,
-                    date: lastOpen.created_at,
-                })
-            }
-        }).catch(console.error)
-    }, [])
-
-    const pendingCount  = stats?.stats.pending ?? 0
-    const totalCount    = stats?.total         ?? 0
+    const pendingCount = stats?.stats.pending ?? 0
+    const totalCount = stats?.total ?? 0
     const weeklyPending = stats ? getWeeklyCount(pendingCount, 'snapshot_pending') : 0
-    const weeklyTotal   = stats ? getWeeklyCount(totalCount,   'snapshot_total')   : 0
+    const weeklyTotal = stats ? getWeeklyCount(totalCount, 'snapshot_total') : 0
 
     return (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
@@ -90,7 +74,7 @@ export default function StatRow() {
             <StatCard label="Terakhir Dilihat" icon={FileSearch}>
                 {lastOpened ? (
                     <div className="flex flex-col">
-                        <span className="text-sm font-medium text-gray-800 truncate max-w-[160px]">
+                        <span className="text-sm font-medium text-gray-800 truncate max-w-40">
                             {lastOpened.name}
                         </span>
                         <span className="text-sm text-gray-500">

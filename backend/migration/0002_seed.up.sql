@@ -50,7 +50,7 @@ INSERT INTO document_types (name, description, is_public, created_at, updated_at
 
 INSERT INTO groups (group_name, created_at, updated_at) VALUES
   ('Kelompok manajemen rumah sakit', NOW(), NOW()),
-  ('kelompok pelayanan berfokus pada pasien', NOW(), NOW()),
+  ('Kelompok pelayanan berfokus pada pasien', NOW(), NOW()),
   ('Kelompok sasaran keselamatan pasien',    NOW(), NOW()),
   ('Kelompok program nasional',  NOW(), NOW());
 
@@ -62,13 +62,13 @@ INSERT INTO services (group_id, service_code, description, created_at, updated_a
   ((SELECT group_id FROM groups WHERE group_name = 'Kelompok manajemen rumah sakit'LIMIT 1 ),'MRMIK', 'Manajemen Rekam Medik & Informasi', NOW(), NOW()),
   ((SELECT group_id FROM groups WHERE group_name = 'Kelompok manajemen rumah sakit'LIMIT 1 ),'PPI', 'Pencegahan & Pengendalian Infeksi', NOW(), NOW()),
   ((SELECT group_id FROM groups WHERE group_name = 'Kelompok manajemen rumah sakit'LIMIT 1 ),'PPK', 'Pendidikan dalam Yankes', NOW(), NOW()),
-  ((SELECT group_id FROM groups WHERE group_name = 'kelompok pelayanan berfokus pada pasien' LIMIT 1 ),'AKP', 'Akses & Kesinambungan Pelayanan', NOW(), NOW()),
-  ((SELECT group_id FROM groups WHERE group_name = 'kelompok pelayanan berfokus pada pasien' LIMIT 1 ),'HPK', 'Hak Pasien dan Keterlibatan Keluarga', NOW(), NOW()),
-  ((SELECT group_id FROM groups WHERE group_name = 'kelompok pelayanan berfokus pada pasien' LIMIT 1 ),'PP', 'Pengkajian Pasien', NOW(), NOW()),
-  ((SELECT group_id FROM groups WHERE group_name = 'kelompok pelayanan berfokus pada pasien' LIMIT 1 ),'PAP', 'Pelayanan dan Asuhan Pasien', NOW(), NOW()),
-  ((SELECT group_id FROM groups WHERE group_name = 'kelompok pelayanan berfokus pada pasien' LIMIT 1 ),'PAB', 'Pelayanan Anestesi dan Bedah', NOW(), NOW()),
-  ((SELECT group_id FROM groups WHERE group_name = 'kelompok pelayanan berfokus pada pasien' LIMIT 1 ),'PKPO', 'Pelayanan Kefarmasian dan Penggunaan Obat', NOW(), NOW()),
-  ((SELECT group_id FROM groups WHERE group_name = 'kelompok pelayanan berfokus pada pasien' LIMIT 1 ),'KE', 'Komunikasi dan Edukasi', NOW(), NOW()),
+  ((SELECT group_id FROM groups WHERE group_name = 'Kelompok pelayanan berfokus pada pasien' LIMIT 1 ),'AKP', 'Akses & Kesinambungan Pelayanan', NOW(), NOW()),
+  ((SELECT group_id FROM groups WHERE group_name = 'Kelompok pelayanan berfokus pada pasien' LIMIT 1 ),'HPK', 'Hak Pasien dan Keterlibatan Keluarga', NOW(), NOW()),
+  ((SELECT group_id FROM groups WHERE group_name = 'Kelompok pelayanan berfokus pada pasien' LIMIT 1 ),'PP', 'Pengkajian Pasien', NOW(), NOW()),
+  ((SELECT group_id FROM groups WHERE group_name = 'Kelompok pelayanan berfokus pada pasien' LIMIT 1 ),'PAP', 'Pelayanan dan Asuhan Pasien', NOW(), NOW()),
+  ((SELECT group_id FROM groups WHERE group_name = 'Kelompok pelayanan berfokus pada pasien' LIMIT 1 ),'PAB', 'Pelayanan Anestesi dan Bedah', NOW(), NOW()),
+  ((SELECT group_id FROM groups WHERE group_name = 'Kelompok pelayanan berfokus pada pasien' LIMIT 1 ),'PKPO', 'Pelayanan Kefarmasian dan Penggunaan Obat', NOW(), NOW()),
+  ((SELECT group_id FROM groups WHERE group_name = 'Kelompok pelayanan berfokus pada pasien' LIMIT 1 ),'KE', 'Komunikasi dan Edukasi', NOW(), NOW()),
   ((SELECT group_id FROM groups WHERE group_name = 'Kelompok sasaran keselamatan pasien' LIMIT 1 ),'SKP', 'Sasaran Keselamatan Pasien', NOW(), NOW()),
   ((SELECT group_id FROM groups WHERE group_name = 'Kelompok program nasional' LIMIT 1 ),'Prognas', 'Program Nasional', NOW(), NOW());
 
@@ -1118,25 +1118,25 @@ INSERT INTO assessment (standard_id, assessment_code, description, created_at, u
 -- Seed User Accounts
 INSERT INTO users (email, verified, role, group_id, password_hash, failed_attempts, created_at, updated_at) VALUES
 
-('masteradmin@gmail.com', true, 'master-admin', NULL,
+('masteradmin@gmail.com', false, 'master-admin', NULL,
  '$2y$10$qJ91x6/5YZUB5BSwse8t7u.dzx8UbKjnSFP5YhVNeOVrFCyRYI48K', 0, NOW(), NOW()),
 
 ('staff@gmail.com', false, 'staff', NULL,
  '$2y$10$qJ91x6/5YZUB5BSwse8t7u.dzx8UbKjnSFP5YhVNeOVrFCyRYI48K', 0, NOW(), NOW()),
 
-('admin.manajemen@gmail.com', true, 'admin',
+('admin.manajemen@gmail.com', false, 'admin',
  (SELECT group_id FROM groups WHERE group_name = 'Kelompok manajemen rumah sakit' LIMIT 1),
  '$2y$10$qJ91x6/5YZUB5BSwse8t7u.dzx8UbKjnSFP5YhVNeOVrFCyRYI48K', 0, NOW(), NOW()),
 
-('admin.pelayanan@gmail.com', true, 'admin',
- (SELECT group_id FROM groups WHERE group_name = 'kelompok pelayanan berfokus pada pasien' LIMIT 1),
+('admin.pelayanan@gmail.com', false, 'admin',
+ (SELECT group_id FROM groups WHERE group_name = 'Kelompok pelayanan berfokus pada pasien' LIMIT 1),
  '$2y$10$qJ91x6/5YZUB5BSwse8t7u.dzx8UbKjnSFP5YhVNeOVrFCyRYI48K', 0, NOW(), NOW()),
 
-('admin.keselamatan@gmail.com', true, 'admin',
+('admin.keselamatan@gmail.com', false, 'admin',
  (SELECT group_id FROM groups WHERE group_name = 'Kelompok sasaran keselamatan pasien' LIMIT 1),
  '$2y$10$qJ91x6/5YZUB5BSwse8t7u.dzx8UbKjnSFP5YhVNeOVrFCyRYI48K', 0, NOW(), NOW()),
 
-('admin.nasional@gmail.com', true, 'admin',
+('admin.nasional@gmail.com', false, 'admin',
  (SELECT group_id FROM groups WHERE group_name = 'Kelompok program nasional' LIMIT 1),
  '$2y$10$qJ91x6/5YZUB5BSwse8t7u.dzx8UbKjnSFP5YhVNeOVrFCyRYI48K', 0, NOW(), NOW());
 

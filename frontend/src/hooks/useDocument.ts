@@ -126,16 +126,6 @@ export const useDocumentsByStatus = (status: string, query?: PaginationQuery) =>
 }
 
 // ─── Mutations ────────────────────────────────────────────────────────────────
-//
-// IMPORTANT: every mutation below invalidates `documentKeys.all` (the root
-// key, ['documents']), not just `documentKeys.lists()`. React Query's
-// invalidateQueries does a PREFIX match — invalidating ['documents','list']
-// only catches useDocuments. It does NOT catch ['documents','service',...],
-// ['documents','standard',...], ['documents','assessment',...], or
-// ['documents','stats'], because those are sibling branches, not children
-// of 'list'. Invalidating the root ['documents'] key catches everything
-// (lists, filtered views, details, stats) in one call, and React Query will
-// only actually refetch the ones currently mounted/active.
 
 export const useUploadDocument = () => {
     const queryClient = useQueryClient()

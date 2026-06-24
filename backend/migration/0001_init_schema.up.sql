@@ -1,5 +1,5 @@
 CREATE TYPE user_role AS ENUM ('master-admin', 'admin', 'staff');
-CREATE TYPE action_type AS ENUM ('insert', 'open', 'edit','update','delete','error');
+CREATE TYPE action_type AS ENUM ('insert', 'open', 'edit','update','delete','error','login','login_fail','lockout');
 CREATE TYPE audit_source AS ENUM ('client', 'system');
 
 CREATE TABLE IF NOT EXISTS groups (
@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS document_types (
 CREATE TABLE IF NOT EXISTS documents (
     document_id UUID PRIMARY KEY DEFAULT gen_random_uuid() ,
     assessment_id UUID,
-    filename VARCHAR(255) UNIQUE,
+    filename VARCHAR(255),
     filepath VARCHAR(5024),
     filehash VARCHAR(255),
     object_id UUID,

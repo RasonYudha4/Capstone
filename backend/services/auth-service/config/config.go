@@ -23,6 +23,13 @@ var (
 	// IsDevMode is true when DEV_MODE env var is set to "true" (default false).
 	IsDevMode = strings.EqualFold(getEnv("DEV_MODE", "false"), "true")
 
+	// Email / SMTP configuration
+	SMTPFrom     = getEnv("SMTP_FROM", "")
+	SMTPUser     = getEnv("SMTP_USERNAME", "")
+	SMTPPass     = getEnv("SMTP_PASSWORD", "")
+	SMTPHost     = getEnv("SMTP_HOST", "smtp.gmail.com")
+	SMTPPort     = getEnv("SMTP_PORT", "587")
+
 	// Seeder credentials
 	MasterAdminEmail    = getEnv("MASTER_ADMIN_EMAIL", "masteradmin@gmail.com")
 	MasterAdminPassword = getEnv("MASTER_ADMIN_PASSWORD", "password123")

@@ -241,11 +241,11 @@ func (d *DocumentService) Create_document(req schemas.DocumentRequest, file mult
 		}, nil
 	}
 		
-	_, err = d.audit.SaveAudit("insert", "Upload new document", createdById, documentId, "client", time.Now(), time.Now())
+	filename, err := d.audit.SaveAudit("insert", "Upload new document", createdById, documentId, "client", time.Now(), time.Now())
 	if err != nil {
 		log.Print("Error adding create log: ", err)
 	}
-
+	
 	adminEmail, adminId, err := d.repo.Get_admin_email()
 	if err != nil {
 		log.Print("Error getting master admin email", err)
@@ -254,11 +254,12 @@ func (d *DocumentService) Create_document(req schemas.DocumentRequest, file mult
 	go d.TriggerIngestEvidence(bytes.NewReader(fileBytes), header.Filename, req, document_Id)
 
 	go func() {
-		log.Printf("[email] NotifyDeptHead done for document %s", documentId)
-		d.notification.NotifyDeptHead(adminEmail, documentId.String())
+		
+		d.notification.NotifyDeptHead(adminEmail, filename)
+		log.Printf("[email] NotifyDeptHead done for document %s", filename)
 	}()
 
-	go d.notification.NotifySSE(adminId, SSEEvent{
+	go d.notification.NotifySSE([]uuid.UUID{adminId}, SSEEvent{
 		Type:       "new_document",
 		DocumentId: documentId.String(),
 		Status:     "Pending",
@@ -300,7 +301,7 @@ func(d *DocumentService) Update_document(req schemas.UpdateRequest, file multipa
 		}
 	}
 
-	oldFilePath, err := d.repo.Get_document_filePath(documentId, createdById)
+	oldFilePath, err := d.repo.Get_document_filePath(documentId)
 	if err != nil{
 		return schemas.Response{}, err
 	}
@@ -330,6 +331,7 @@ func(d *DocumentService) Update_document(req schemas.UpdateRequest, file multipa
 		newFileName = ""
 		filePath = ""
 	}
+	log.Print(updatedHash, "update")
 
  	result, err := d.repo.Update_document(documentId,createdById,newFileName,filePath, req.Description, updatedHash)
 	if err != nil{
@@ -350,8 +352,8 @@ func(d *DocumentService) Update_document(req schemas.UpdateRequest, file multipa
 }
 
 
-func (d *DocumentService) Delete_document(documentId uuid.UUID, userId uuid.UUID, userRole string)(schemas.Response, error){
-	filename, isDeleted ,err := d.repo.Delete_document(documentId, userId, userRole)
+func (d *DocumentService) Delete_document(documentId uuid.UUID, createdById uuid.UUID, userRole string)(schemas.Response, error){
+	filepath, isDeleted ,err := d.repo.Delete_document(documentId, createdById, userRole)
 	if err != nil{
 		log.Print("error delete document data",err)
 		return schemas.Response{},err
@@ -365,12 +367,13 @@ func (d *DocumentService) Delete_document(documentId uuid.UUID, userId uuid.UUID
 		}, nil
 	}
 
-	err = d.storage.Delete_document(filename) 
+	err = d.storage.Delete_document(filepath) 
+	log.Print("error gak nih ", err)
 	if err != nil{
 		log.Print("Error deleting document at the storage", err)
 	}
 
-	_, err = d.audit.SaveAudit("delete",fmt.Sprintf("Deleting file %s",documentId),userId,documentId,"client",time.Now(),time.Now())
+	_, err = d.audit.SaveAudit("delete",fmt.Sprintf("Deleting file %s",documentId),createdById,documentId,"client",time.Now(),time.Now())
 	if err != nil{
 		log.Print("error adding delete log: ", err)
 	}
@@ -381,7 +384,7 @@ func (d *DocumentService) Delete_document(documentId uuid.UUID, userId uuid.UUID
 	}, nil
 }
 
-func (d *DocumentService) Approval_document(documentId, userId uuid.UUID, status string, file multipart.File, fileHeader *multipart.FileHeader) (schemas.Response, error) {
+func (d *DocumentService) Approval_document(documentId, createdById uuid.UUID, status string, file multipart.File, fileHeader *multipart.FileHeader) (schemas.Response, error) {
 
 	storedHash, err := d.repo.Check_document_hash(documentId)
 	if err != nil{
@@ -389,7 +392,7 @@ func (d *DocumentService) Approval_document(documentId, userId uuid.UUID, status
 	}
 
 	objectId, _  := d.repo.Get_object_id(documentId)
-	filepath, _ := d.repo.Get_document_filePath(documentId, userId)
+	filepath, err := d.repo.Get_document_filePath(documentId)
 	objectHash, _ := d.storage.GenerateObjectHMAC(objectId, filepath)
 
 	if !hmac.Equal(
@@ -399,7 +402,7 @@ func (d *DocumentService) Approval_document(documentId, userId uuid.UUID, status
 		return schemas.Response{
 			Status: false,
 			Message: "Document integrity check failed. The file hash does not match the original document fingerprint",
-		}, nil
+		}, err
 	}
 
 	isApproved, err := d.repo.Document_is_approved(documentId)
@@ -443,18 +446,17 @@ func (d *DocumentService) Approval_document(documentId, userId uuid.UUID, status
 		}, nil
 	}
 
-	filename, err := d.audit.SaveAudit("update","Updating document status",userId, documentId, "client", time.Now(), time.Now())
+	filename, err := d.audit.SaveAudit("update","Updating document status",createdById, documentId, "client", time.Now(), time.Now())
 	if err != nil {
 		log.Print("error adding approval log: ", err)
 	}
-
 	ownerEmail, ownerId, err := d.repo.Get_document_owner_email(documentId)
 	if err != nil {
 		log.Print("failed to get document owner email:", err)
 	} else {
 		msg := fmt.Sprintf("Your Document (%s) is now %s", filename, status)
 
-		go d.notification.NotifyOwner(ownerEmail, documentId, msg)
+		go d.notification.NotifyOwner(ownerEmail, filename, msg)
 
 		go d.notification.NotifySSE([]uuid.UUID{ownerId}, SSEEvent{
 			Type:       "document_status_update",
@@ -470,8 +472,8 @@ func (d *DocumentService) Approval_document(documentId, userId uuid.UUID, status
 	}, nil
 }
 
-func (s *DocumentService) GetStats(userId uuid.UUID, role string) (schemas.StatsResponse, error) {
-	groups, stat, err := s.repo.Get_stats(userId, role)
+func (s *DocumentService) GetStats(createdById uuid.UUID, role string) (schemas.StatsResponse, error) {
+	groups, stat, err := s.repo.Get_stats(createdById, role)
 	if err != nil {
 		return schemas.StatsResponse{Status: false}, err
 	}

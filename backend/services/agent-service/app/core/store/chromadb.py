@@ -118,7 +118,7 @@ class ChromaStore(VectorStore):
         log.info("deleted chunks matching filters: %s", filters)
 
     def get_all_unique_values(self, field: str, filters: dict) -> list[str]:
-        # used by intent extractor to get known standars and bab_codes
+        # used by intent extractor to get known standars and fungsi_pelayanan
         results = self._col.get(
             where=_build_chroma_where(filters),
             include=["metadatas"]
@@ -144,8 +144,8 @@ def _build_chroma_where(filters: dict) -> dict:
     Multiple filters are ANDed together.
 
     Example:
-        {"bab_code": "TKRS", "chunk_type": "ep_unit"}
-        → {"$and": [{"bab_code": {"$eq": "TKRS"}}, {"chunk_type": {"$eq": "ep_unit"}}]}
+        {"fungsi_pelayanan": "TKRS", "chunk_type": "ep_unit"}
+        → {"$and": [{"fungsi_pelayanan": {"$eq": "TKRS"}}, {"chunk_type": {"$eq": "ep_unit"}}]}
     """
     clauses = [{k: {"$eq": v}} for k, v in filters.items()]
     if len(clauses) == 1:

@@ -38,17 +38,23 @@ const (
 
 
 const baseQuery = `
-	SELECT 
-		d.document_id,
-		d.filename,
-		dt.name,
-		u.email AS created_by,
-		d.updated_at,
-		d.status
-	FROM documents d
-	JOIN document_types dt ON d.document_type_id = dt.document_type_id
-	JOIN users u ON d.created_by = u.user_id
-	`
+	  SELECT 
+        d.document_id,
+        d.filename,
+        dt.name AS document_type,
+        u.email AS created_by,
+        d.updated_at,
+        d.status,
+        s.service_code,
+        st.standard_code,
+        a.assessment_code
+    FROM documents d
+    JOIN document_types dt ON d.document_type_id = dt.document_type_id
+    JOIN users u ON d.created_by = u.user_id
+    LEFT JOIN services s ON d.service_id = s.service_id
+    LEFT JOIN standard st ON d.standard_id = st.standard_id
+    LEFT JOIN assessment a ON d.assessment_id = a.assessment_id
+`
 
 func(s *DocumentRepo) fetchingData(query string, args ...any)([]schemas.DocumentResponse, error){
 	rows, err := s.db.Query(context.Background(), query, args...)
@@ -68,6 +74,9 @@ func(s *DocumentRepo) fetchingData(query string, args ...any)([]schemas.Document
 			&doc.CreatedBy,
 			&doc.UpdatedAt,
 			&doc.Status,
+			&doc.ServiceCode,
+			&doc.StandardCode,
+			&doc.AssessmentCode,
 		)
 
 		if err != nil {
@@ -260,9 +269,11 @@ func (s *DocumentRepo) Update_document(documentId, createdById uuid.UUID, filena
 			filehash = COALESCE($3, filehash),
 			updated_at = NOW(),
 			status = CASE
-				WHEN status = 'rejected' THEN 'pending'
-				ELSE status
-			END
+				WHEN status = 'rejected' AND $3 IS NOT NULL AND $3 != (
+            SELECT filehash FROM documents WHERE document_id = $4
+        	) THEN 'pending'
+        		ELSE status
+			END	
 		WHERE document_id = $4
 		AND is_deleted = false
 	`, toText(filename), toText(filepath), toText(objectHash) ,documentId)
@@ -274,7 +285,7 @@ func (s *DocumentRepo) Update_document(documentId, createdById uuid.UUID, filena
 }
 
 func (s *DocumentRepo) Delete_document(documentId, userId uuid.UUID, role string)(string,bool ,error){
-	var filename string
+	var filepath string
 	if role == "master-admin"{
 	deleteQuery := `
 	UPDATE documents SET 
@@ -282,9 +293,9 @@ func (s *DocumentRepo) Delete_document(documentId, userId uuid.UUID, role string
 		updated_at = NOW()
 		WHERE document_id = $1
 			AND is_deleted = false
-		RETURNING filename`
+		RETURNING filepath`
 
-	err := s.db.QueryRow(context.Background(),deleteQuery, documentId).Scan(&filename)
+	err := s.db.QueryRow(context.Background(),deleteQuery, documentId).Scan(&filepath)
 	if err != nil {
 		if err == pgx.ErrNoRows{
 		return "",false, nil
@@ -298,9 +309,9 @@ func (s *DocumentRepo) Delete_document(documentId, userId uuid.UUID, role string
 		WHERE document_id = $1
 			AND created_by = $2
 			AND is_deleted = false
-		RETURNING filename`
+		RETURNING filepath`
 
-	err := s.db.QueryRow(context.Background(), deleteQuery, documentId, userId).Scan(&filename)
+	err := s.db.QueryRow(context.Background(), deleteQuery, documentId, userId).Scan(&filepath)
 	if err != nil {
 		if err == pgx.ErrNoRows{
 		return "",false, nil
@@ -308,7 +319,7 @@ func (s *DocumentRepo) Delete_document(documentId, userId uuid.UUID, role string
 		return "",false, err
 	}
 	}
-	return filename, true ,nil
+	return filepath, true ,nil
 }
 
 
@@ -354,8 +365,8 @@ func (s *DocumentRepo) Approval_document(documentId uuid.UUID, status string, fi
     return result.RowsAffected(), nil
 }
 
-func (s *DocumentRepo) Get_document_owner_email(documentId uuid.UUID) (string,uuid.UUID, error){
-	query := `SELECT u.email, d.created_by from documents d JOIN users u ON d.created_by=u.user_id WHERE document_id = $1`
+func (s *DocumentRepo) Get_document_owner_email(documentId uuid.UUID) (string,uuid.UUID,error){
+	query := `SELECT u.email, created_by  from documents d JOIN users u ON d.created_by=u.user_id WHERE document_id = $1`
 
 	var ownerEmail string
 	var ownerId uuid.UUID
@@ -363,7 +374,7 @@ func (s *DocumentRepo) Get_document_owner_email(documentId uuid.UUID) (string,uu
 	if err != nil {
 		return "",uuid.Nil,err
 	}
-	return ownerEmail,ownerId,nil
+	return ownerEmail,ownerId, nil
 }
 
 func (s *DocumentRepo) Get_stats(userId uuid.UUID, role string) ([]schemas.GroupStat, schemas.StatusStat, error) {
@@ -423,26 +434,27 @@ func (s *DocumentRepo) Get_stats(userId uuid.UUID, role string) ([]schemas.Group
     return groups, stats, nil
 }
 
-func (s *DocumentRepo) Get_document_filePath(documentId, createdById uuid.UUID)(string, error){
+func (s *DocumentRepo) Get_document_filePath(documentId uuid.UUID)(string, error){
 	var filePath string 
 
 	query := `
 	SELECT
 		filepath FROM documents
 		WHERE document_id = $1
-		AND created_by = $2
 		AND is_deleted = false
 	`
 
-	err := s.db.QueryRow(context.Background(),query,documentId,createdById).Scan(&filePath)
+	err := s.db.QueryRow(context.Background(),query,documentId).Scan(&filePath)
 	if err != nil{
 		return "Error fetching filepath", err
 	}
-
+	log.Print("filenya jalan", filePath)
 	return filePath, nil
 }
 
-func (s *DocumentRepo) Get_admin_email()([]string,[]uuid.UUID, error){
+func (s *DocumentRepo) Get_admin_email()(string,uuid.UUID, error){
+	var masterAdminEmail string
+	var masterAdminId uuid.UUID
 	query := `
 	SELECT 
 		user_id,
@@ -450,23 +462,11 @@ func (s *DocumentRepo) Get_admin_email()([]string,[]uuid.UUID, error){
 	FROM users
 		WHERE role = 'master-admin'`
 
-	rows, err := s.db.Query(context.Background(),query)
+	err := s.db.QueryRow(context.Background(),query).Scan(&masterAdminId, &masterAdminEmail)
 	if err != nil{
-		return nil,nil,err
+		return "", uuid.Nil,err
 	}
-	defer rows.Close()
 
-	var masterAdminEmail []string
-	var masterAdminId	[]uuid.UUID
-		for rows.Next(){
-			var email string
-			var id uuid.UUID
-			if err := rows.Scan(&id,&email); err != nil {
-				return nil,nil,err
-			}
-			masterAdminEmail = append(masterAdminEmail, email)
-			masterAdminId = append(masterAdminId, id)
-		}
 	return masterAdminEmail,masterAdminId, nil
 }
 
@@ -564,7 +564,8 @@ func(s *DocumentRepo) Check_document_name(filename string, header *multipart.Fil
 		`
 		SELECT EXISTS(
 			SELECT FROM documents
-				WHERE filename = $1)
+				WHERE filename = $1
+				AND is_deleted = false)
 		`,filename + ext).Scan(&isSameName)
 	if err != nil{
 		return false, err

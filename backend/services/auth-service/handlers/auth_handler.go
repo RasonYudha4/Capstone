@@ -16,6 +16,7 @@ import (
 type AuthHandler struct {
 	userService    *services.UserService
 	otpService     *services.OTPService
+	emailService   *services.EmailService
 	jwtService     *services.JWTService
 	refreshService *services.RefreshService
 	auditService   *services.AuditService
@@ -25,6 +26,7 @@ type AuthHandler struct {
 func NewAuthHandler(
 	userService *services.UserService,
 	otpService *services.OTPService,
+	emailService *services.EmailService,
 	jwtService *services.JWTService,
 	refreshService *services.RefreshService,
 	auditService *services.AuditService,
@@ -32,6 +34,7 @@ func NewAuthHandler(
 	return &AuthHandler{
 		userService:    userService,
 		otpService:     otpService,
+		emailService:   emailService,
 		jwtService:     jwtService,
 		refreshService: refreshService,
 		auditService:   auditService,
@@ -106,7 +109,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	if authenticated == nil {
 		// wrong password, increment failed attempts.
 		count, _ := h.userService.IncrementFailedAttempts(user.UserID)
-		h.auditService.Log("error", "login_fail", &user.UserID, "client")
+		h.auditService.Log("login_fail","user login error" ,&user.UserID, "client")
 
 		if count >= config.MaxLoginAttempts {
 			if lockErr := h.userService.LockAccount(user.UserID); lockErr != nil {
@@ -115,7 +118,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 			if revokeErr := h.refreshService.RevokeAllUserTokens(user.UserID); revokeErr != nil {
 				log.Printf("⚠️  Failed to revoke tokens for user %s: %v", user.UserID, revokeErr)
 			}
-			h.auditService.Log("error", "lockout", &user.UserID, "system")
+			h.auditService.Log("lockout", "Error lock out, user got lockout ", &user.UserID, "system")
 			c.JSON(http.StatusTooManyRequests, models.APIResponse{
 				Success: false,
 				Message: fmt.Sprintf("Account locked for %s due to too many failed attempts.", config.LockDuration),
@@ -170,7 +173,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	h.auditService.Log("insert", "login", &user.UserID, "client")
+	h.auditService.Log("login", "User has login", &user.UserID, "client")
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
 		Message: "Login successful.",
@@ -247,7 +250,7 @@ func (h *AuthHandler) VerifyOTP(c *gin.Context) {
 		return
 	}
 
-	h.auditService.Log("insert", "login", &user.UserID, "client")
+	h.auditService.Log("login", "user has otp and enter dashboard page", &user.UserID, "client")
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
 		Message: "Login successful.",
@@ -394,7 +397,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 		return
 	}
 
-	h.auditService.Log("delete", "logout", &userID, "client")
+	h.auditService.Log("delete", "user logout", &userID, "client")
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
 		Message: "Logged out successfully.",
@@ -490,6 +493,99 @@ func (h *AuthHandler) AssignAdmin(c *gin.Context) {
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
 		Message: "User role successfully updated to admin.",
+	})
+}
+
+// POST /auth/invite
+func (h *AuthHandler) Invite(c *gin.Context) {
+	var req models.InviteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Message: "Invalid request: " + err.Error(),
+		})
+		return
+	}
+
+	// 1. Check if user already exists
+	existing, _ := h.userService.GetByEmail(req.Email)
+	if existing != nil {
+		c.JSON(http.StatusConflict, models.APIResponse{
+			Success: false,
+			Message: "User with this email already exists.",
+		})
+		return
+	}
+
+	// 2. Create invitation in DB
+	token, err := h.userService.InviteUser(req.Email, req.Role)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Message: "Failed to create invitation: " + err.Error(),
+		})
+		return
+	}
+
+	// 3. Send email
+	err = h.emailService.SendInvitation(req.Email, req.Role, token)
+	if err != nil {
+		log.Printf("⚠️  Failed to send invitation email to %s: %v", req.Email, err)
+		// We don't fail the request because the user is already created in DB.
+		// Admin might need a way to resend.
+	}
+
+	h.auditService.Log("insert", "user_invited", nil, "system")
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Message: "Invitation sent successfully.",
+	})
+}
+
+// POST /auth/complete-invitation
+func (h *AuthHandler) CompleteInvitation(c *gin.Context) {
+	var req models.CompleteInvitationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Message: "Invalid request: " + err.Error(),
+		})
+		return
+	}
+
+	// 1. Find user by token
+	user, err := h.userService.GetByInvitationToken(req.Token)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Message: err.Error(),
+		})
+		return
+	}
+	if user == nil {
+		c.JSON(http.StatusNotFound, models.APIResponse{
+			Success: false,
+			Message: "Invalid or already used invitation token.",
+		})
+		return
+	}
+
+	// 2. Complete setup
+	err = h.userService.CompleteInvitation(user.UserID, req.Password)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Message: "Failed to complete invitation: " + err.Error(),
+		})
+		return
+	}
+
+	h.auditService.Log("update", "invitation_completed", &user.UserID, "client")
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Message: "Account setup complete. You can now log in.",
 	})
 }
 

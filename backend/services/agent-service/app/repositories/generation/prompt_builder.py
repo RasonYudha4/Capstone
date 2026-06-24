@@ -26,7 +26,8 @@ _STYLE: dict[str, str] = {
     ),
     "inventory": (
         "Tampilkan dalam format daftar. "
-        "Satu baris per dokumen. Tanpa penjelasan tambahan."
+        "Satu baris berdasarkan fungsi pelayanan dan standar."
+        "Berikan jumlah dokumentnya"
     ),
     "general": (
         "Jawab dengan singkat dan jelas. "
@@ -89,7 +90,7 @@ def build_gap_prompt(
     covered: set[str],
     intent:  dict,
 ) -> str:
-    scope        = f" untuk BAB {intent['bab_code']}" if intent.get("bab_code") else ""
+    scope        = f" untuk BAB {intent['fungsi_pelayanan']}" if intent.get("fungsi_pelayanan") else ""
     covered_list = "\n".join(f"- {ep}" for ep in sorted(covered)) or "Belum ada"
     missing_list = "\n".join(f"- {ep}" for ep in missing)         or "Semua sudah terpenuhi"
 
