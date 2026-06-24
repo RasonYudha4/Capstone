@@ -285,7 +285,7 @@ func (s *DocumentRepo) Update_document(documentId, createdById uuid.UUID, filena
 }
 
 func (s *DocumentRepo) Delete_document(documentId, userId uuid.UUID, role string)(string,bool ,error){
-	var filename string
+	var filepath string
 	if role == "master-admin"{
 	deleteQuery := `
 	UPDATE documents SET 
@@ -293,9 +293,9 @@ func (s *DocumentRepo) Delete_document(documentId, userId uuid.UUID, role string
 		updated_at = NOW()
 		WHERE document_id = $1
 			AND is_deleted = false
-		RETURNING filename`
+		RETURNING filepath`
 
-	err := s.db.QueryRow(context.Background(),deleteQuery, documentId).Scan(&filename)
+	err := s.db.QueryRow(context.Background(),deleteQuery, documentId).Scan(&filepath)
 	if err != nil {
 		if err == pgx.ErrNoRows{
 		return "",false, nil
@@ -309,9 +309,9 @@ func (s *DocumentRepo) Delete_document(documentId, userId uuid.UUID, role string
 		WHERE document_id = $1
 			AND created_by = $2
 			AND is_deleted = false
-		RETURNING filename`
+		RETURNING filepath`
 
-	err := s.db.QueryRow(context.Background(), deleteQuery, documentId, userId).Scan(&filename)
+	err := s.db.QueryRow(context.Background(), deleteQuery, documentId, userId).Scan(&filepath)
 	if err != nil {
 		if err == pgx.ErrNoRows{
 		return "",false, nil
@@ -319,7 +319,7 @@ func (s *DocumentRepo) Delete_document(documentId, userId uuid.UUID, role string
 		return "",false, err
 	}
 	}
-	return filename, true ,nil
+	return filepath, true ,nil
 }
 
 
@@ -564,7 +564,8 @@ func(s *DocumentRepo) Check_document_name(filename string, header *multipart.Fil
 		`
 		SELECT EXISTS(
 			SELECT FROM documents
-				WHERE filename = $1)
+				WHERE filename = $1
+				AND is_deleted = false)
 		`,filename + ext).Scan(&isSameName)
 	if err != nil{
 		return false, err
