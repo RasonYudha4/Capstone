@@ -66,7 +66,7 @@ export default function Login() {
 
                 <div className="flex flex-col items-center text-center mb-8">
                     <div className="w-12 h-12 rounded-full bg-white/15 flex items-center justify-center mb-5">
-                        <img src='../../../public/logo.png' height={35} width={35} />
+                        <img src='/logo.png' height={35} width={35} />
                     </div>
                     <h1 className="text-3xl font-semibold text-white mb-2">
                         Welcome back

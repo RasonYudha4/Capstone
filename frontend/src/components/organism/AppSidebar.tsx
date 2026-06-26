@@ -28,7 +28,7 @@ export default function AppSidebar() {
             <SidebarHeader className="px-4 py-5">
                 <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-[#6B5FAE] shrink-0 flex items-center justify-center">
-                        <img src='../../../public/logo.png' height={35} width={35} />
+                        <img src='/logo.png' height={35} width={35} />
                     </div>
                     <span className="font-bold text-[#6B5FAE] text-base leading-tight">
                         Smart<br />Acreditation

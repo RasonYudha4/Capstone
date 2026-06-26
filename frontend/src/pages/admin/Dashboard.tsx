@@ -100,7 +100,7 @@ export default function DashboardPage() {
                             <th className="text-left text-xs font-normal text-gray-400 pb-2 pr-4">Tipe dokumen</th>
                             <th className="text-left text-xs font-normal text-gray-400 pb-2 pr-4">Layanan</th>
                             <th className="text-left text-xs font-normal text-gray-400 pb-2 pr-4">Standar</th>
-                            <th className="text-left text-xs font-normal text-gray-400 pb-2 pr-4">Assessment</th>
+                            <th className="text-left text-xs font-normal text-gray-400 pb-2 pr-4">Elemen Penilaian</th>
                             <th className="text-left text-xs font-normal text-gray-400 pb-2 pr-4">Terakhir diperbaharui</th>
                             <th className="text-left text-xs font-normal text-gray-400 pb-2">Status</th>
                         </tr>

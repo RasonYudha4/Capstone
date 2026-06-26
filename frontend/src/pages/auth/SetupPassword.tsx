@@ -40,6 +40,15 @@ export default function SetupPassword() {
             return
         }
 
+        const hasUpperCase = /[A-Z]/.test(password)
+        const hasLowerCase = /[a-z]/.test(password)
+        const hasNumber = /[0-9]/.test(password)
+
+        if (!hasUpperCase || !hasLowerCase || !hasNumber) {
+            toast.error("Password harus mengandung minimal satu huruf besar, satu huruf kecil, dan satu angka.")
+            return
+        }
+
         setIsSubmitting(true)
         try {
             if (!token) throw new Error("Token missing")

@@ -574,6 +574,15 @@ func (h *AuthHandler) CompleteInvitation(c *gin.Context) {
 	// 2. Complete setup
 	err = h.userService.CompleteInvitation(user.UserID, req.Password)
 	if err != nil {
+		// Check if the error is a password policy validation error
+		if err.Error() == "password must be at least 8 characters" || err.Error() == "password must contain at least one uppercase letter, one lowercase letter, and one digit" {
+			c.JSON(http.StatusBadRequest, models.APIResponse{
+				Success: false,
+				Message: err.Error(),
+			})
+			return
+		}
+
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
 			Message: "Failed to complete invitation: " + err.Error(),

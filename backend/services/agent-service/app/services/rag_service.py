@@ -3,6 +3,7 @@ pipeline/rag_service.py — orchestrates retrieval and generation at query time.
 """
 from __future__ import annotations
 
+from collections import defaultdict
 import time
 from typing import Generator
 
@@ -19,6 +20,8 @@ from app.core.store.chromadb import ChromaStore, _build_chroma_where
 
 log = get_logger("rag_pipeline")
 _classifier = IntentClassifier(embedder)
+_NAV_DEPTH_PRIORITY = ["nav_to_document", "nav_to_assessment", "nav_to_standard", "nav_to_service"]
+
 
 def run_query(question: str) -> str:
     log.info("=== query start: '%s' ===", question[:80])
@@ -80,10 +83,17 @@ def run_query_stream(
 
     intent = extract_intent(resolved_question, _classifier)
 
-    if intent["query_type"] == "ui_navigation" and not intent.get("standar") and not intent.get("fungsi_pelayanan"):
+    any_nav_depth = any(i in intent.get("all_intents", []) for i in _NAV_DEPTH_PRIORITY)
+    if (
+        intent["query_type"] == "ui_navigation"
+        and not intent.get("standar")
+        and not intent.get("fungsi_pelayanan")
+        and not any_nav_depth
+    ):
         intent["query_type"] = "general"
-        if "ui_navigation" in intent.get("all_intents", []):
-            intent["all_intents"].remove("ui_navigation")
+        intent["all_intents"] = [
+            i for i in intent.get("all_intents", []) if i != "ui_navigation"
+        ]
 
     log.info(
         "intent: query_type=%s standar=%s fungsi_pelayanan=%s",
@@ -94,6 +104,17 @@ def run_query_stream(
     log.info("active intents: %s", all_intents)
 
     needs_rag = any(i in all_intents for i in ("requirement_lookup", "evidence_check")) or doc_context is not None
+
+    if intent["query_type"] == "gap_analysis":
+        yield _run_gap_analysis(intent)
+        return
+
+    if intent["query_type"] == "inventory":
+        yield _run_inventory(intent)
+        return
+
+    if not needs_rag and any(i in all_intents for i in ("nav_to_document", "nav_to_assessment", "nav_to_standard")):
+        needs_rag = True
 
     if needs_rag:
         filters = _build_filters(intent)
@@ -106,21 +127,23 @@ def run_query_stream(
 
         yield from generate_stream(prompt, generator)
 
-        if "ui_navigation" in all_intents or _should_navigate(all_intents, results):
+        should_nav = (
+            "ui_navigation" in all_intents
+            or any(i in all_intents for i in _NAV_DEPTH_PRIORITY)
+            or _should_navigate(all_intents, results)
+        )
+        if should_nav:
             nav_block = _build_navigation_block(intent, results, app_context)
             if nav_block:
                 yield "\n\n" + nav_block
 
-    elif "ui_navigation" in all_intents:
+    elif (
+        "ui_navigation" in all_intents
+        or any(i in all_intents for i in _NAV_DEPTH_PRIORITY)
+    ):
         nav_block = _build_navigation_block(intent, [], app_context)
         if nav_block:
             yield nav_block
-
-    elif intent["query_type"] == "gap_analysis":
-        yield _run_gap_analysis(intent)
-
-    elif intent["query_type"] == "inventory":
-        yield _run_inventory(intent)
 
     else:
         yield from generate_stream(resolved_question, generator)
@@ -141,16 +164,19 @@ def _should_navigate(all_intents: list[str], results: list, min_score: float = 0
 
 def _build_filters(intent: dict) -> dict | None:
     filters: dict = {}
+    all_intents = intent.get("all_intents", [])
 
     if intent["query_type"] == "requirement_lookup":
         filters["is_kmk"] = True
     elif intent["query_type"] == "evidence_check":
         filters["is_kmk"] = False
+    elif "evidence_check" in all_intents and "requirement_lookup" not in all_intents:
+        filters["is_kmk"] = False
+    elif any(i in all_intents for i in ("nav_to_document", "nav_to_assessment", "nav_to_standard")):
+        filters["is_kmk"] = False
 
     if intent.get("standar"):
         filters["standar_code"] = intent["standar"]
-    elif intent.get("element_penilaian"):
-        filters["element_penilaian_code"] = intent["element_penilaian"]
     elif intent.get("fungsi_pelayanan"):
         filters["fungsi_pelayanan"] = intent["fungsi_pelayanan"]
 
@@ -170,13 +196,18 @@ def _run_gap_analysis(intent: dict) -> str:
 
 def _run_inventory(intent: dict) -> str:
     store   = ChromaStore()
-    filters = {k: v for k, v in intent.get("filters", {}).items() if v}
+    filters = {}
+    if intent.get("fungsi_pelayanan"):
+        filters["fungsi_pelayanan"] = intent["fungsi_pelayanan"]
+    if intent.get("standar"):
+        filters["standar"] = intent["standar"]
 
     results = store._col.get(
         where=_build_chroma_where(filters) if filters else None,
         include=["metadatas"],
     )
 
+    # Deduplicate by file name first
     seen  = set()
     files = []
     for meta in results["metadatas"]:
@@ -188,21 +219,21 @@ def _run_inventory(intent: dict) -> str:
     if not files:
         return "Belum ada dokumen yang tersimpan dalam sistem."
 
-    lines = [
-        f"- {m.get('nama_berkas', m.get('source', '?'))} "
-        f"| {m.get('kelompok', '-')} / {m.get('fungsi_pelayanan', '-')} "
-        f"| standar: {m.get('standar', '-')}"
-        for m in files
-    ]
-    return f"Dokumen yang tersedia ({len(files)} berkas):\n" + "\n".join(lines)
+    grouped: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    for m in files:
+        fp  = m.get("fungsi_pelayanan") or "Tidak Diketahui"
+        std = m.get("standar") or "-"
+        grouped[fp][std] += 1
 
-_NAV_DEPTH_PRIORITY = ["nav_to_document", "nav_to_assessment", "nav_to_standard", "nav_to_service"]
+    lines = []
+    total = 0
+    for fp, standards in sorted(grouped.items()):
+        lines.append(f"\n**{fp}**")
+        for std, count in sorted(standards.items()):
+            lines.append(f"  - {std}: {count} dokumen")
+            total += count
 
-def _infer_nav_depth(all_intents: list[str]) -> str:
-    for depth_intent in _NAV_DEPTH_PRIORITY:
-        if depth_intent in all_intents:
-            return depth_intent.replace("nav_to_", "")
-    return "standard"
+    return f"Dokumen yang tersedia ({total} berkas):\n" + "\n".join(lines)
 
 def _build_navigation_block(intent: dict, results: list, ctx=None) -> str:
     lines = []
@@ -233,7 +264,7 @@ def _build_navigation_block(intent: dict, results: list, ctx=None) -> str:
         lines.append(f'<command>{{"type":"SET_STANDARD_FILTER","standardId":"{top.standard_id}"}}</command>')
 
     if nav_depth == "standard":
-        label = (top.standar_code if top else None) or intent.get("standar") or "ini"
+        label = (top.standar if top else None) or intent.get("standar") or "ini"
         lines.append(f"\n📂 Menampilkan dokumen untuk standar **{label}**...")
         return "\n".join(lines)
 
@@ -264,27 +295,14 @@ def _build_navigation_block(intent: dict, results: list, ctx=None) -> str:
     return "\n".join(lines)
 
 def _match_service(intent: dict, ctx) -> object | None:
-    """
-    Tries to find the matching service option from AppContext
-    based on the fungsi_pelayanan or standar code in the intent.
-
-    Returns the first ServiceOption whose label contains the bab prefix,
-    or None if no match is found.
-    """
     if not ctx or not ctx.available_services:
         return None
 
-    fungsi = (intent.get("fungsi_pelayanan") or "").upper()
-    standar = (intent.get("standar") or "").upper()
-
     search_terms = []
-    if fungsi:
-        # "BAB TKRS" → "TKRS"
-        parts = fungsi.split()
-        search_terms.extend(parts[1:] if len(parts) > 1 else parts)
-    if standar:
-        # "AP 1.1" → "AP"
-        search_terms.append(standar.split()[0])
+    if intent.get("fungsi_pelayanan"):
+        search_terms.append(intent["fungsi_pelayanan"].upper())
+    if intent.get("standar"):
+        search_terms.append(intent["standar"].split()[0].upper())
 
     for term in search_terms:
         for svc in ctx.available_services:

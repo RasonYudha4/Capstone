@@ -26,7 +26,8 @@ _STYLE: dict[str, str] = {
     ),
     "inventory": (
         "Tampilkan dalam format daftar. "
-        "Satu baris per dokumen. Tanpa penjelasan tambahan."
+        "Satu baris berdasarkan fungsi pelayanan dan standar."
+        "Berikan jumlah dokumentnya"
     ),
     "general": (
         "Jawab dengan singkat dan jelas. "
