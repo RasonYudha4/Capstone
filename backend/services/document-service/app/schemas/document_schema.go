@@ -45,8 +45,8 @@ type UpdateRequest struct {
 }
 
 type ApprovalRequest struct {
-	DocumentId string `json:"document_id"`
-	Status string `json:"status"`
+	DocumentId string `form:"document_id"`
+	Status string `form:"status"`
 }
 
 type GroupStat struct {

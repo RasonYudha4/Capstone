@@ -26,6 +26,7 @@ import type { DocumentResponse } from '@/dtos/document_dto'
 import { documentService } from '@/services/document_services'
 import { useMe } from '@/hooks/useAuth'
 import { useFilterStore } from '@/stores/filterStore'
+
 interface FileTableSectionProps {
   onUploadClick: () => void
 }
@@ -38,8 +39,6 @@ const formatDate = (d: string) =>
     month: 'short',
     year: 'numeric',
   })
-
-// ─── Pagination UI ────────────────────────────────────────────────────────────
 
 interface PaginationProps {
   page: number
@@ -90,8 +89,6 @@ function Pagination({ page, hasMore, onChange }: PaginationProps) {
   )
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
-
 export default function FileTableSection({ onUploadClick }: FileTableSectionProps) {
   const queryClient = useQueryClient()
 
@@ -113,10 +110,6 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
   const [page, setPage] = useState(1)
   const { data: me } = useMe()
 
-  // ─────────────────────────────────────────────
-  // Options
-  // ─────────────────────────────────────────────
-
   const serviceOptions = useMemo(() => services.map(s => ({
     label: `${s.code} — ${s.description}`,
     value: s.id,
@@ -136,10 +129,6 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
     })),
     [selectedServiceId, selectedStandardId, getAssessments])
 
-  // ─────────────────────────────────────────────
-  // Dynamic Query Selection
-  // ─────────────────────────────────────────────
-
   const paginationQuery = useMemo(() => ({ page, limit: PAGE_SIZE }), [page])
 
   const serviceQuery = useDocumentsByService(selectedServiceId, paginationQuery)
@@ -156,10 +145,6 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
     serviceQuery, standardQuery, assessmentQuery,
   ])
 
-  // ─────────────────────────────────────────────
-  // Pagination derived state
-  // ─────────────────────────────────────────────
-
   const rawDocs = docData?.data ?? []
   const hasMore = rawDocs.length === PAGE_SIZE
 
@@ -170,16 +155,15 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
     document.getElementById('file-table-top')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  // ─────────────────────────────────────────────
-  // File URL — fetch as blob so auth headers are included
-  // ─────────────────────────────────────────────
-
+  // ── File URL + Content Type ──────────────────────────────────────────────
   const [fileUrl, setFileUrl] = useState('')
+  const [contentType, setContentType] = useState('')  // 1. add state
   const [detailLoading, setDetailLoading] = useState(false)
 
   useEffect(() => {
     if (!selectedDocId) {
       setFileUrl('')
+      setContentType('')  // 2. reset on close
       return
     }
 
@@ -187,9 +171,10 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
     setDetailLoading(true)
 
     documentService.getById(selectedDocId)
-      .then(({ url }) => {
+      .then(({ url, contentType }) => {  // 3. destructure contentType
         objectUrl = url
         setFileUrl(url)
+        setContentType(contentType)  // 4. set state
       })
       .catch(() => toast.error('Gagal memuat berkas.'))
       .finally(() => setDetailLoading(false))
@@ -198,10 +183,6 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
   }, [selectedDocId])
-
-  // ─────────────────────────────────────────────
-  // Table data
-  // ─────────────────────────────────────────────
 
   const files: FileRecord[] = useMemo(() =>
     rawDocs.map(d => ({
@@ -219,7 +200,6 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
   useEffect(() => {
     if (!pendingHighlightId) return
     const match = files.find(f => f.id === pendingHighlightId)
-
     if (!match) return
 
     setHighlightedId(pendingHighlightId)
@@ -233,10 +213,6 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
     const timeout = setTimeout(() => setHighlightedId(null), 3000)
     return () => clearTimeout(timeout)
   }, [pendingHighlightId, files, setPendingHighlight])
-
-  // ─────────────────────────────────────────────
-  // Row click
-  // ─────────────────────────────────────────────
 
   const handleRowClick = (file: FileRecord) => {
     const doc = rawDocs.find(d => d.document_id === file.id) ?? null
@@ -255,10 +231,6 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
     }
     : null
 
-  // ─────────────────────────────────────────────
-  // Helpers
-  // ─────────────────────────────────────────────
-
   const invalidateList = () => {
     if (selectedAssessmentId)
       queryClient.invalidateQueries({ queryKey: documentKeys.byAssessment(selectedAssessmentId) })
@@ -272,13 +244,10 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
     setSelectedDocId(null)
     setSelectedDocument(null)
     setFileUrl('')
+    setContentType('')  // 5. reset on modal close
   }
 
   const resetPage = () => setPage(1)
-
-  // ─────────────────────────────────────────────
-  // Action handlers
-  // ─────────────────────────────────────────────
 
   const handleApprove = async (file: FileRecord, _catatan: string, attachment?: File) => {
     try {
@@ -327,10 +296,6 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
     }
   }
 
-  // ─────────────────────────────────────────────
-  // Breadcrumb
-  // ─────────────────────────────────────────────
-
   const segments: BreadcrumbSegment[] = [
     {
       selected: optionsLoading
@@ -360,10 +325,6 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
     },
   ]
 
-  // ─────────────────────────────────────────────
-  // Render
-  // ─────────────────────────────────────────────
-
   return (
     <section className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
 
@@ -372,6 +333,7 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
         document={selectedDocument}
         isLoading={detailLoading}
         fileUrl={fileUrl}
+        contentType={contentType}  
         open={!!selectedDocId}
         onOpenChange={(open) => { if (!open) closeModal() }}
         onApprove={handleApprove}
@@ -381,7 +343,6 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
         role={me?.role}
       />
 
-      {/* Toolbar */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
         <BreadcrumbNav segments={segments} />
         <Button
@@ -393,7 +354,6 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
         </Button>
       </div>
 
-      {/* Table */}
       <div className="px-6 py-4" id="file-table-top">
         <div className="rounded-2xl overflow-hidden border border-gray-100">
           <div className="overflow-x-auto">
@@ -436,7 +396,6 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
           </div>
         </div>
 
-        {/* Pagination */}
         {!docsLoading && files.length > 0 && (
           <div className="flex items-center justify-between mt-3 px-1">
             <p className="text-xs text-gray-400">

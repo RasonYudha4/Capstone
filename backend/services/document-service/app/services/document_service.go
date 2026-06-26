@@ -46,6 +46,13 @@ func pageLimit(page, limit int)(int, int, int){
 	return page, limit, offset
 }
 
+func return_Internal_error()(schemas.Response, error){
+	return schemas.Response{
+		Status: false,
+		Message: "Internal Server Error",
+	}, nil
+}
+
 func (d *DocumentService) Get_Document(page,limit int)([]schemas.DocumentResponse,error){
 	page, limit, offset := pageLimit(page, limit)
 	
@@ -153,15 +160,22 @@ func(d *DocumentService) Get_document_by_createdBy(createdById uuid.UUID, page, 
 }
 
 func (d *DocumentService) Create_document(req schemas.DocumentRequest, file multipart.File, header *multipart.FileHeader, createdById uuid.UUID, role string) (schemas.Response, error) {
-	documentTypeId,_ := uuid.Parse(req.DocumentTypeId)
+	documentTypeId, err := uuid.Parse(req.DocumentTypeId)
+	if err != nil{
+		log.Print("Error Parsing document type id: ", err)
+		return_Internal_error()
+	}
 
-	isSameName, err := d.repo.Check_document_name(req.FileName, header)
+	groupId, err := d.repo.Get_group_id_by_serviceId(req.ServicesId)
+	if err != nil{
+		log.Print("error getting group id: ", err)
+		return_Internal_error()
+	}
+
+	isSameName, err := d.repo.Check_document_name(req.FileName, groupId)
 	if err != nil {
-		log.Print("1", err)
-		return schemas.Response{
-			Status: false,
-			Message: "Internal Database Error",
-		}, nil
+		log.Print("error checking same file name: ", err)
+		return_Internal_error()
 	}
 
 	if isSameName{
@@ -173,19 +187,18 @@ func (d *DocumentService) Create_document(req schemas.DocumentRequest, file mult
 
 	isPublic, err := d.repo.Is_public_document(documentTypeId)
 	if err != nil{
-		log.Print("error public")
-		return schemas.Response{
-			Status: false,
-			Message: "Internal Database Error",
-		}, nil
+		log.Print("error document is public check ", err)
+		return_Internal_error()
 	}
+
 	fileBytes, _ := io.ReadAll(file)
 	fileHash := utils.GenerateHMAC(fileBytes)
-
+	
 	var filepath string 
 	objectId := uuid.NewString()
 	fileSize := header.Size
 	contentType := header.Header.Get("Content-Type")
+	
 	if isPublic {
 		filepath, err = d.storage.Upload_document(bytes.NewReader(fileBytes), objectId, isPublic, fileSize, contentType)
 	}else{
@@ -193,11 +206,8 @@ func (d *DocumentService) Create_document(req schemas.DocumentRequest, file mult
 	}
 
 	if err != nil {
-		log.Print("error minio upload ", err)
-		return schemas.Response{
-			Status: false,
-			Message: fmt.Sprintf("Internal Storage Object Error: %v", err),
-		}, err 
+		log.Print("error upload document do object storage: ", err)
+		return_Internal_error()
 	}
 	
 	assessmentId, _ := uuid.Parse(req.AssessmentId)
@@ -220,8 +230,8 @@ func (d *DocumentService) Create_document(req schemas.DocumentRequest, file mult
 
 	if err != nil {
 		d.storage.Delete_document(filepath)
-		log.Print("error inerting data into db", err)
-		return schemas.Response{}, err
+		log.Print("error inerting data into database: ", err)
+		return_Internal_error()
 	}
 
 	if !isAuthorized {
@@ -234,11 +244,8 @@ func (d *DocumentService) Create_document(req schemas.DocumentRequest, file mult
 	if !isCreated {
 		d.storage.Delete_document(filepath)
 		_, err = d.audit.SaveAudit("error", "error inserting data into database", createdById, documentId, "system", time.Now(), time.Now())
-		log.Print("error audit", err)
-		return schemas.Response{
-			Status:  false,
-			Message: "Error insert data",
-		}, nil
+		log.Print("Error inserting data, data is not inserted: ", err)
+		return_Internal_error()
 	}
 		
 	filename, err := d.audit.SaveAudit("insert", "Upload new document", createdById, documentId, "client", time.Now(), time.Now())
@@ -254,7 +261,6 @@ func (d *DocumentService) Create_document(req schemas.DocumentRequest, file mult
 	go d.TriggerIngestEvidence(bytes.NewReader(fileBytes), header.Filename, req, document_Id)
 
 	go func() {
-		
 		d.notification.NotifyDeptHead(adminEmail, filename)
 		log.Printf("[email] NotifyDeptHead done for document %s", filename)
 	}()
@@ -417,19 +423,14 @@ func (d *DocumentService) Approval_document(documentId, createdById uuid.UUID, s
 		}, nil
 	}
 
-
 	var rows int64
-	
 	if status == "approved" && file != nil && fileHeader != nil {
 		fileSize := fileHeader.Size
 		contentType := fileHeader.Header.Get("Content-Type") 
-		var signedDocPath string
-    	_, err = d.storage.Upload_document(file,objectId, false, fileSize, contentType)
-    
-		if err != nil {
-        	return schemas.Response{}, err
-    	}
-    		rows, err = d.repo.Approval_document(documentId, status, signedDocPath, file)
+
+    	filepath, _ := d.storage.Upload_document(file,objectId, false, fileSize, contentType)
+
+    	rows, err = d.repo.Approval_document(documentId, status, filepath, file)
 	}else {
 		
 		rows, err = d.repo.Approval_document(documentId, status, "",file)
@@ -439,7 +440,7 @@ func (d *DocumentService) Approval_document(documentId, createdById uuid.UUID, s
 		return schemas.Response{}, err
 	}
 
-	if rows == 0 {
+	if rows == 0 {	
 		return schemas.Response{
 			Status:  false,
 			Message: "error updating document status or document not found",

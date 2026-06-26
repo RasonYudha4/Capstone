@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 	"log"
-	"path/filepath"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -498,6 +497,20 @@ func (s *DocumentRepo) Check_document_owner(documentId, userId uuid.UUID) (bool,
 	return authorized, nil
 }
 
+func (s *DocumentRepo) Get_group_id_by_serviceId(serviceId string)(uuid.UUID, error){
+	var groupId uuid.UUID
+	err := s.db.QueryRow(context.Background(), `
+		SELECT g.group_id 
+		FROM groups g
+		JOIN services sv ON sv.group_id = g.group_id
+		WHERE sv.service_id = $1
+	`, serviceId).Scan(&groupId)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return groupId, nil
+}
+
 func (s *DocumentRepo) Get_group_name_by_serviceId(serviceId string) (string, error) {
 	var groupName string
 	err := s.db.QueryRow(context.Background(), `
@@ -557,16 +570,16 @@ func (s *DocumentRepo) Is_public_document(documentTypeId uuid.UUID)(bool, error)
 	return isPublic, nil
 }
 
-func(s *DocumentRepo) Check_document_name(filename string, header *multipart.FileHeader)(bool, error){
+func(s *DocumentRepo) Check_document_name(filename string, groupId uuid.UUID)(bool, error){
 	var isSameName bool
-	ext := filepath.Ext(header.Filename)
 	err := s.db.QueryRow(context.Background(),
 		`
 		SELECT EXISTS(
 			SELECT FROM documents
 				WHERE filename = $1
+				AND group_id = $2
 				AND is_deleted = false)
-		`,filename + ext).Scan(&isSameName)
+		`,filename, groupId).Scan(&isSameName)
 	if err != nil{
 		return false, err
 	}

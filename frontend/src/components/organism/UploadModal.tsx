@@ -188,14 +188,6 @@ export default function UploadModal({ open, onOpenChange }: UploadModalProps) {
         </DialogHeader>
 
         <div className="overflow-y-auto max-h-[65vh] pr-2">
-          {/* Error banner */}
-          {submitError && (
-            <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-600 rounded-xl px-4 py-3 mb-4">
-              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-              <p className="text-sm">{submitError}</p>
-            </div>
-          )}
-
           <form onSubmit={handleSubmit(onSubmit)}>
             {/* Dropzone */}
             <div className="flex flex-col gap-2 mb-6">
@@ -386,7 +378,13 @@ export default function UploadModal({ open, onOpenChange }: UploadModalProps) {
             </div>
 
             {/* Submit */}
-            <div className="flex justify-end mt-6">
+            <div className="flex items-center justify-end gap-4 mt-6">
+              {submitError && (
+                <div className="flex items-center gap-2 text-red-500">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <p className="text-sm">{submitError}</p>
+                </div>
+              )}
               <Button
                 type="submit"
                 disabled={isPending}

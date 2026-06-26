@@ -28,7 +28,9 @@ export const documentService = {
             return {
                 url: URL.createObjectURL(data),
                 contentType: headers['content-type'] ?? ''
+                
             }
+            
         } catch (error) {
             throw new Error('Failed to fetch document.')
         }
@@ -165,7 +167,7 @@ export const documentService = {
                 const form = new FormData()
                 form.append('document_id', body.document_id)
                 form.append('status', body.status)
-                form.append('file', signedFile)
+                form.append('uploadedFile', signedFile)
                 const { data } = await axioHandler.post('/documents/status/update', form, {
                     headers: { 'Content-Type': 'multipart/form-data' },
                 })

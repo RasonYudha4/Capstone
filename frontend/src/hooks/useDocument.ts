@@ -122,6 +122,9 @@ export const useDocumentsByStatus = (status: string, query?: PaginationQuery) =>
         queryKey: documentKeys.byStatus(status, query),
         queryFn: () => documentService.getByStatus(status, query),
         enabled: !!status,
+        staleTime: 1000 * 60 * 5,
+        refetchInterval: 1000 * 30,
+        refetchIntervalInBackground: false,
     })
 }
 

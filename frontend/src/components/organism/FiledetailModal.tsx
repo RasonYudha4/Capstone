@@ -1,7 +1,7 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { X, Minus, Plus, FileText, Loader2, CheckCircle, XCircle, RefreshCw, Trash2 } from 'lucide-react'
+import { X, Minus, Plus, FileText, Loader2, CheckCircle, XCircle, RefreshCw, Trash2, Download } from 'lucide-react'
 import {
     Dialog,
     DialogContent,
@@ -18,7 +18,6 @@ import { useState, useEffect } from 'react'
 import ConfirmDialog from '../molecules/ConfirmDialog'
 import type { DocumentResponse } from '@/dtos/document_dto'
 
-
 const reviewSchema = z.object({
     catatan: z.string().optional(),
     filename: z.string().optional(),
@@ -32,6 +31,7 @@ interface FileDetailModalProps {
     open: boolean
     isLoading?: boolean
     fileUrl?: string
+    contentType?: string
     role?: 'staff' | 'admin' | 'master-admin'
     onOpenChange: (open: boolean) => void
     onApprove?: (file: FileRecord, catatan: string, attachment?: File) => void
@@ -40,7 +40,15 @@ interface FileDetailModalProps {
     onDelete?: (file: FileRecord) => void
 }
 
-// ── helpers ────────────────────────────────────────────────────────────────
+function isPreviewableContentType(contentType?: string): boolean {
+    if (!contentType) return false
+    return (
+        contentType.includes('pdf') ||
+        contentType.includes('jpeg') ||
+        contentType.includes('jpg') ||
+        contentType.includes('png')
+    )
+}
 
 function formatDate(iso?: string | null): string {
     if (!iso) return '—'
@@ -62,14 +70,13 @@ function MetaRow({ label, value }: { label: string; value?: string | null }) {
     )
 }
 
-// ── component ──────────────────────────────────────────────────────────────
-
 export default function FileDetailModal({
     file,
     document,
     open,
     isLoading = false,
     fileUrl,
+    contentType,
     role,
     onOpenChange,
     onApprove,
@@ -77,16 +84,14 @@ export default function FileDetailModal({
     onUpdate,
     onDelete,
 }: FileDetailModalProps) {
-    // ── role-based permission ──
     const canReview = role === 'master-admin'
+    const canPreview = isPreviewableContentType(contentType)
 
-    // ── display values ──
     const displayName = document?.filename ?? file?.name ?? '—'
     const displayCreatedBy = document?.created_by ?? file?.uploadedBy ?? '—'
     const displayUpdatedAt = formatDate(document?.updated_at)
     const displayStatus = (document?.status ?? file?.status) as FileStatus | undefined
 
-    // strip extension for display and form default
     const strippedName = displayName.replace(/\.[^.]+$/, '')
 
     const { register, handleSubmit, reset } = useForm<ReviewFormValues>({
@@ -110,13 +115,9 @@ export default function FileDetailModal({
         onConfirm: () => void
     }>({ open: false, title: '', description: '', confirmLabel: '', variant: 'default', onConfirm: () => { } })
 
-    // ── sync form when document/file changes ──
     useEffect(() => {
         const name = (document?.filename ?? file?.name ?? '').replace(/\.[^.]+$/, '')
-        reset({
-            filename: name,
-            catatan: '',
-        })
+        reset({ filename: name, catatan: '' })
     }, [document?.filename, file?.name, reset])
 
     const openConfirm = (config: Omit<typeof confirm, 'open'>) =>
@@ -129,8 +130,6 @@ export default function FileDetailModal({
         setZoom(100)
         onOpenChange(false)
     }
-
-    // ── action handlers ──
 
     const handleApprove = handleSubmit((data) => {
         if (!file) return
@@ -162,9 +161,7 @@ export default function FileDetailModal({
 
     const handleUpdate = handleSubmit((data) => {
         if (!file) return
-
         const newFilename = data.filename?.trim() || undefined
-
         openConfirm({
             title: 'Update Status Berkas?',
             description: `Anda akan memperbarui berkas "${file.name}". Pastikan data sudah benar.`,
@@ -200,14 +197,9 @@ export default function FileDetailModal({
         })
     }
 
-    // ── preview url ──
-    // We no longer branch on file extension (the backend only returns the
-    // object name without an extension), so we always embed the document
-    // in an iframe and let the browser/viewer figure out how to render it.
-    const embedUrl = fileUrl ? `${fileUrl}#toolbar=0&zoom=${zoom}` : null
-
+    const embedUrl = fileUrl && canPreview ? `${fileUrl}#toolbar=0&zoom=${zoom}` : null
     const disabled = isLoading || isUpdating || !file
-
+console.log('>>> canPreview:', canPreview, 'contentType:', contentType, 'fileUrl:', fileUrl)
     return (
         <>
             <ConfirmDialog
@@ -224,7 +216,7 @@ export default function FileDetailModal({
                 <DialogContent className="max-w-[95vw] min-w-340 p-0 rounded-2xl overflow-hidden border-0 shadow-2xl gap-0 [&>button]:hidden">
                     <div className="flex h-170">
 
-                        {/* ── Left — file preview ─────────────────────────────── */}
+                        {/* Left — file preview */}
                         <div className="flex-1 bg-[#2D2D2D] flex flex-col min-w-0">
 
                             {/* Toolbar */}
@@ -232,27 +224,30 @@ export default function FileDetailModal({
                                 <FileText className="w-4 h-4 text-white/60 shrink-0" />
                                 <span className="text-white/80 text-xs font-medium truncate">{displayName}</span>
 
-                                <div className="flex items-center gap-2 ml-auto shrink-0">
-                                    <button
-                                        onClick={() => setZoom((z) => Math.max(50, z - 10))}
-                                        className="text-white/60 hover:text-white transition-colors"
-                                    >
-                                        <Minus className="w-3.5 h-3.5" />
-                                    </button>
-                                    <span className="text-white/60 text-xs w-10 text-center">{zoom}%</span>
-                                    <button
-                                        onClick={() => setZoom((z) => Math.min(200, z + 10))}
-                                        className="text-white/60 hover:text-white transition-colors"
-                                    >
-                                        <Plus className="w-3.5 h-3.5" />
-                                    </button>
-                                </div>
+                                {/* Zoom controls — only for previewable files */}
+                                {canPreview && (
+                                    <div className="flex items-center gap-2 ml-auto shrink-0">
+                                        <button
+                                            onClick={() => setZoom((z) => Math.max(50, z - 10))}
+                                            className="text-white/60 hover:text-white transition-colors"
+                                        >
+                                            <Minus className="w-3.5 h-3.5" />
+                                        </button>
+                                        <span className="text-white/60 text-xs w-10 text-center">{zoom}%</span>
+                                        <button
+                                            onClick={() => setZoom((z) => Math.min(200, z + 10))}
+                                            className="text-white/60 hover:text-white transition-colors"
+                                        >
+                                            <Plus className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+                                )}
 
                                 {fileUrl && (
                                     <a
                                         href={fileUrl}
                                         download={displayName}
-                                        className="text-white/60 hover:text-white transition-colors shrink-0"
+                                        className={`text-white/60 hover:text-white transition-colors shrink-0 ${canPreview ? '' : 'ml-auto'}`}
                                         title="Download"
                                     >
                                         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -264,6 +259,8 @@ export default function FileDetailModal({
 
                             {/* Preview area */}
                             <div className="flex-1 overflow-hidden relative">
+
+                                {/* Loading / updating */}
                                 {(isLoading || isUpdating) && (
                                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#2D2D2D]">
                                         <Loader2 className="w-8 h-8 text-white/40 animate-spin" />
@@ -273,16 +270,38 @@ export default function FileDetailModal({
                                     </div>
                                 )}
 
-                                {!isLoading && !isUpdating && !embedUrl && (
+                                {/* No file */}
+                                {!isLoading && !isUpdating && !fileUrl && (
                                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
                                         <FileText className="w-10 h-10 text-white/20" />
                                         <p className="text-white/30 text-xs">Pratinjau tidak tersedia</p>
                                     </div>
                                 )}
 
-                                {/* Always render the document in an iframe — we don't
-                                    have a reliable extension to branch on, since the
-                                    backend only returns the object name. */}
+                                {/* File exists but not previewable */}
+                                {!isLoading && !isUpdating && fileUrl && !canPreview && (
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
+                                        <div className="flex flex-col items-center gap-2">
+                                            <FileText className="w-12 h-12 text-white/20" />
+                                            <p className="text-white/60 text-sm font-medium">
+                                                Pratinjau tidak tersedia
+                                            </p>
+                                            <p className="text-white/30 text-xs text-center max-w-48">
+                                                Format ini tidak dapat ditampilkan di browser. Unduh berkas untuk membukanya.
+                                            </p>
+                                        </div>
+                                        <a
+                                            href={fileUrl}
+                                            download={displayName}
+                                            className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white/70 hover:text-white text-xs rounded-xl transition-colors"
+                                        >
+                                            <Download className="w-4 h-4" />
+                                            Unduh Berkas
+                                        </a>
+                                    </div>
+                                )}
+
+                                {/* PDF / jpg / png — iframe preview */}
                                 {!isLoading && !isUpdating && embedUrl && (
                                     <iframe
                                         key={embedUrl}
@@ -294,7 +313,7 @@ export default function FileDetailModal({
                             </div>
                         </div>
 
-                        {/* ── Right — detail + review ──────────────────────────── */}
+                        {/* Right — detail + review */}
                         <div className="w-72 bg-[#6B5FAE] flex flex-col shrink-0">
 
                             {/* Header */}
@@ -320,7 +339,7 @@ export default function FileDetailModal({
                                 ) : (
                                     <div className="px-5 py-3 flex flex-col gap-4">
 
-                                        {/* File name + description */}
+                                        {/* File name + type */}
                                         <div>
                                             <h2 className="text-lg font-bold text-white leading-snug break-words">
                                                 {strippedName}
@@ -370,7 +389,6 @@ export default function FileDetailModal({
                             {/* Action buttons */}
                             <div className="flex flex-col gap-2 px-5 py-4 shrink-0 border-t border-white/20">
 
-                                {/* Approve + Reject — master-admin only, hidden when approved */}
                                 {canReview && displayStatus !== 'approved' && (
                                     <div className="flex gap-2">
                                         <Button
@@ -394,7 +412,6 @@ export default function FileDetailModal({
                                     </div>
                                 )}
 
-                                {/* Update + Delete — Update hidden when approved */}
                                 <div className="flex gap-2">
                                     {displayStatus !== 'approved' && (
                                         <Button

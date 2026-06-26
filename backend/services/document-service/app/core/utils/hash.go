@@ -16,11 +16,3 @@ func GenerateHMAC(filebytes []byte) string {
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
-func VerifyHMAC(filebytes []byte, storedHash string) bool {
-	hash := GenerateHMAC(filebytes)
-
-	return hmac.Equal(
-		[]byte(hash),
-		[]byte(storedHash),
-	)
-}
