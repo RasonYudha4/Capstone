@@ -10,17 +10,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// DocumentHandler provides example endpoints to demonstrate protected routes with RBAC.
-// In a real application, these would interact with a document storage service.
 type DocumentHandler struct{}
 
-// NewDocumentHandler creates a DocumentHandler instance.
+
 func NewDocumentHandler() *DocumentHandler {
 	return &DocumentHandler{}
 }
 
-// getAuthenticatedUser is a helper that extracts the JWT claims from the Gin context.
-// Returns nil if the user is not authenticated (should not happen behind JWTAuth middleware).
+
 func getAuthenticatedUser(c *gin.Context) *services.Claims {
 	value, exists := c.Get(config.ContextKeyUser)
 	if !exists {

@@ -1,5 +1,5 @@
 CREATE TYPE user_role AS ENUM ('master-admin', 'admin', 'staff');
-CREATE TYPE action_type AS ENUM ('insert', 'open', 'edit','update','delete','error','login','login_fail','lockout');
+CREATE TYPE action_type AS ENUM ('insert', 'open', 'edit','update','delete','error');
 CREATE TYPE audit_source AS ENUM ('client', 'system');
 
 CREATE TABLE IF NOT EXISTS groups (
@@ -68,8 +68,6 @@ CREATE TABLE IF NOT EXISTS documents (
     assessment_id UUID,
     filename VARCHAR(255),
     filepath VARCHAR(5024),
-    filehash VARCHAR(255),
-    object_id UUID,
     document_type_id UUID,
     status VARCHAR(20),
     created_at TIMESTAMP,
@@ -105,11 +103,9 @@ CREATE TABLE IF NOT EXISTS notifications (
     message VARCHAR(255),
     read BOOLEAN,
     user_id UUID,
-    document_id UUID,
     created_at TIMESTAMP,
     updated_at TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(user_id),
-    FOREIGN KEY (document_id) REFERENCES documents(document_id)
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
 
 CREATE TABLE IF NOT EXISTS otp_entries (

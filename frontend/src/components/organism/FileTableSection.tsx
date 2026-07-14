@@ -156,31 +156,38 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
   }
 
   // ── File URL + Content Type ──────────────────────────────────────────────
+  // Backend now returns a presigned URL (JSON) instead of streaming the raw
+  // file, so there's no blob to create or revoke here anymore — `fileUrl`
+  // is used directly as the <iframe>/<a href> target.
   const [fileUrl, setFileUrl] = useState('')
-  const [contentType, setContentType] = useState('')  // 1. add state
+  const [contentType, setContentType] = useState('')
   const [detailLoading, setDetailLoading] = useState(false)
 
   useEffect(() => {
     if (!selectedDocId) {
       setFileUrl('')
-      setContentType('')  // 2. reset on close
+      setContentType('')
       return
     }
 
-    let objectUrl = ''
+    let cancelled = false
     setDetailLoading(true)
 
     documentService.getById(selectedDocId)
-      .then(({ url, contentType }) => {  // 3. destructure contentType
-        objectUrl = url
+      .then(({ url, contentType }) => {
+        if (cancelled) return
         setFileUrl(url)
-        setContentType(contentType)  // 4. set state
+        setContentType(contentType)
       })
-      .catch(() => toast.error('Gagal memuat berkas.'))
-      .finally(() => setDetailLoading(false))
+      .catch(() => {
+        if (!cancelled) toast.error('Gagal memuat berkas.')
+      })
+      .finally(() => {
+        if (!cancelled) setDetailLoading(false)
+      })
 
     return () => {
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
+      cancelled = true
     }
   }, [selectedDocId])
 
@@ -244,7 +251,7 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
     setSelectedDocId(null)
     setSelectedDocument(null)
     setFileUrl('')
-    setContentType('')  // 5. reset on modal close
+    setContentType('')
   }
 
   const resetPage = () => setPage(1)
@@ -333,7 +340,7 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
         document={selectedDocument}
         isLoading={detailLoading}
         fileUrl={fileUrl}
-        contentType={contentType}  
+        contentType={contentType}
         open={!!selectedDocId}
         onOpenChange={(open) => { if (!open) closeModal() }}
         onApprove={handleApprove}

@@ -79,9 +79,9 @@ function DocCard({ doc, onView }: DocCardProps) {
                     <Clock className="w-3 h-3" />
                     {formatDate(doc.updated_at)}
                 </span>
-                <span className="flex items-center gap-1 text-xs text-gray-400" title={doc.assessment}>
+                <span className="flex items-center gap-1 text-xs text-gray-400" title={doc.assessment_code}>
                     <Fingerprint className="w-3 h-3" />
-                    {shortId(doc.assessment ?? '')}
+                    {shortId(doc.assessment_code ?? '')}
                 </span>
             </div>
 
@@ -104,8 +104,12 @@ export default function QueueList() {
     const [docs, setDocs] = useState<DocumentResponse[]>([])
     const [loading, setLoading] = useState(true)
 
+    const [page, setPage] = useState(1)
+    const LIMIT = 10
+
     const [selected, setSelected] = useState<DocumentResponse | null>(null)
     const [fileUrl, setFileUrl] = useState<string | undefined>()
+    const [contentType, setContentType] = useState<string>('')
     const [modalOpen, setModalOpen] = useState(false)
     const [modalLoading, setModalLoading] = useState(false)
 
@@ -113,7 +117,7 @@ export default function QueueList() {
     async function fetchQueue() {
         setLoading(true)
         try {
-            const res = await documentService.getByStatus('pending')
+            const res = await documentService.getByStatus('pending', { page, limit: LIMIT })
             setDocs(res.data ?? [])
         } catch {
             setDocs([])
@@ -122,14 +126,7 @@ export default function QueueList() {
         }
     }
 
-    useEffect(() => { fetchQueue() }, [])
-
-    // ── cleanup blob URL on unmount ──
-    useEffect(() => {
-        return () => {
-            if (fileUrl) URL.revokeObjectURL(fileUrl)
-        }
-    }, [fileUrl])
+    useEffect(() => { fetchQueue() }, [page])
 
     // ── open modal + fetch blob ──
     async function handleView(doc: DocumentResponse) {
@@ -137,10 +134,12 @@ export default function QueueList() {
         setModalOpen(true)
         setModalLoading(true)
         try {
-            const { url } = await documentService.getById(doc.document_id)
+            const { url, contentType } = await documentService.getById(doc.document_id)
             setFileUrl(url)
+            setContentType(contentType)
         } catch {
             setFileUrl(undefined)
+            setContentType('')
         } finally {
             setModalLoading(false)
         }
@@ -149,20 +148,24 @@ export default function QueueList() {
     // ── close modal ──
     function handleModalClose(open: boolean) {
         if (!open) {
-            if (fileUrl) URL.revokeObjectURL(fileUrl)
             setModalOpen(false)
             setSelected(null)
             setFileUrl(undefined)
+            setContentType('')
         }
     }
 
     // ── after approve / reject / update / delete ──
     async function afterAction() {
-        if (fileUrl) URL.revokeObjectURL(fileUrl)
         setModalOpen(false)
         setSelected(null)
         setFileUrl(undefined)
-        await fetchQueue()
+        setContentType('')
+        if (docs.length === 1 && page > 1) {
+            setPage(p => p - 1)
+        } else {
+            await fetchQueue()
+        }
     }
 
     if (loading) {
@@ -193,6 +196,28 @@ export default function QueueList() {
                         {docs.map(doc => (
                             <DocCard key={doc.document_id} doc={doc} onView={handleView} />
                         ))}
+
+                        <div className="flex items-center justify-between mt-2 pt-3 border-t border-gray-100">
+                            <span className="text-xs text-gray-400">
+                                Halaman {page}
+                            </span>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                                    disabled={page === 1}
+                                    className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    Sebelumnya
+                                </button>
+                                <button
+                                    onClick={() => setPage(p => p + 1)}
+                                    disabled={docs.length < LIMIT}
+                                    className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    Selanjutnya
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 )}
             </div>
@@ -205,6 +230,7 @@ export default function QueueList() {
                     document={selected}
                     isLoading={modalLoading}
                     fileUrl={fileUrl}
+                    contentType={contentType}
                     role="master-admin"
                     onApprove={async (file, _catatan, attachment) => {
                         await documentService.approve(

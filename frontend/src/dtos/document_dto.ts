@@ -30,11 +30,9 @@ export const uploadResponseSchema = z.object({
 export const documentResponseSchema = z.object({
     document_id:     uuid,
     filename:        z.string(),
-    filepath:        z.string(),
     document_type:   z.string(),
     created_by:      z.string(),
-    updated_at:      z.string().datetime(),
-    assessment:      z.string(),
+    updated_at:      z.string().datetime({ offset: true }),
     status:          documentStatus,
     service_code:    z.string(),
     standard_code:   z.string(),
@@ -92,7 +90,6 @@ export const statusStatSchema = z.object({
 })
  
 export const statsResponseSchema = z.object({
-    status: z.boolean(),
     total:  z.number().int(),
     groups: z.array(groupStatSchema),
     stats:  statusStatSchema,
@@ -120,17 +117,27 @@ export const deleteDocumentParamSchema = z.object({ documentId: uuid });
 // GET /documents, /type/:type, /groups/:group, /services/:service,
 //     /standards/:standard, /assessments/:assessment,
 //     /createdBy/my-document, /masterAdmin/status/:status
+// Backend wraps in ApiResponse: { success, message, status_code, data: DocumentDataResponse }
+// The service layer unwraps .data, so this schema matches DocumentDataResponse.
 export const documentListResponseSchema = z.object({
-    status: z.boolean(),
     page: z.number().int(),
     limit: z.number().int(),
     data: z.array(documentResponseSchema),
 });
 
 // GET /documents/:id
+// Backend returns ApiResponse with data: { presigned_url, "content-type" }
+// The service layer unwraps .data and normalizes keys.
 export const fileUrlResponseSchema = z.object({
-    Data: z.string().url(),
-});
+    presigned_url: z.string().url(),
+    "content-type": z.string().optional().default(''),
+})
+
+// GET /documents/public/:id — same presigned-URL + content-type shape
+export const publicFileUrlResponseSchema = z.object({
+    presigned_url: z.string().url(),
+    "content-type": z.string().optional().default(''),
+})
 
 // POST /documents/upload
 export { uploadResponseSchema as createDocumentResponseSchema };
@@ -147,7 +154,8 @@ export { responseSchema as mutationResponseSchema };
 export type DocumentStatus         = z.infer<typeof documentStatus>;
 export type DocumentResponse       = z.infer<typeof documentResponseSchema>;
 export type DocumentListResponse   = z.infer<typeof documentListResponseSchema>;
-export type FileUrlResponse = z.infer<typeof fileUrlResponseSchema>;
+export type FileUrlResponse        = z.infer<typeof fileUrlResponseSchema>;
+export type PublicFileUrlResponse  = z.infer<typeof publicFileUrlResponseSchema>;
 export type CreateDocumentBody     = z.infer<typeof createDocumentBodySchema>;
 export type UpdateDocumentBody     = z.infer<typeof updateDocumentBodySchema>;
 export type ApprovalRequest        = z.infer<typeof approvalRequestSchema>;

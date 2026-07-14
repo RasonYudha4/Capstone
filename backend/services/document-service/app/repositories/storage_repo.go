@@ -3,14 +3,13 @@ package repositories
 import (
 	"capstone/app/core/utils"
 	"context"
-	"mime/multipart"
 	"os"
 	"io"
 	"strings"
 	"fmt"
 	"log"
-	"path/filepath"
 	"github.com/minio/minio-go/v7"
+    "time"
 )
 
 type StorageRepo struct{
@@ -64,12 +63,12 @@ func (s *StorageRepo) Upload_document(file io.Reader, objectId string ,isPublic 
 	return filepath, nil
 }
 
-func (s *StorageRepo) Update_document(file multipart.File, header *multipart.FileHeader, oldFilePath, newFileName, objectId string) (string, string, string, error) {
+func (s *StorageRepo) Update_document(file io.Reader, fileSize int64, contentType string, oldFilePath, newFileName, objectId string) (string, string, string, error) {
     bucket, _ := s.resolveBucket(oldFilePath)
 
-    _, err := s.minio.PutObject(context.Background(), bucket, objectId, file, header.Size,
+    _, err := s.minio.PutObject(context.Background(), bucket, objectId, file, fileSize,
         minio.PutObjectOptions{
-            ContentType:        header.Header.Get("Content-Type"),
+            ContentType:        contentType,
             ContentDisposition: "inline",
         },
     )
@@ -88,39 +87,12 @@ func (s *StorageRepo) Update_document(file multipart.File, header *multipart.Fil
     return newFileName, updatedHash ,newFilePath, nil
 }
 
-func (s *StorageRepo) Update_documentName(oldFilePath, newFileName string) (string, string, error) {
-    bucket, objectName := s.resolveBucket(oldFilePath)
-    extension := filepath.Ext(objectName)
-    newObjectName := strings.Join(strings.Fields(newFileName), "_") + extension
-
-    _, err := s.minio.CopyObject(context.Background(),
-        minio.CopyDestOptions{Bucket: bucket, Object: newObjectName},
-        minio.CopySrcOptions{Bucket: bucket, Object: objectName},
-    )
-    if err != nil {
-        return "", "", err
-    }
-
-    err = s.minio.RemoveObject(context.Background(), bucket, objectName, minio.RemoveObjectOptions{})
-    if err != nil {
-        log.Print("Error deleting old file", err)
-    }
-
-    var newFilePath string
-    if bucket == publicBucket {
-        newFilePath = fmt.Sprintf(os.Getenv("PUBLIC_BUCKET_URL"), newObjectName)
-    } else {
-        newFilePath = fmt.Sprintf(os.Getenv("PRIVATE_BUCKET_URL"), newObjectName)
-    }
-    return newObjectName, newFilePath, nil
-}
-
-func (s *StorageRepo) Update_documentFile(file multipart.File, header *multipart.FileHeader, oldFilePath, objectId string) (string, string,string, error) {
+func (s *StorageRepo) Update_documentFile(file io.Reader, fileSize int64, contentType string, oldFilePath, objectId string) (string, string,string, error) {
     bucket, objectName := s.resolveBucket(oldFilePath)
 
-    _, err := s.minio.PutObject(context.Background(), bucket, objectId, file, header.Size,
+    _, err := s.minio.PutObject(context.Background(), bucket, objectId, file, fileSize,
         minio.PutObjectOptions{
-            ContentType:        header.Header.Get("Content-Type"),
+            ContentType:        contentType,
             ContentDisposition: "inline",
         },
     )
@@ -205,23 +177,27 @@ func (s *StorageRepo) resolveBucket(filepath string) (string, string) {
     return privateBucket, objectName
 }
 
+func (s *StorageRepo) Get_document_presign(objectId string, isPublic bool) (string, string, error){
+    bucket := s.bucket(isPublic)
+    expiry := 5 * time.Minute
+    url, err := s.minio.PresignedGetObject(
+        context.Background(),
+        bucket,
+        objectId,
+        expiry,
+        nil,
+    )
+    if err != nil{
+        return "Error getting presign","", err
+    }
 
+    contentType := ""
+    info, statErr := s.minio.StatObject(context.Background(), bucket, objectId, minio.StatObjectOptions{})
+    if statErr != nil {
+        log.Print("Error getting object stat for content type: ", statErr)
+    } else {
+        contentType = info.ContentType
+    }
 
-/* generate presign (cannot without public domain alamak) || can if the application ran directly without container
-func (s *StorageRepo) Get_document_object(filename string) (string, error){
-	fileName := strings.Join(strings.Fields(filename), "_")
-	expiry := 1*4*time.Hour
-
-	filepath, err := s.minio.PresignedGetObject(
-		context.Background(),
-		"testing2",
-		fileName,
-		expiry,
-		nil,
-	)
-	if err != nil {
-		return "", err
-	}
-	
-	return filepath.String(), nil
-}*/
+    return url.String(), contentType, nil
+}

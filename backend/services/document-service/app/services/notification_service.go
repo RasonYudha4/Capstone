@@ -79,8 +79,14 @@ func (n *NotificationService) countUserLocked(userID string) int {
 }
 
 func (n *NotificationService) NotifySSE(userIds []uuid.UUID, event SSEEvent) {
+	var docId uuid.UUID
+	if event.DocumentId != "" {
+		docId, _ = uuid.Parse(event.DocumentId)
+	}
+
 	for _, uid := range userIds {
-		saved, err := n.notifications.Create_notification(uid, event.Message)
+		// Use event.Type ("new_document" or "document_status_update") as the template key for DB
+		saved, err := n.notifications.Create_notification(uid, event.Type, docId)
 		if err != nil {
 			log.Printf("[SSE] NotifySSE: DB save failed for %s: %v", uid, err)
 			continue
