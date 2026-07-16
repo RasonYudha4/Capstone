@@ -92,15 +92,39 @@ func main() {
 		protected.GET("/auth/me", authHandler.Me)
 
 		// assign admin role — only "master-admin" can assign admin role.
-		protected.POST("/auth/assign-admin",
-			middleware.RequireRoles(config.RoleMasterAdmin),
-			authHandler.AssignAdmin,
-		)
+		// DEPRECATED: use PUT /auth/users/:id/role instead.
+		// Kept for backwards compatibility. Routes below supersede this.
 
 		// invite new user — only "master-admin" can invite.
 		protected.POST("/auth/invite",
 			middleware.RequireRoles(config.RoleMasterAdmin),
 			authHandler.Invite,
+		)
+
+		// -- User Management (master-admin only) --
+
+		// list all users (excludes master-admins).
+		protected.GET("/auth/users",
+			middleware.RequireRoles(config.RoleMasterAdmin),
+			authHandler.ListUsers,
+		)
+
+		// update a user's role (staff ↔ admin).
+		protected.PUT("/auth/users/:id/role",
+			middleware.RequireRoles(config.RoleMasterAdmin),
+			authHandler.UpdateRole,
+		)
+
+		// suspend or re-activate a user.
+		protected.PUT("/auth/users/:id/status",
+			middleware.RequireRoles(config.RoleMasterAdmin),
+			authHandler.UpdateStatus,
+		)
+
+		// delete an invited (not-yet-active) user.
+		protected.DELETE("/auth/users/:id",
+			middleware.RequireRoles(config.RoleMasterAdmin),
+			authHandler.DeleteUser,
 		)
 
 		// document listing — accessible by ALL authenticated roles.

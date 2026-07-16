@@ -1,7 +1,6 @@
-// app/.../Admins.tsx
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useMemo } from "react"
 import SectionHeading from "@/components/atoms/SectionHeading"
 import StatCard from "@/components/molecules/StatCard"
 import RoleBadge from "@/components/atoms/RoleBadge"
@@ -44,82 +43,225 @@ import {
     Send,
     CheckCircle2,
     X,
+    Trash2,
+    ShieldOff,
+    ShieldCheck,
+    RefreshCw,
+    AlertCircle,
 } from "lucide-react"
 import { authService } from "@/services/auth_service"
+import { type UserListItem } from "@/dtos/login_dto"
 import { toast } from "sonner"
 
-type Role = "Admin" | "Staff"
+type RoleFilter = "admin" | "staff" | "invited"
 
-type Department =
-    | "Manajemen Rumah Sakit"
-    | "Pelayanan Pasien"
-    | "Program Nasional"
-    | "Keselamatan Pasien"
-
-const DEPARTMENT_OPTIONS: Department[] = [
-    "Manajemen Rumah Sakit",
-    "Pelayanan Pasien",
-    "Program Nasional",
-    "Keselamatan Pasien",
-]
-
-interface UserRow {
-    id: number
-    name: string
-    initials: string
-    email: string
-    joinDate: string
-    currentRole: Role
-    department: Department
-    avatarBg: string
-    avatarText: string
-}
-
-const AVATAR_STYLES = [
-    { avatarBg: "bg-violet-100", avatarText: "text-violet-600" },
-    { avatarBg: "bg-emerald-100", avatarText: "text-emerald-600" },
-    { avatarBg: "bg-rose-100", avatarText: "text-rose-500" },
-    { avatarBg: "bg-sky-100", avatarText: "text-sky-600" },
-]
-
-const USERS: UserRow[] = [
-    { id: 1, name: "Budi Santoso", initials: "BS", email: "budi.santoso@gmail.com", joinDate: "Bergabung 12 Jan 2025", currentRole: "Admin", department: "Manajemen Rumah Sakit", ...AVATAR_STYLES[0] },
-    { id: 2, name: "Sari Dewi", initials: "SD", email: "sari.dewi@gmail.com", joinDate: "Bergabung 3 Mar 2025", currentRole: "Staff", department: "Pelayanan Pasien", ...AVATAR_STYLES[1] },
-    { id: 3, name: "Rina Kusuma", initials: "RK", email: "rina.kusuma@gmail.com", joinDate: "Bergabung 21 Feb 2025", currentRole: "Admin", department: "Program Nasional", ...AVATAR_STYLES[2] },
-    { id: 4, name: "Agus Prabowo", initials: "AP", email: "agus.prabowo@gmail.com", joinDate: "Bergabung 7 Apr 2025", currentRole: "Staff", department: "Keselamatan Pasien", ...AVATAR_STYLES[3] },
-    { id: 5, name: "Hendra Wijaya", initials: "HW", email: "hendra.wijaya@gmail.com", joinDate: "Bergabung 30 Jan 2025", currentRole: "Admin", department: "Manajemen Rumah Sakit", ...AVATAR_STYLES[2] },
-    { id: 6, name: "Dian Pratama", initials: "DP", email: "dian.pratama@gmail.com", joinDate: "Bergabung 18 May 2025", currentRole: "Staff", department: "Pelayanan Pasien", ...AVATAR_STYLES[2] },
-    { id: 7, name: "Maya Nugroho", initials: "MN", email: "maya.nugroho@gmail.com", joinDate: "Bergabung 2 Jun 2025", currentRole: "Staff", department: "Program Nasional", ...AVATAR_STYLES[3] },
-]
-
-const ROLE_OPTIONS: Role[] = ["Admin", "Staff"]
+const ROLE_OPTIONS: Array<"admin" | "staff"> = ["admin", "staff"]
 
 const fieldClass = "rounded-xl border-gray-200 bg-gray-50 focus:ring-[#6B5FAE] focus:border-[#6B5FAE] placeholder:text-gray-400 text-sm"
 const labelClass = "text-sm font-bold text-[#6B5FAE]"
 
-export default function Admins() {
-    const [pendingDepartment, setPendingDepartment] = useState<Record<number, Department>>(
-        USERS.reduce((acc, u) => ({ ...acc, [u.id]: u.department }), {} as Record<number, Department>)
-    )
-    const [departmentFilter, setDepartmentFilter] = useState<Department[]>([])
-    const [page, setPage] = useState(1)
-    const totalPages = 3
+const AVATAR_COLORS = [
+    { bg: "bg-violet-100", text: "text-violet-600" },
+    { bg: "bg-emerald-100", text: "text-emerald-600" },
+    { bg: "bg-rose-100", text: "text-rose-500" },
+    { bg: "bg-sky-100", text: "text-sky-600" },
+    { bg: "bg-amber-100", text: "text-amber-600" },
+    { bg: "bg-fuchsia-100", text: "text-fuchsia-600" },
+]
 
-    // Invite modal state
+function getAvatarColor(email: string) {
+    const idx = email.charCodeAt(0) % AVATAR_COLORS.length
+    return AVATAR_COLORS[idx]
+}
+
+function getInitials(email: string) {
+    const parts = email.split("@")[0].split(/[._-]/)
+    return parts
+        .slice(0, 2)
+        .map((p) => p[0]?.toUpperCase() ?? "")
+        .join("")
+}
+
+const PAGE_SIZE = 10
+
+export default function Admins() {
+    // ── data state ──
+    const [users, setUsers] = useState<UserListItem[]>([])
+    const [isLoading, setIsLoading] = useState(true)
+    const [loadError, setLoadError] = useState<string | null>(null)
+
+    // ── pending role changes (userId → new role) ──
+    const [pendingRoles, setPendingRoles] = useState<Record<string, "admin" | "staff">>({})
+    const [savingId, setSavingId] = useState<string | null>(null)
+
+    // ── search & filter ──
+    const [search, setSearch] = useState("")
+    const [roleFilter, setRoleFilter] = useState<RoleFilter[]>([])
+    const [page, setPage] = useState(1)
+
+    // ── invite modal ──
     const [inviteOpen, setInviteOpen] = useState(false)
     const [inviteEmail, setInviteEmail] = useState("")
-    const [inviteRole, setInviteRole] = useState<Role | "">("") 
+    const [inviteRole, setInviteRole] = useState<"admin" | "staff" | "">("")
     const [inviteSuccess, setInviteSuccess] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
 
+    // ── delete confirm modal ──
+    const [deleteTarget, setDeleteTarget] = useState<UserListItem | null>(null)
+    const [isDeletingId, setIsDeletingId] = useState<string | null>(null)
+
+    // ── suspend confirm modal ──
+    const [suspendTarget, setSuspendTarget] = useState<UserListItem | null>(null)
+    const [isSuspendingId, setIsSuspendingId] = useState<string | null>(null)
+
+    // ─────────────────────────────────────────────
+    // Load users from API
+    // ─────────────────────────────────────────────
+    const fetchUsers = async () => {
+        setIsLoading(true)
+        setLoadError(null)
+        try {
+            const res = await authService.listUsers()
+            setUsers(res.users)
+            // Seed pending roles from current roles
+            const initial: Record<string, "admin" | "staff"> = {}
+            res.users.forEach((u) => {
+                if (u.role === "admin" || u.role === "staff") {
+                    initial[u.user_id] = u.role
+                }
+            })
+            setPendingRoles(initial)
+        } catch (err: any) {
+            setLoadError(err.message || "Gagal memuat daftar pengguna.")
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
+    useEffect(() => {
+        fetchUsers()
+    }, [])
+
+    // ─────────────────────────────────────────────
+    // Derived stats
+    // ─────────────────────────────────────────────
+    const activeUsers = users.filter((u) => u.account_status === "active")
+    const totalAdmin = activeUsers.filter((u) => u.role === "admin").length
+    const totalStaff = activeUsers.filter((u) => u.role === "staff").length
+
+    // ─────────────────────────────────────────────
+    // Filtered + paginated list
+    // ─────────────────────────────────────────────
+    const filteredUsers = useMemo(() => {
+        let list = users
+        if (search.trim()) {
+            const q = search.toLowerCase()
+            list = list.filter((u) => u.email.toLowerCase().includes(q))
+        }
+        if (roleFilter.length > 0) {
+            list = list.filter((u) => {
+                if (roleFilter.includes("invited")) {
+                    if (u.account_status === "invited") return true
+                }
+                if (roleFilter.includes("admin") && u.role === "admin" && u.account_status !== "invited") return true
+                if (roleFilter.includes("staff") && u.role === "staff" && u.account_status !== "invited") return true
+                return false
+            })
+        }
+        return list
+    }, [users, search, roleFilter])
+
+    const totalPages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE))
+    const pagedUsers = filteredUsers.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+
+    // Reset page when filter/search changes
+    useEffect(() => { setPage(1) }, [search, roleFilter])
+
+    // ─────────────────────────────────────────────
+    // Save role change
+    // ─────────────────────────────────────────────
+    const handleSaveRole = async (user: UserListItem) => {
+        const newRole = pendingRoles[user.user_id]
+        if (!newRole || newRole === user.role) {
+            toast.info("Role tidak berubah.")
+            return
+        }
+        setSavingId(user.user_id)
+        try {
+            await authService.updateUserRole(user.user_id, newRole)
+            toast.success(`Role ${user.email} berhasil diubah ke '${newRole}'.`)
+            // Update local state
+            setUsers((prev) =>
+                prev.map((u) => u.user_id === user.user_id ? { ...u, role: newRole } : u)
+            )
+        } catch (err: any) {
+            toast.error(err.message || "Gagal mengubah role.")
+        } finally {
+            setSavingId(null)
+        }
+    }
+
+    // ─────────────────────────────────────────────
+    // Suspend / activate
+    // ─────────────────────────────────────────────
+    const handleToggleStatus = async (user: UserListItem) => {
+        if (user.account_status === "active") {
+            // Confirm before suspending
+            setSuspendTarget(user)
+        } else {
+            await doUpdateStatus(user, "active")
+        }
+    }
+
+    const doUpdateStatus = async (user: UserListItem, status: "active" | "suspended") => {
+        setIsSuspendingId(user.user_id)
+        setSuspendTarget(null)
+        try {
+            await authService.updateUserStatus(user.user_id, status)
+            toast.success(
+                status === "suspended"
+                    ? `Akun ${user.email} berhasil ditangguhkan.`
+                    : `Akun ${user.email} berhasil diaktifkan kembali.`
+            )
+            setUsers((prev) =>
+                prev.map((u) => u.user_id === user.user_id ? { ...u, account_status: status } : u)
+            )
+        } catch (err: any) {
+            toast.error(err.message || "Gagal mengubah status akun.")
+        } finally {
+            setIsSuspendingId(null)
+        }
+    }
+
+    // ─────────────────────────────────────────────
+    // Delete invited user
+    // ─────────────────────────────────────────────
+    const handleDeleteConfirm = async () => {
+        if (!deleteTarget) return
+        setIsDeletingId(deleteTarget.user_id)
+        setDeleteTarget(null)
+        try {
+            await authService.deleteUser(deleteTarget.user_id)
+            toast.success(`Undangan untuk ${deleteTarget.email} berhasil dihapus.`)
+            setUsers((prev) => prev.filter((u) => u.user_id !== deleteTarget.user_id))
+        } catch (err: any) {
+            toast.error(err.message || "Gagal menghapus pengguna.")
+        } finally {
+            setIsDeletingId(null)
+        }
+    }
+
+    // ─────────────────────────────────────────────
+    // Invite user
+    // ─────────────────────────────────────────────
     const handleInviteSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
         if (!inviteEmail || !inviteRole) return
-
         setIsSubmitting(true)
         try {
-            await authService.inviteUser(inviteEmail, inviteRole.toLowerCase())
+            await authService.inviteUser(inviteEmail, inviteRole)
             setInviteSuccess(true)
+            fetchUsers() // refresh list
         } catch (error: any) {
             toast.error(error.message || "Gagal mengirim undangan. Silakan coba lagi.")
         } finally {
@@ -135,26 +277,18 @@ export default function Admins() {
 
     const handleInviteClose = () => {
         setInviteOpen(false)
-        setTimeout(() => {
-            handleInviteReset()
-        }, 300)
+        setTimeout(handleInviteReset, 300)
     }
 
-    const handleDepartmentChange = (id: number, department: Department) => {
-        setPendingDepartment((prev) => ({ ...prev, [id]: department }))
-    }
-
-    const toggleDepartmentFilter = (dept: Department) => {
-        setDepartmentFilter((prev) =>
-            prev.includes(dept) ? prev.filter((d) => d !== dept) : [...prev, dept]
+    const toggleRoleFilter = (f: RoleFilter) => {
+        setRoleFilter((prev) =>
+            prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f]
         )
     }
 
-    const filteredUsers =
-        departmentFilter.length === 0
-            ? USERS
-            : USERS.filter((user) => departmentFilter.includes(user.department))
-
+    // ─────────────────────────────────────────────
+    // Render
+    // ─────────────────────────────────────────────
     return (
         <section>
             {/* ── Header Row ── */}
@@ -179,7 +313,6 @@ export default function Admins() {
             <Dialog open={inviteOpen} onOpenChange={handleInviteClose}>
                 <DialogContent className="max-w-md rounded-3xl bg-gray-50 p-8 gap-0 [&>button]:hidden">
                     {inviteSuccess ? (
-                        /* ── Success State ── */
                         <div className="flex flex-col items-center text-center py-4">
                             <button
                                 onClick={handleInviteClose}
@@ -207,7 +340,6 @@ export default function Admins() {
                             </Button>
                         </div>
                     ) : (
-                        /* ── Form State ── */
                         <>
                             <DialogHeader className="mb-4">
                                 <div className="flex items-start justify-between">
@@ -230,7 +362,6 @@ export default function Admins() {
                             </DialogHeader>
 
                             <form onSubmit={handleInviteSubmit} className="flex flex-col gap-5">
-                                {/* Email Field */}
                                 <div>
                                     <label htmlFor="invite-email" className={labelClass}>
                                         <span className="flex items-center gap-1.5 mb-1.5">
@@ -249,7 +380,6 @@ export default function Admins() {
                                     />
                                 </div>
 
-                                {/* Role Field */}
                                 <div>
                                     <label htmlFor="invite-role" className={labelClass}>
                                         <span className="flex items-center gap-1.5 mb-1.5">
@@ -260,20 +390,18 @@ export default function Admins() {
                                     <Select
                                         required
                                         value={inviteRole}
-                                        onValueChange={(v) => setInviteRole(v as Role)}
+                                        onValueChange={(v) => setInviteRole(v as "admin" | "staff")}
                                     >
                                         <SelectTrigger id="invite-role" className={fieldClass}>
                                             <SelectValue placeholder="Pilih role pengguna" />
                                         </SelectTrigger>
                                         <SelectContent className="rounded-xl">
-                                            {ROLE_OPTIONS.map((r) => (
-                                                <SelectItem key={r} value={r}>{r}</SelectItem>
-                                            ))}
+                                            <SelectItem value="admin">Admin</SelectItem>
+                                            <SelectItem value="staff">Staff</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
 
-                                {/* Info note */}
                                 <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
                                     <div className="w-4 h-4 rounded-full bg-amber-400 flex items-center justify-center shrink-0 mt-0.5">
                                         <span className="text-white text-[10px] font-bold">i</span>
@@ -283,7 +411,6 @@ export default function Admins() {
                                     </p>
                                 </div>
 
-                                {/* Submit */}
                                 <div className="flex justify-end pt-1">
                                     <Button
                                         id="btn-send-invite"
@@ -313,21 +440,68 @@ export default function Admins() {
                 </DialogContent>
             </Dialog>
 
-            <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
-                <StatCard label="Total Pengguna" value={24} weeklyCount={3} weeklyLabel="minggu ini" icon={User} />
+            {/* ── Suspend Confirm Modal ── */}
+            <Dialog open={!!suspendTarget} onOpenChange={() => setSuspendTarget(null)}>
+                <DialogContent className="max-w-sm rounded-2xl p-6">
+                    <DialogHeader>
+                        <DialogTitle className="text-lg font-bold text-gray-900">Tangguhkan Akun?</DialogTitle>
+                        <DialogDescription className="text-sm text-gray-500 mt-1">
+                            Akun <strong>{suspendTarget?.email}</strong> akan ditangguhkan dan semua sesi aktif akan dicabut. User tidak dapat login sampai diaktifkan kembali.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="flex gap-3 mt-4 justify-end">
+                        <Button variant="outline" className="rounded-xl" onClick={() => setSuspendTarget(null)}>
+                            Batal
+                        </Button>
+                        <Button
+                            className="bg-rose-500 hover:bg-rose-600 text-white rounded-xl"
+                            onClick={() => suspendTarget && doUpdateStatus(suspendTarget, "suspended")}
+                        >
+                            <ShieldOff className="w-4 h-4 mr-1.5" />
+                            Tangguhkan
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
 
+            {/* ── Delete Confirm Modal ── */}
+            <Dialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
+                <DialogContent className="max-w-sm rounded-2xl p-6">
+                    <DialogHeader>
+                        <DialogTitle className="text-lg font-bold text-gray-900">Hapus Undangan?</DialogTitle>
+                        <DialogDescription className="text-sm text-gray-500 mt-1">
+                            Undangan yang dikirim ke <strong>{deleteTarget?.email}</strong> akan dihapus permanen. Tindakan ini tidak dapat dibatalkan.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="flex gap-3 mt-4 justify-end">
+                        <Button variant="outline" className="rounded-xl" onClick={() => setDeleteTarget(null)}>
+                            Batal
+                        </Button>
+                        <Button
+                            className="bg-red-600 hover:bg-red-700 text-white rounded-xl"
+                            onClick={handleDeleteConfirm}
+                        >
+                            <Trash2 className="w-4 h-4 mr-1.5" />
+                            Hapus
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* ── Stat Cards ── */}
+            <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <StatCard label="Total Pengguna" value={activeUsers.length} icon={User} />
                 <StatCard label="Total Admin" icon={Layers}>
                     <div className="flex flex-col gap-1">
-                        <span className="text-3xl font-bold text-gray-900">4</span>
+                        <span className="text-3xl font-bold text-gray-900">{totalAdmin}</span>
                         <span className="inline-flex items-center w-fit px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-600">
                             Hak akses penuh
                         </span>
                     </div>
                 </StatCard>
-
                 <StatCard label="Total Staff" icon={Users}>
                     <div className="flex flex-col gap-1">
-                        <span className="text-3xl font-bold text-gray-900">20</span>
+                        <span className="text-3xl font-bold text-gray-900">{totalStaff}</span>
                         <span className="inline-flex items-center w-fit px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-600">
                             Akses standar
                         </span>
@@ -335,21 +509,38 @@ export default function Admins() {
                 </StatCard>
             </div>
 
+            {/* ── User Table ── */}
             <div className="bg-white rounded-2xl border border-gray-100 p-6 min-h-172 mt-8">
+                {/* Table header controls */}
                 <div className="flex items-center justify-between flex-wrap gap-4">
                     <div className="flex items-center gap-3">
                         <Users className="w-5 h-5 text-[#6B5FAE]" />
                         <p className="font-semibold text-gray-900">Semua Pengguna</p>
                     </div>
                     <div className="flex items-center gap-3">
+                        {/* Search */}
                         <div className="relative">
                             <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
                             <Input
                                 placeholder="Cari pengguna..."
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
                                 className="pl-9 w-64 bg-gray-50 border-gray-100 rounded-xl"
                             />
                         </div>
 
+                        {/* Refresh */}
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            className="rounded-xl border-gray-100 bg-gray-50 text-gray-600"
+                            onClick={fetchUsers}
+                            title="Refresh data"
+                        >
+                            <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
+                        </Button>
+
+                        {/* Filter */}
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button
@@ -358,31 +549,32 @@ export default function Admins() {
                                 >
                                     <SlidersHorizontal className="w-4 h-4" />
                                     Filter
-                                    {departmentFilter.length > 0 && (
+                                    {roleFilter.length > 0 && (
                                         <span className="ml-1 w-5 h-5 rounded-full bg-[#6B5FAE] text-white text-xs flex items-center justify-center">
-                                            {departmentFilter.length}
+                                            {roleFilter.length}
                                         </span>
                                     )}
                                 </Button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-56">
-                                <DropdownMenuLabel>Filter berdasarkan departemen</DropdownMenuLabel>
+                            <DropdownMenuContent align="end" className="w-48">
+                                <DropdownMenuLabel>Filter berdasarkan role</DropdownMenuLabel>
                                 <DropdownMenuSeparator />
-                                {DEPARTMENT_OPTIONS.map((dept) => (
+                                {(["admin", "staff", "invited"] as RoleFilter[]).map((f) => (
                                     <DropdownMenuCheckboxItem
-                                        key={dept}
-                                        checked={departmentFilter.includes(dept)}
-                                        onCheckedChange={() => toggleDepartmentFilter(dept)}
+                                        key={f}
+                                        checked={roleFilter.includes(f)}
+                                        onCheckedChange={() => toggleRoleFilter(f)}
                                         onSelect={(e) => e.preventDefault()}
+                                        className="capitalize"
                                     >
-                                        {dept}
+                                        {f === "invited" ? "Belum Aktif (Invited)" : f.charAt(0).toUpperCase() + f.slice(1)}
                                     </DropdownMenuCheckboxItem>
                                 ))}
-                                {departmentFilter.length > 0 && (
+                                {roleFilter.length > 0 && (
                                     <>
                                         <DropdownMenuSeparator />
                                         <button
-                                            onClick={() => setDepartmentFilter([])}
+                                            onClick={() => setRoleFilter([])}
                                             className="w-full text-left px-2 py-1.5 text-sm text-[#6B5FAE] hover:bg-gray-50 rounded-md"
                                         >
                                             Hapus semua filter
@@ -394,75 +586,216 @@ export default function Admins() {
                     </div>
                 </div>
 
+                {/* Table */}
                 <div className="mt-6 rounded-xl overflow-hidden border border-gray-100">
                     <table className="w-full text-sm">
                         <thead>
                             <tr className="bg-[#6B5FAE] text-white text-left">
                                 <th className="px-6 py-4 font-semibold w-14">No.</th>
-                                <th className="px-6 py-4 font-semibold">Nama Lengkap</th>
-                                <th className="px-6 py-4 font-semibold">Email / UPN</th>
+                                <th className="px-6 py-4 font-semibold">Email</th>
                                 <th className="px-6 py-4 font-semibold">Role Saat Ini</th>
+                                <th className="px-6 py-4 font-semibold">Status</th>
                                 <th className="px-6 py-4 font-semibold">Ubah Role</th>
                                 <th className="px-6 py-4 font-semibold">Aksi</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {filteredUsers.length === 0 ? (
+                            {isLoading ? (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-10 text-center text-gray-400">
-                                        Tidak ada pengguna yang cocok dengan filter ini.
+                                    <td colSpan={6} className="px-6 py-14 text-center">
+                                        <div className="flex flex-col items-center gap-3 text-gray-400">
+                                            <svg className="animate-spin w-7 h-7 text-[#6B5FAE]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                                            </svg>
+                                            <span>Memuat data pengguna...</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ) : loadError ? (
+                                <tr>
+                                    <td colSpan={6} className="px-6 py-14 text-center">
+                                        <div className="flex flex-col items-center gap-3 text-rose-500">
+                                            <AlertCircle className="w-7 h-7" />
+                                            <span>{loadError}</span>
+                                            <Button
+                                                variant="outline"
+                                                className="rounded-xl border-rose-200 text-rose-500 hover:bg-rose-50 text-xs"
+                                                onClick={fetchUsers}
+                                            >
+                                                Coba lagi
+                                            </Button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ) : pagedUsers.length === 0 ? (
+                                <tr>
+                                    <td colSpan={6} className="px-6 py-14 text-center text-gray-400">
+                                        {search || roleFilter.length > 0
+                                            ? "Tidak ada pengguna yang cocok dengan filter ini."
+                                            : "Belum ada pengguna yang terdaftar."}
                                     </td>
                                 </tr>
                             ) : (
-                                filteredUsers.map((user) => {
-                                    const selectedDept = pendingDepartment[user.id]
+                                pagedUsers.map((user, idx) => {
+                                    const avatar = getAvatarColor(user.email)
+                                    const initials = getInitials(user.email)
+                                    const isInvited = user.account_status === "invited"
+                                    const isSuspended = user.account_status === "suspended"
+                                    const isSaving = savingId === user.user_id
+                                    const isDeleting = isDeletingId === user.user_id
+                                    const isSuspending = isSuspendingId === user.user_id
+                                    const pendingRole = pendingRoles[user.user_id] ?? user.role
+                                    const hasRoleChange = pendingRole !== user.role && !isInvited
 
                                     return (
-                                        <tr key={user.id} className="border-t border-gray-100">
-                                            <td className="px-6 py-4 text-gray-500">{user.id}</td>
+                                        <tr
+                                            key={user.user_id}
+                                            className={`border-t border-gray-100 transition-colors ${isSuspended ? "bg-gray-50 opacity-70" : ""}`}
+                                        >
+                                            {/* No */}
+                                            <td className="px-6 py-4 text-gray-500">
+                                                {(page - 1) * PAGE_SIZE + idx + 1}
+                                            </td>
+
+                                            {/* Email */}
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center gap-3">
                                                     <div
-                                                        className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold ${user.avatarBg} ${user.avatarText}`}
+                                                        className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 ${avatar.bg} ${avatar.text}`}
                                                     >
-                                                        {user.initials}
+                                                        {initials}
                                                     </div>
                                                     <div>
-                                                        <p className="font-medium text-gray-900">{user.name}</p>
-                                                        <p className="text-xs text-gray-400">{user.joinDate}</p>
+                                                        <p className="font-medium text-gray-900">{user.email}</p>
+                                                        {isInvited && (
+                                                            <span className="inline-flex items-center text-[10px] bg-amber-50 text-amber-600 px-2 py-0.5 rounded-full font-medium mt-0.5">
+                                                                Menunggu aktivasi
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4 text-gray-600">{user.email}</td>
+
+                                            {/* Current role */}
                                             <td className="px-6 py-4">
-                                                <RoleBadge role={user.currentRole} />
+                                                <RoleBadge role={user.role === "admin" ? "Admin" : "Staff"} />
                                             </td>
+
+                                            {/* Status */}
                                             <td className="px-6 py-4">
-                                                <div className="flex flex-col gap-1.5 w-40">
+                                                {isInvited ? (
+                                                    <span className="inline-flex items-center text-xs bg-amber-50 text-amber-600 px-2.5 py-1 rounded-full font-medium">
+                                                        Invited
+                                                    </span>
+                                                ) : isSuspended ? (
+                                                    <span className="inline-flex items-center text-xs bg-rose-50 text-rose-500 px-2.5 py-1 rounded-full font-medium">
+                                                        Suspended
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-flex items-center text-xs bg-emerald-50 text-emerald-600 px-2.5 py-1 rounded-full font-medium">
+                                                        Aktif
+                                                    </span>
+                                                )}
+                                            </td>
+
+                                            {/* Role selector */}
+                                            <td className="px-6 py-4">
+                                                {isInvited ? (
+                                                    <span className="text-xs text-gray-400 italic">—</span>
+                                                ) : (
                                                     <Select
-                                                        value={selectedDept}
-                                                        onValueChange={(value: Department) => handleDepartmentChange(user.id, value)}
+                                                        value={pendingRole}
+                                                        onValueChange={(v) =>
+                                                            setPendingRoles((prev) => ({
+                                                                ...prev,
+                                                                [user.user_id]: v as "admin" | "staff",
+                                                            }))
+                                                        }
+                                                        disabled={isSuspended || isSaving}
                                                     >
-                                                        <SelectTrigger
-                                                            className="rounded-xl bg-white w-44"
-                                                            title={selectedDept}
-                                                        >
-                                                            <SelectValue className="block truncate text-left" />
+                                                        <SelectTrigger className="rounded-xl bg-white w-32 text-sm">
+                                                            <SelectValue />
                                                         </SelectTrigger>
                                                         <SelectContent>
-                                                            {DEPARTMENT_OPTIONS.map((dept) => (
-                                                                <SelectItem key={dept} value={dept}>
-                                                                    {dept}
+                                                            {ROLE_OPTIONS.map((r) => (
+                                                                <SelectItem key={r} value={r} className="capitalize">
+                                                                    {r.charAt(0).toUpperCase() + r.slice(1)}
                                                                 </SelectItem>
                                                             ))}
                                                         </SelectContent>
                                                     </Select>
-                                                </div>
+                                                )}
                                             </td>
+
+                                            {/* Actions */}
                                             <td className="px-6 py-4">
-                                                <Button className="bg-[#6B5FAE] hover:bg-[#5b4f97] rounded-xl px-5 text-white">
-                                                    Simpan
-                                                </Button>
+                                                <div className="flex items-center gap-2">
+                                                    {isInvited ? (
+                                                        /* Delete invited user */
+                                                        <Button
+                                                            size="sm"
+                                                            variant="outline"
+                                                            className="rounded-xl border-rose-200 text-rose-500 hover:bg-rose-50 gap-1.5"
+                                                            disabled={isDeleting}
+                                                            onClick={() => setDeleteTarget(user)}
+                                                        >
+                                                            {isDeleting ? (
+                                                                <svg className="animate-spin w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                                                                </svg>
+                                                            ) : (
+                                                                <Trash2 className="w-3.5 h-3.5" />
+                                                            )}
+                                                            Hapus
+                                                        </Button>
+                                                    ) : (
+                                                        <>
+                                                            {/* Save role button — only visible when role changed */}
+                                                            {hasRoleChange && (
+                                                                <Button
+                                                                    size="sm"
+                                                                    className="bg-[#6B5FAE] hover:bg-[#5b4f97] text-white rounded-xl px-4 gap-1"
+                                                                    disabled={isSaving}
+                                                                    onClick={() => handleSaveRole(user)}
+                                                                >
+                                                                    {isSaving ? (
+                                                                        <svg className="animate-spin w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                                                                        </svg>
+                                                                    ) : null}
+                                                                    Simpan
+                                                                </Button>
+                                                            )}
+
+                                                            {/* Suspend / Activate */}
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                className={`rounded-xl gap-1.5 ${isSuspended
+                                                                    ? "border-emerald-200 text-emerald-600 hover:bg-emerald-50"
+                                                                    : "border-rose-200 text-rose-500 hover:bg-rose-50"
+                                                                    }`}
+                                                                disabled={isSuspending}
+                                                                onClick={() => handleToggleStatus(user)}
+                                                            >
+                                                                {isSuspending ? (
+                                                                    <svg className="animate-spin w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                                                                    </svg>
+                                                                ) : isSuspended ? (
+                                                                    <ShieldCheck className="w-3.5 h-3.5" />
+                                                                ) : (
+                                                                    <ShieldOff className="w-3.5 h-3.5" />
+                                                                )}
+                                                                {isSuspended ? "Aktifkan" : "Tangguhkan"}
+                                                            </Button>
+                                                        </>
+                                                    )}
+                                                </div>
                                             </td>
                                         </tr>
                                     )
@@ -472,9 +805,10 @@ export default function Admins() {
                     </table>
                 </div>
 
+                {/* Pagination */}
                 <div className="flex items-center justify-between mt-6 flex-wrap gap-3">
                     <p className="text-sm text-gray-400">
-                        Halaman {page} · Menampilkan {filteredUsers.length} dari 24 pengguna
+                        Halaman {page} · Menampilkan {pagedUsers.length} dari {filteredUsers.length} pengguna
                     </p>
                     <div className="flex items-center gap-2">
                         <button
