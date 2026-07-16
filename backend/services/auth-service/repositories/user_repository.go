@@ -137,3 +137,47 @@ func (r *UserRepository) CompleteInvitation(userID, passwordHash string) error {
 	)
 	return err
 }
+
+// GetAllUsers returns all users except master-admins, ordered by created_at desc.
+// Only returns the columns needed for the admin panel (no sensitive fields).
+func (r *UserRepository) GetAllUsers() ([]models.UserListItem, error) {
+	rows, err := r.db.Query(
+		`SELECT user_id, email, role, account_status, verified
+		 FROM users
+		 WHERE role != 'master-admin'
+		 ORDER BY created_at DESC`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query all users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []models.UserListItem
+	for rows.Next() {
+		var u models.UserListItem
+		if err := rows.Scan(&u.UserID, &u.Email, &u.Role, &u.AccountStatus, &u.Verified); err != nil {
+			return nil, fmt.Errorf("scan user row: %w", err)
+		}
+		users = append(users, u)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate user rows: %w", err)
+	}
+	return users, nil
+}
+
+// UpdateStatus sets the account_status of a user.
+func (r *UserRepository) UpdateStatus(userID, status string) error {
+	_, err := r.db.Exec(
+		`UPDATE users SET account_status = $1, updated_at = NOW() WHERE user_id = $2`,
+		status, userID,
+	)
+	return err
+}
+
+// DeleteUser permanently removes a user record.
+// Should only be called for users with account_status = 'invited'.
+func (r *UserRepository) DeleteUser(userID string) error {
+	_, err := r.db.Exec(`DELETE FROM users WHERE user_id = $1`, userID)
+	return err
+}

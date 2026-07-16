@@ -444,13 +444,46 @@ func (h *AuthHandler) Me(c *gin.Context) {
 	})
 }
 
-// POST /auth/assign-admin
+// GET /auth/users
 
-// AssignAdmin updates a target user's role to 'admin'.
+// ListUsers returns all non-master-admin users.
 // Accessible only by master-admin.
-func (h *AuthHandler) AssignAdmin(c *gin.Context) {
-	var req models.AssignAdminRequest
+func (h *AuthHandler) ListUsers(c *gin.Context) {
+	users, err := h.userService.GetAllUsers()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Message: "Failed to retrieve user list.",
+		})
+		return
+	}
 
+	// Return empty array instead of null when no users found.
+	if users == nil {
+		users = []models.UserListItem{}
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Message: "User list retrieved.",
+		Data: models.ListUsersResponse{
+			Users: users,
+			Total: len(users),
+		},
+	})
+}
+
+// PUT /auth/users/:id/role
+
+// UpdateRole changes the role of a target user to 'staff' or 'admin'.
+// Security rules:
+//   - Only master-admin can call this.
+//   - Cannot target another master-admin.
+//   - Cannot target themselves.
+func (h *AuthHandler) UpdateRole(c *gin.Context) {
+	targetID := c.Param("id")
+
+	var req models.UpdateRoleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.APIResponse{
 			Success: false,
@@ -459,8 +492,23 @@ func (h *AuthHandler) AssignAdmin(c *gin.Context) {
 		return
 	}
 
-	// 1. Verify target user exists
-	targetUser, err := h.userService.GetByID(req.UserID)
+	// Get caller identity from JWT claims.
+	claims := h.callerClaims(c)
+	if claims == nil {
+		return // response already written by callerClaims
+	}
+
+	// Guard: cannot modify self.
+	if claims.UserID == targetID {
+		c.JSON(http.StatusForbidden, models.APIResponse{
+			Success: false,
+			Message: "Cannot modify your own role.",
+		})
+		return
+	}
+
+	// Verify target exists.
+	targetUser, err := h.userService.GetByID(targetID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
@@ -468,31 +516,191 @@ func (h *AuthHandler) AssignAdmin(c *gin.Context) {
 		})
 		return
 	}
-
 	if targetUser == nil {
 		c.JSON(http.StatusNotFound, models.APIResponse{
 			Success: false,
-			Message: "Target user not found.",
+			Message: "User not found.",
 		})
 		return
 	}
 
-	// 2. Perform role update to admin
-	err = h.userService.UpdateRole(targetUser.UserID, config.RoleAdmin)
+	// Guard: cannot target master-admin.
+	if targetUser.Role == config.RoleMasterAdmin {
+		c.JSON(http.StatusForbidden, models.APIResponse{
+			Success: false,
+			Message: "Cannot modify a master-admin's role.",
+		})
+		return
+	}
+
+	// Perform role update.
+	if err := h.userService.UpdateRole(targetUser.UserID, req.Role); err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Message: "Failed to update role.",
+		})
+		return
+	}
+
+	h.auditService.Log("update", "role_changed_to_"+req.Role, &targetUser.UserID, "system")
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Message: "User role updated to '" + req.Role + "' successfully.",
+	})
+}
+
+// PUT /auth/users/:id/status
+
+// UpdateStatus suspends or re-activates a target user.
+// Security rules:
+//   - Only master-admin can call this.
+//   - Cannot target another master-admin.
+//   - Cannot target themselves.
+func (h *AuthHandler) UpdateStatus(c *gin.Context) {
+	targetID := c.Param("id")
+
+	var req models.UpdateStatusRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Message: "Invalid request: " + err.Error(),
+		})
+		return
+	}
+
+	// Get caller identity from JWT claims.
+	claims := h.callerClaims(c)
+	if claims == nil {
+		return
+	}
+
+	// Guard: cannot modify self.
+	if claims.UserID == targetID {
+		c.JSON(http.StatusForbidden, models.APIResponse{
+			Success: false,
+			Message: "Cannot modify your own account status.",
+		})
+		return
+	}
+
+	// Verify target exists.
+	targetUser, err := h.userService.GetByID(targetID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
-			Message: "Failed to assign admin role.",
+			Message: "Internal server error.",
+		})
+		return
+	}
+	if targetUser == nil {
+		c.JSON(http.StatusNotFound, models.APIResponse{
+			Success: false,
+			Message: "User not found.",
 		})
 		return
 	}
 
-	// 3. Log event to audit table
-	h.auditService.Log("update", "assign_admin", &targetUser.UserID, "system")
+	// Guard: cannot target master-admin.
+	if targetUser.Role == config.RoleMasterAdmin {
+		c.JSON(http.StatusForbidden, models.APIResponse{
+			Success: false,
+			Message: "Cannot modify a master-admin's status.",
+		})
+		return
+	}
 
+	if err := h.userService.UpdateStatus(targetUser.UserID, req.Status); err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Message: "Failed to update account status.",
+		})
+		return
+	}
+
+	// If suspending, revoke all active refresh tokens immediately.
+	if req.Status == "suspended" {
+		if err := h.refreshService.RevokeAllUserTokens(targetUser.UserID); err != nil {
+			log.Printf("⚠️  Failed to revoke tokens for suspended user %s: %v", targetUser.UserID, err)
+		}
+	}
+
+	h.auditService.Log("update", "status_changed_to_"+req.Status, &targetUser.UserID, "system")
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
-		Message: "User role successfully updated to admin.",
+		Message: "User account status updated to '" + req.Status + "' successfully.",
+	})
+}
+
+// DELETE /auth/users/:id
+
+// DeleteUser permanently removes a user who has not yet accepted their invitation.
+// Only users with account_status = 'invited' may be deleted.
+// Active or suspended users must be managed via UpdateStatus.
+func (h *AuthHandler) DeleteUser(c *gin.Context) {
+	targetID := c.Param("id")
+
+	// Get caller identity from JWT claims.
+	claims := h.callerClaims(c)
+	if claims == nil {
+		return
+	}
+
+	// Guard: cannot delete self.
+	if claims.UserID == targetID {
+		c.JSON(http.StatusForbidden, models.APIResponse{
+			Success: false,
+			Message: "Cannot delete your own account.",
+		})
+		return
+	}
+
+	// Verify target exists.
+	targetUser, err := h.userService.GetByID(targetID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Message: "Internal server error.",
+		})
+		return
+	}
+	if targetUser == nil {
+		c.JSON(http.StatusNotFound, models.APIResponse{
+			Success: false,
+			Message: "User not found.",
+		})
+		return
+	}
+
+	// Guard: cannot target master-admin.
+	if targetUser.Role == config.RoleMasterAdmin {
+		c.JSON(http.StatusForbidden, models.APIResponse{
+			Success: false,
+			Message: "Cannot delete a master-admin.",
+		})
+		return
+	}
+
+	// Guard: only 'invited' users may be deleted.
+	if targetUser.AccountStatus != "invited" {
+		c.JSON(http.StatusConflict, models.APIResponse{
+			Success: false,
+			Message: "Only users with 'invited' status can be deleted. Use status update to suspend active users.",
+		})
+		return
+	}
+
+	if err := h.userService.DeleteUser(targetUser.UserID); err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Message: "Failed to delete user.",
+		})
+		return
+	}
+
+	h.auditService.Log("delete", "invited_user_deleted", &targetUser.UserID, "system")
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Message: "Invited user deleted successfully.",
 	})
 }
 
@@ -598,6 +806,7 @@ func (h *AuthHandler) CompleteInvitation(c *gin.Context) {
 	})
 }
 
+
 // helpers
 
 // generates both an access token (JWT) and a refresh token.
@@ -614,3 +823,26 @@ func (h *AuthHandler) issueTokens(user *models.User) (accessToken, refreshToken 
 
 	return accessToken, refreshToken, nil
 }
+
+// callerClaims retrieves the authenticated caller's JWT claims from the Gin context.
+// Returns nil and writes a 401 response if claims are not found (misconfiguration guard).
+func (h *AuthHandler) callerClaims(c *gin.Context) *services.Claims {
+	value, exists := c.Get(config.ContextKeyUser)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, models.APIResponse{
+			Success: false,
+			Message: "Not authenticated.",
+		})
+		return nil
+	}
+	claims, ok := value.(*services.Claims)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Message: "Failed to read user claims.",
+		})
+		return nil
+	}
+	return claims
+}
+

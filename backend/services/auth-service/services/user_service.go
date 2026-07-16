@@ -98,6 +98,22 @@ func (s *UserService) UpdateRole(userID string, role string) error {
 	return s.userRepo.UpdateRole(userID, role)
 }
 
+// GetAllUsers returns all non-master-admin users ordered by creation date.
+func (s *UserService) GetAllUsers() ([]models.UserListItem, error) {
+	return s.userRepo.GetAllUsers()
+}
+
+// UpdateStatus sets a user's account_status to 'active' or 'suspended'.
+func (s *UserService) UpdateStatus(userID, status string) error {
+	return s.userRepo.UpdateStatus(userID, status)
+}
+
+// DeleteUser permanently deletes a user record. Caller must validate the
+// user is in 'invited' status before calling this.
+func (s *UserService) DeleteUser(userID string) error {
+	return s.userRepo.DeleteUser(userID)
+}
+
 // password hashing & validation
 
 // produces a bcrypt hash of the given plaintext password.

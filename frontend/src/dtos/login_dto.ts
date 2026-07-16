@@ -52,6 +52,16 @@ export const completeInvitationSchema = z.object({
     password: z.string().min(8, "Password must be at least 8 characters"),
 });
 
+// PUT /auth/users/:id/role
+export const updateRoleSchema = z.object({
+    role: z.enum(["admin", "staff"]),
+});
+
+// PUT /auth/users/:id/status
+export const updateStatusSchema = z.object({
+    status: z.enum(["active", "suspended"]),
+});
+
 // response schemas
 
 // generic envelope
@@ -99,6 +109,21 @@ export const userResponseSchema = z.object({
     group_id: z.string().optional(),
 });
 
+// GET /auth/users — single item
+export const userListItemSchema = z.object({
+    user_id: z.string(),
+    email: z.string(),
+    role: z.enum(["staff", "admin", "master-admin"]),
+    account_status: z.enum(["invited", "active", "suspended"]),
+    verified: z.boolean(),
+});
+
+// GET /auth/users — full response
+export const listUsersResponseSchema = z.object({
+    users: z.array(userListItemSchema),
+    total: z.number(),
+});
+
 // inferred types
 
 export type LoginFormValues = z.infer<typeof loginSchema>;
@@ -108,8 +133,12 @@ export type RefreshValues = z.infer<typeof refreshSchema>;
 export type LogoutValues = z.infer<typeof logoutSchema>;
 export type InviteValues = z.infer<typeof inviteSchema>;
 export type CompleteInvitationValues = z.infer<typeof completeInvitationSchema>;
+export type UpdateRoleValues = z.infer<typeof updateRoleSchema>;
+export type UpdateStatusValues = z.infer<typeof updateStatusSchema>;
 
 export type LoginResponse = z.infer<typeof loginResponseSchema>;
 export type TokenResponse = z.infer<typeof tokenResponseSchema>;
 export type RefreshResponse = z.infer<typeof refreshResponseSchema>;
 export type UserResponse = z.infer<typeof userResponseSchema>;
+export type UserListItem = z.infer<typeof userListItemSchema>;
+export type ListUsersResponse = z.infer<typeof listUsersResponseSchema>;

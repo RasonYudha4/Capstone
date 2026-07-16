@@ -30,9 +30,15 @@ type ResendOTPRequest struct {
 	Email string `json:"email" binding:"required,email"`
 }
 
-// for POST /auth/assign-admin.
-type AssignAdminRequest struct {
-	UserID string `json:"user_id" binding:"required"`
+// for PUT /auth/users/:id/role.
+// Role hanya boleh 'staff' atau 'admin'; 'master-admin' tidak bisa di-assign via API.
+type UpdateRoleRequest struct {
+	Role string `json:"role" binding:"required,oneof=staff admin"`
+}
+
+// for PUT /auth/users/:id/status.
+type UpdateStatusRequest struct {
+	Status string `json:"status" binding:"required,oneof=active suspended"`
 }
 
 // for POST /auth/invite
@@ -85,4 +91,19 @@ type UserResponse struct {
 	Email   string `json:"email"`
 	Role    string `json:"role"`
 	GroupID string `json:"group_id,omitempty"`
+}
+
+// represents a single user row returned in GET /auth/users.
+type UserListItem struct {
+	UserID        string `json:"user_id"`
+	Email         string `json:"email"`
+	Role          string `json:"role"`
+	AccountStatus string `json:"account_status"`
+	Verified      bool   `json:"verified"`
+}
+
+// wraps the user list returned by GET /auth/users.
+type ListUsersResponse struct {
+	Users []UserListItem `json:"users"`
+	Total int            `json:"total"`
 }

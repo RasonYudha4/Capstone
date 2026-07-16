@@ -6,10 +6,12 @@ import {
     tokenResponseSchema,
     userResponseSchema,
     refreshResponseSchema,
+    listUsersResponseSchema,
     type LoginResponse,
     type TokenResponse,
     type UserResponse,
     type RefreshResponse,
+    type ListUsersResponse,
 } from '@/dtos/login_dto'
 
 export const authService = {
@@ -85,6 +87,43 @@ export const authService = {
     // POST /auth/complete-invitation
     completeInvitation: async (token: string, password: string): Promise<void> => {
         const { data } = await axioHandler.post('/auth/complete-invitation', { token, password })
+        const parsed = voidApiResponseSchema.parse(data)
+        if (!parsed.success) {
+            throw new Error(parsed.message)
+        }
+    },
+
+    // GET /auth/users — list all users (master-admin only)
+    listUsers: async (): Promise<ListUsersResponse> => {
+        const { data } = await axioHandler.get('/auth/users')
+        const parsed = apiResponseSchema(listUsersResponseSchema).parse(data)
+        if (!parsed.success) {
+            throw new Error(parsed.message)
+        }
+        return listUsersResponseSchema.parse(parsed.data)
+    },
+
+    // PUT /auth/users/:id/role — update user role (master-admin only)
+    updateUserRole: async (userId: string, role: 'admin' | 'staff'): Promise<void> => {
+        const { data } = await axioHandler.put(`/auth/users/${userId}/role`, { role })
+        const parsed = voidApiResponseSchema.parse(data)
+        if (!parsed.success) {
+            throw new Error(parsed.message)
+        }
+    },
+
+    // PUT /auth/users/:id/status — suspend or activate user (master-admin only)
+    updateUserStatus: async (userId: string, status: 'active' | 'suspended'): Promise<void> => {
+        const { data } = await axioHandler.put(`/auth/users/${userId}/status`, { status })
+        const parsed = voidApiResponseSchema.parse(data)
+        if (!parsed.success) {
+            throw new Error(parsed.message)
+        }
+    },
+
+    // DELETE /auth/users/:id — delete invited user (master-admin only)
+    deleteUser: async (userId: string): Promise<void> => {
+        const { data } = await axioHandler.delete(`/auth/users/${userId}`)
         const parsed = voidApiResponseSchema.parse(data)
         if (!parsed.success) {
             throw new Error(parsed.message)
