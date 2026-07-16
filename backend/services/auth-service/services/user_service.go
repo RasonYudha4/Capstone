@@ -93,9 +93,9 @@ func (s *UserService) MarkAsVerified(userID string) error {
 	return s.userRepo.MarkAsVerified(userID)
 }
 
-// UpdateRole updates a user's role in the database.
-func (s *UserService) UpdateRole(userID string, role string) error {
-	return s.userRepo.UpdateRole(userID, role)
+// UpdateRole updates a user's role and group assignment in the database.
+func (s *UserService) UpdateRole(userID string, role string, groupID *string) error {
+	return s.userRepo.UpdateRole(userID, role, groupID)
 }
 
 // GetAllUsers returns all non-master-admin users ordered by creation date.
@@ -199,7 +199,7 @@ func (s *UserService) SeedPasswords() error {
 }
 
 // InviteUser creates a new user in 'invited' status and returns a secure token.
-func (s *UserService) InviteUser(email, role string) (string, error) {
+func (s *UserService) InviteUser(email, role string, groupID *string) (string, error) {
 	// 1. Generate secure random token
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -211,7 +211,7 @@ func (s *UserService) InviteUser(email, role string) (string, error) {
 	expiresAt := time.Now().Add(24 * time.Hour)
 
 	// 3. Create user in DB
-	err := s.userRepo.CreateInvitedUser(email, role, token, expiresAt)
+	err := s.userRepo.CreateInvitedUser(email, role, groupID, token, expiresAt)
 	if err != nil {
 		return "", err
 	}

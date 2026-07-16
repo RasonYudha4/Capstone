@@ -50,12 +50,19 @@ import {
     AlertCircle,
 } from "lucide-react"
 import { authService } from "@/services/auth_service"
+import { groupService } from "@/services/group_service"
 import { type UserListItem } from "@/dtos/login_dto"
+import { type Group } from "@/dtos/group_dto"
+import {
+    buildRoleOptions,
+    decodeRoleAssignment,
+    dedupeGroups,
+    getRoleDisplayLabel,
+    getUserAssignment,
+} from "@/utils/role_assignment"
 import { toast } from "sonner"
 
 type RoleFilter = "admin" | "staff" | "invited"
-
-const ROLE_OPTIONS: Array<"admin" | "staff"> = ["admin", "staff"]
 
 const fieldClass = "rounded-xl border-gray-200 bg-gray-50 focus:ring-[#6B5FAE] focus:border-[#6B5FAE] placeholder:text-gray-400 text-sm"
 const labelClass = "text-sm font-bold text-[#6B5FAE]"
@@ -87,11 +94,12 @@ const PAGE_SIZE = 10
 export default function Admins() {
     // ── data state ──
     const [users, setUsers] = useState<UserListItem[]>([])
+    const [groups, setGroups] = useState<Group[]>([])
     const [isLoading, setIsLoading] = useState(true)
     const [loadError, setLoadError] = useState<string | null>(null)
 
-    // ── pending role changes (userId → new role) ──
-    const [pendingRoles, setPendingRoles] = useState<Record<string, "admin" | "staff">>({})
+    // ── pending role changes (userId → encoded assignment) ──
+    const [pendingAssignments, setPendingAssignments] = useState<Record<string, string>>({})
     const [savingId, setSavingId] = useState<string | null>(null)
 
     // ── search & filter ──
@@ -102,7 +110,7 @@ export default function Admins() {
     // ── invite modal ──
     const [inviteOpen, setInviteOpen] = useState(false)
     const [inviteEmail, setInviteEmail] = useState("")
-    const [inviteRole, setInviteRole] = useState<"admin" | "staff" | "">("")
+    const [inviteRole, setInviteRole] = useState<string>("")
     const [inviteSuccess, setInviteSuccess] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -117,20 +125,26 @@ export default function Admins() {
     // ─────────────────────────────────────────────
     // Load users from API
     // ─────────────────────────────────────────────
+    const roleOptions = useMemo(() => buildRoleOptions(groups), [groups])
+
     const fetchUsers = async () => {
         setIsLoading(true)
         setLoadError(null)
         try {
-            const res = await authService.listUsers()
-            setUsers(res.users)
-            // Seed pending roles from current roles
-            const initial: Record<string, "admin" | "staff"> = {}
-            res.users.forEach((u) => {
+            const [usersRes, groupsRes] = await Promise.all([
+                authService.listUsers(),
+                groupService.listGroups(),
+            ])
+            setUsers(usersRes.users)
+            setGroups(groupsRes)
+            const uniqueGroups = dedupeGroups(groupsRes)
+            const initial: Record<string, string> = {}
+            usersRes.users.forEach((u) => {
                 if (u.role === "admin" || u.role === "staff") {
-                    initial[u.user_id] = u.role
+                    initial[u.user_id] = getUserAssignment(u, uniqueGroups)
                 }
             })
-            setPendingRoles(initial)
+            setPendingAssignments(initial)
         } catch (err: any) {
             setLoadError(err.message || "Gagal memuat daftar pengguna.")
         } finally {
@@ -181,18 +195,42 @@ export default function Admins() {
     // Save role change
     // ─────────────────────────────────────────────
     const handleSaveRole = async (user: UserListItem) => {
-        const newRole = pendingRoles[user.user_id]
-        if (!newRole || newRole === user.role) {
+        const pendingValue = pendingAssignments[user.user_id]
+        const currentValue = getUserAssignment(user, groups)
+        if (!pendingValue || pendingValue === currentValue) {
             toast.info("Role tidak berubah.")
             return
         }
+
+        const assignment = decodeRoleAssignment(pendingValue)
+        if (assignment.role === "admin" && !assignment.groupId) {
+            toast.error("Pilih kelompok admin terlebih dahulu.")
+            return
+        }
+
         setSavingId(user.user_id)
         try {
-            await authService.updateUserRole(user.user_id, newRole)
-            toast.success(`Role ${user.email} berhasil diubah ke '${newRole}'.`)
-            // Update local state
+            await authService.updateUserRole(user.user_id, assignment.role, assignment.groupId)
+            const selectedGroup = groups.find((g) => g.group_id === assignment.groupId)
+            toast.success(
+                `Role ${user.email} berhasil diubah ke '${getRoleDisplayLabel({
+                    ...user,
+                    role: assignment.role,
+                    group_id: assignment.groupId ?? null,
+                    group_name: selectedGroup?.group_name ?? null,
+                })}'.`
+            )
             setUsers((prev) =>
-                prev.map((u) => u.user_id === user.user_id ? { ...u, role: newRole } : u)
+                prev.map((u) =>
+                    u.user_id === user.user_id
+                        ? {
+                            ...u,
+                            role: assignment.role,
+                            group_id: assignment.role === "staff" ? null : assignment.groupId ?? null,
+                            group_name: assignment.role === "staff" ? null : selectedGroup?.group_name ?? null,
+                        }
+                        : u
+                )
             )
         } catch (err: any) {
             toast.error(err.message || "Gagal mengubah role.")
@@ -259,7 +297,8 @@ export default function Admins() {
         if (!inviteEmail || !inviteRole) return
         setIsSubmitting(true)
         try {
-            await authService.inviteUser(inviteEmail, inviteRole)
+            const assignment = decodeRoleAssignment(inviteRole)
+            await authService.inviteUser(inviteEmail, assignment.role, assignment.groupId)
             setInviteSuccess(true)
             fetchUsers() // refresh list
         } catch (error: any) {
@@ -296,7 +335,7 @@ export default function Admins() {
                 <div>
                     <SectionHeading icon={UserPenIcon} title="Manajemen Admin" />
                     <p className="text-gray-500 text-sm mt-1">
-                        Master Admin dapat mengubah peran pengguna (upgrade Staff → Admin atau downgrade Admin → Staff).
+                        Master Admin dapat mengubah peran pengguna: Staff, Admin Manajemen, Admin Pelayanan, dan kelompok admin lainnya.
                     </p>
                 </div>
                 <Button
@@ -390,14 +429,17 @@ export default function Admins() {
                                     <Select
                                         required
                                         value={inviteRole}
-                                        onValueChange={(v) => setInviteRole(v as "admin" | "staff")}
+                                        onValueChange={setInviteRole}
                                     >
                                         <SelectTrigger id="invite-role" className={fieldClass}>
                                             <SelectValue placeholder="Pilih role pengguna" />
                                         </SelectTrigger>
                                         <SelectContent className="rounded-xl">
-                                            <SelectItem value="admin">Admin</SelectItem>
-                                            <SelectItem value="staff">Staff</SelectItem>
+                                            {roleOptions.map((option) => (
+                                                <SelectItem key={option.value} value={option.value}>
+                                                    {option.label}
+                                                </SelectItem>
+                                            ))}
                                         </SelectContent>
                                     </Select>
                                 </div>
@@ -645,8 +687,9 @@ export default function Admins() {
                                     const isSaving = savingId === user.user_id
                                     const isDeleting = isDeletingId === user.user_id
                                     const isSuspending = isSuspendingId === user.user_id
-                                    const pendingRole = pendingRoles[user.user_id] ?? user.role
-                                    const hasRoleChange = pendingRole !== user.role && !isInvited
+                                    const currentAssignment = getUserAssignment(user, groups)
+                                    const pendingAssignment = pendingAssignments[user.user_id] ?? currentAssignment
+                                    const hasRoleChange = !!pendingAssignment && pendingAssignment !== currentAssignment && !isInvited
 
                                     return (
                                         <tr
@@ -679,7 +722,10 @@ export default function Admins() {
 
                                             {/* Current role */}
                                             <td className="px-6 py-4">
-                                                <RoleBadge role={user.role === "admin" ? "Admin" : "Staff"} />
+                                                <RoleBadge
+                                                    label={getRoleDisplayLabel(user)}
+                                                    variant={user.role === "admin" ? "admin" : "staff"}
+                                                />
                                             </td>
 
                                             {/* Status */}
@@ -705,22 +751,22 @@ export default function Admins() {
                                                     <span className="text-xs text-gray-400 italic">—</span>
                                                 ) : (
                                                     <Select
-                                                        value={pendingRole}
+                                                        value={pendingAssignment || undefined}
                                                         onValueChange={(v) =>
-                                                            setPendingRoles((prev) => ({
+                                                            setPendingAssignments((prev) => ({
                                                                 ...prev,
-                                                                [user.user_id]: v as "admin" | "staff",
+                                                                [user.user_id]: v,
                                                             }))
                                                         }
                                                         disabled={isSuspended || isSaving}
                                                     >
-                                                        <SelectTrigger className="rounded-xl bg-white w-32 text-sm">
-                                                            <SelectValue />
+                                                        <SelectTrigger className="rounded-xl bg-white w-52 text-sm">
+                                                            <SelectValue placeholder="Pilih role" />
                                                         </SelectTrigger>
                                                         <SelectContent>
-                                                            {ROLE_OPTIONS.map((r) => (
-                                                                <SelectItem key={r} value={r} className="capitalize">
-                                                                    {r.charAt(0).toUpperCase() + r.slice(1)}
+                                                            {roleOptions.map((option) => (
+                                                                <SelectItem key={option.value} value={option.value}>
+                                                                    {option.label}
                                                                 </SelectItem>
                                                             ))}
                                                         </SelectContent>

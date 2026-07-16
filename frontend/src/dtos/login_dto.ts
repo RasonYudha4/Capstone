@@ -44,6 +44,7 @@ export const logoutSchema = z.object({
 export const inviteSchema = z.object({
     email: z.string().email("Please enter a valid email address"),
     role: z.enum(["admin", "staff"]),
+    group_id: z.string().optional(),
 });
 
 // POST /auth/complete-invitation
@@ -55,6 +56,7 @@ export const completeInvitationSchema = z.object({
 // PUT /auth/users/:id/role
 export const updateRoleSchema = z.object({
     role: z.enum(["admin", "staff"]),
+    group_id: z.string().optional(),
 });
 
 // PUT /auth/users/:id/status
@@ -114,6 +116,8 @@ export const userListItemSchema = z.object({
     user_id: z.string(),
     email: z.string(),
     role: z.enum(["staff", "admin", "master-admin"]),
+    group_id: z.string().nullable().optional(),
+    group_name: z.string().nullable().optional(),
     account_status: z.enum(["invited", "active", "suspended"]),
     verified: z.boolean(),
 });

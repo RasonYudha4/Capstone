@@ -15,6 +15,7 @@ import (
 // groups the HTTP handlers for authentication endpoints.
 type AuthHandler struct {
 	userService    *services.UserService
+	groupService   *services.GroupService
 	otpService     *services.OTPService
 	emailService   *services.EmailService
 	jwtService     *services.JWTService
@@ -25,6 +26,7 @@ type AuthHandler struct {
 // creates an AuthHandler with all required services.
 func NewAuthHandler(
 	userService *services.UserService,
+	groupService *services.GroupService,
 	otpService *services.OTPService,
 	emailService *services.EmailService,
 	jwtService *services.JWTService,
@@ -33,6 +35,7 @@ func NewAuthHandler(
 ) *AuthHandler {
 	return &AuthHandler{
 		userService:    userService,
+		groupService:   groupService,
 		otpService:     otpService,
 		emailService:   emailService,
 		jwtService:     jwtService,
@@ -533,8 +536,36 @@ func (h *AuthHandler) UpdateRole(c *gin.Context) {
 		return
 	}
 
+	// Validate group assignment for admin role.
+	var groupID *string
+	if req.Role == config.RoleAdmin {
+		if req.GroupID == nil || *req.GroupID == "" {
+			c.JSON(http.StatusBadRequest, models.APIResponse{
+				Success: false,
+				Message: "group_id is required when role is 'admin'.",
+			})
+			return
+		}
+		exists, err := h.groupService.Exists(*req.GroupID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, models.APIResponse{
+				Success: false,
+				Message: "Failed to validate group.",
+			})
+			return
+		}
+		if !exists {
+			c.JSON(http.StatusBadRequest, models.APIResponse{
+				Success: false,
+				Message: "Invalid group_id.",
+			})
+			return
+		}
+		groupID = req.GroupID
+	}
+
 	// Perform role update.
-	if err := h.userService.UpdateRole(targetUser.UserID, req.Role); err != nil {
+	if err := h.userService.UpdateRole(targetUser.UserID, req.Role, groupID); err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
 			Message: "Failed to update role.",
@@ -725,8 +756,36 @@ func (h *AuthHandler) Invite(c *gin.Context) {
 		return
 	}
 
+	// Validate group assignment for admin invites.
+	var groupID *string
+	if req.Role == config.RoleAdmin {
+		if req.GroupID == nil || *req.GroupID == "" {
+			c.JSON(http.StatusBadRequest, models.APIResponse{
+				Success: false,
+				Message: "group_id is required when role is 'admin'.",
+			})
+			return
+		}
+		exists, err := h.groupService.Exists(*req.GroupID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, models.APIResponse{
+				Success: false,
+				Message: "Failed to validate group.",
+			})
+			return
+		}
+		if !exists {
+			c.JSON(http.StatusBadRequest, models.APIResponse{
+				Success: false,
+				Message: "Invalid group_id.",
+			})
+			return
+		}
+		groupID = req.GroupID
+	}
+
 	// 2. Create invitation in DB
-	token, err := h.userService.InviteUser(req.Email, req.Role)
+	token, err := h.userService.InviteUser(req.Email, req.Role, groupID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
