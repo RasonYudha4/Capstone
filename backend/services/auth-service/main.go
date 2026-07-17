@@ -93,7 +93,7 @@ func main() {
 
 	// protected routes
 	protected := router.Group("/")
-	protected.Use(middleware.JWTAuth(jwtService))
+	protected.Use(middleware.JWTAuth(jwtService, userService))
 	{
 		// current user profile — accessible by ALL authenticated roles.
 		protected.GET("/auth/me", authHandler.Me)
@@ -132,6 +132,12 @@ func main() {
 		protected.DELETE("/auth/users/:id",
 			middleware.RequireRoles(config.RoleMasterAdmin),
 			authHandler.DeleteUser,
+		)
+
+		// resend invitation email for invited users.
+		protected.POST("/auth/users/:id/resend-invitation",
+			middleware.RequireRoles(config.RoleMasterAdmin),
+			authHandler.ResendInvitation,
 		)
 
 		// list admin groups for role assignment.

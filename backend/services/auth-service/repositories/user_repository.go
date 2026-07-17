@@ -147,6 +147,15 @@ func (r *UserRepository) SetResetToken(userID, token string, expiresAt time.Time
 	return err
 }
 
+func (r *UserRepository) UpdateInvitationToken(userID, token string, expiresAt time.Time) error {
+	_, err := r.db.Exec(
+		`UPDATE users SET invitation_token = $1, token_expires_at = $2, updated_at = NOW()
+		 WHERE user_id = $3 AND account_status = 'invited'`,
+		token, expiresAt, userID,
+	)
+	return err
+}
+
 func (r *UserRepository) CompletePasswordReset(userID, passwordHash string) error {
 	_, err := r.db.Exec(
 		`UPDATE users SET password_hash = $1, invitation_token = NULL, token_expires_at = NULL,

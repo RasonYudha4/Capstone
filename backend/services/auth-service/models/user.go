@@ -24,3 +24,16 @@ type User struct {
 func (u *User) IsLocked() bool {
 	return u.LockedUntil != nil && time.Now().Before(*u.LockedUntil)
 }
+
+// LoginBlockReason returns a user-facing message when login/token refresh is blocked.
+// Empty string means the account may authenticate.
+func (u *User) LoginBlockReason() string {
+	switch u.AccountStatus {
+	case "suspended":
+		return "Account is suspended. Contact your administrator."
+	case "invited":
+		return "Account is not activated. Please complete your invitation setup."
+	default:
+		return ""
+	}
+}

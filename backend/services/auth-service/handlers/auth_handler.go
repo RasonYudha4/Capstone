@@ -92,6 +92,15 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	if blockReason := user.LoginBlockReason(); blockReason != "" {
+		h.auditService.Log("error", "login_blocked_"+user.AccountStatus, &user.UserID, "client")
+		c.JSON(http.StatusForbidden, models.APIResponse{
+			Success: false,
+			Message: blockReason,
+		})
+		return
+	}
+
 	// if lock has expired, reset the counter.
 	if user.LockedUntil != nil && !user.IsLocked() {
 		if err := h.userService.ResetFailedAttempts(user.UserID); err != nil {
@@ -231,6 +240,14 @@ func (h *AuthHandler) VerifyOTP(c *gin.Context) {
 		return
 	}
 
+	if blockReason := user.LoginBlockReason(); blockReason != "" {
+		c.JSON(http.StatusForbidden, models.APIResponse{
+			Success: false,
+			Message: blockReason,
+		})
+		return
+	}
+
 	// If the user has not been marked as verified yet, mark them as verified now!
 	if !user.Verified {
 		if err := h.userService.MarkAsVerified(user.UserID); err != nil {
@@ -350,6 +367,17 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, models.APIResponse{
 			Success: false,
 			Message: "User not found.",
+		})
+		return
+	}
+
+	if blockReason := user.LoginBlockReason(); blockReason != "" {
+		if revokeErr := h.refreshService.RevokeAllUserTokens(user.UserID); revokeErr != nil {
+			log.Printf("⚠️  Failed to revoke tokens for inactive user %s: %v", user.UserID, revokeErr)
+		}
+		c.JSON(http.StatusUnauthorized, models.APIResponse{
+			Success: false,
+			Message: blockReason,
 		})
 		return
 	}
@@ -732,6 +760,54 @@ func (h *AuthHandler) DeleteUser(c *gin.Context) {
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
 		Message: "Invited user deleted successfully.",
+	})
+}
+
+// POST /auth/users/:id/resend-invitation
+func (h *AuthHandler) ResendInvitation(c *gin.Context) {
+	targetID := c.Param("id")
+
+	targetUser, err := h.userService.GetByID(targetID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Message: "Internal server error.",
+		})
+		return
+	}
+	if targetUser == nil {
+		c.JSON(http.StatusNotFound, models.APIResponse{
+			Success: false,
+			Message: "User not found.",
+		})
+		return
+	}
+
+	if targetUser.AccountStatus != "invited" {
+		c.JSON(http.StatusConflict, models.APIResponse{
+			Success: false,
+			Message: "Only users with 'invited' status can have their invitation resent.",
+		})
+		return
+	}
+
+	token, err := h.userService.ResendInvitation(targetUser.UserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Message: "Failed to resend invitation: " + err.Error(),
+		})
+		return
+	}
+
+	if err := h.emailService.SendInvitation(targetUser.Email, targetUser.Role, token); err != nil {
+		log.Printf("⚠️  Failed to send invitation email to %s: %v", targetUser.Email, err)
+	}
+
+	h.auditService.Log("update", "invitation_resent", &targetUser.UserID, "system")
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Message: "Invitation resent successfully.",
 	})
 }
 

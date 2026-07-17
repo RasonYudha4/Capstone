@@ -219,6 +219,33 @@ func (s *UserService) InviteUser(email, role string, groupID *string) (string, e
 	return token, nil
 }
 
+// ResendInvitation refreshes the invitation token for an invited user.
+func (s *UserService) ResendInvitation(userID string) (string, error) {
+	user, err := s.GetByID(userID)
+	if err != nil {
+		return "", err
+	}
+	if user == nil {
+		return "", fmt.Errorf("user not found")
+	}
+	if user.AccountStatus != "invited" {
+		return "", fmt.Errorf("only invited users can have their invitation resent")
+	}
+
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("generate invitation token: %w", err)
+	}
+	token := hex.EncodeToString(b)
+	expiresAt := time.Now().Add(24 * time.Hour)
+
+	if err := s.userRepo.UpdateInvitationToken(userID, token, expiresAt); err != nil {
+		return "", err
+	}
+
+	return token, nil
+}
+
 // GetByInvitationToken finds a user by token and checks expiration.
 func (s *UserService) GetByInvitationToken(token string) (*models.User, error) {
 	user, err := s.userRepo.GetByInvitationToken(token)
