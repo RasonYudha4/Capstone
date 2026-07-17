@@ -5,8 +5,8 @@ import wrap from '../lib/component-wrapper-helper'
 import AppLayout from '../pages/AppLayout'
 
 const Login = lazy(() => import('../pages/auth/Login'))
+const RootRoute = lazy(() => import('../pages/Root'))
 const Verification = lazy(() => import('../pages/auth/Verification'))
-const UserLanding = lazy(() => import('../pages/user/Dashboard'))
 const Dashboard = lazy(() => import('../pages/Dashboard'))
 const Unauthorized = lazy(() => import('../pages/Unauthorized'))
 const NotFound = lazy(() => import('../pages/Notfound'))
@@ -18,7 +18,7 @@ const SetupPassword = lazy(() => import('../pages/auth/SetupPassword'))
 
 export const router = createBrowserRouter([
     // Public landing page — no auth required
-    { path: '/', element: wrap(UserLanding) },
+    { path: '/', element: wrap(RootRoute) },
 
     { path: '/login', element: wrap(Login) },
     { path: '/verify', element: wrap(Verification) },

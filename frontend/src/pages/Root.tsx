@@ -1,18 +1,15 @@
 import { Navigate } from 'react-router'
+import { lazy } from 'react'
 import { useAuth } from '../cores/AuthContext'
-import type { Role } from '../cores/types'
 
-const redirectMap: Record<Role, string> = {
-    "master-admin": '/master-admin',
-    "admin": '/admin',
-    "staff": '/user',
-}
+const UserLanding = lazy(() => import('./user/Dashboard'))
 
-export default function Root() {
-    const { user, loading } = useAuth()
+export default function RootRoute() {
+    const { user } = useAuth()
 
-    if (loading) return <div>Loading...</div>
-    if (!user) return <Navigate to="/" replace />
+    if (user?.role === 'admin' || user?.role === 'master-admin') {
+        return <Navigate to="/dashboard" replace />
+    }
 
-    return <Navigate to={redirectMap[user.role]} replace />
+    return <UserLanding />
 }
