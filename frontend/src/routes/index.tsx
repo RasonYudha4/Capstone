@@ -15,6 +15,8 @@ const Admins = lazy(() => import('../pages/admin/master-admin/Admins'))
 const Activity = lazy(() => import('../pages/admin/master-admin/ActivityLog'))
 
 const SetupPassword = lazy(() => import('../pages/auth/SetupPassword'))
+const ForgotPassword = lazy(() => import('../pages/auth/ForgotPassword'))
+const ResetPassword = lazy(() => import('../pages/auth/ResetPassword'))
 
 export const router = createBrowserRouter([
     // Public landing page — no auth required
@@ -23,6 +25,8 @@ export const router = createBrowserRouter([
     { path: '/login', element: wrap(Login) },
     { path: '/verify', element: wrap(Verification) },
     { path: '/setup-password', element: wrap(SetupPassword) },
+    { path: '/forgot-password', element: wrap(ForgotPassword) },
+    { path: '/reset-password', element: wrap(ResetPassword) },
 
     // All authenticated routes share ONE layout
     {

@@ -147,6 +147,15 @@ export default function Login() {
                                 {errors.password.message}
                             </p>
                         )}
+                        <div className="mt-2 text-right">
+                            <button
+                                type="button"
+                                onClick={() => navigate("/forgot-password")}
+                                className="text-xs text-white/60 hover:text-white transition-colors"
+                            >
+                                Lupa password?
+                            </button>
+                        </div>
                     </div>
 
                     <button

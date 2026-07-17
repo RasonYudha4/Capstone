@@ -97,6 +97,24 @@ export const authService = {
         }
     },
 
+    // POST /auth/forgot-password
+    forgotPassword: async (email: string): Promise<void> => {
+        const { data } = await axioHandler.post('/auth/forgot-password', { email })
+        const parsed = voidApiResponseSchema.parse(data)
+        if (!parsed.success) {
+            throw new Error(parsed.message)
+        }
+    },
+
+    // POST /auth/reset-password
+    resetPassword: async (token: string, password: string): Promise<void> => {
+        const { data } = await axioHandler.post('/auth/reset-password', { token, password })
+        const parsed = voidApiResponseSchema.parse(data)
+        if (!parsed.success) {
+            throw new Error(parsed.message)
+        }
+    },
+
     // GET /auth/users — list all users (master-admin only)
     listUsers: async (): Promise<ListUsersResponse> => {
         const { data } = await axioHandler.get('/auth/users')
@@ -136,6 +154,15 @@ export const authService = {
     // DELETE /auth/users/:id — delete invited user (master-admin only)
     deleteUser: async (userId: string): Promise<void> => {
         const { data } = await axioHandler.delete(`/auth/users/${userId}`)
+        const parsed = voidApiResponseSchema.parse(data)
+        if (!parsed.success) {
+            throw new Error(parsed.message)
+        }
+    },
+
+    // POST /auth/users/:id/resend-invitation — resend invite email (master-admin only)
+    resendInvitation: async (userId: string): Promise<void> => {
+        const { data } = await axioHandler.post(`/auth/users/${userId}/resend-invitation`)
         const parsed = voidApiResponseSchema.parse(data)
         if (!parsed.success) {
             throw new Error(parsed.message)

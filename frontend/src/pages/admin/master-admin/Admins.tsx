@@ -117,6 +117,7 @@ export default function Admins() {
     // ── delete confirm modal ──
     const [deleteTarget, setDeleteTarget] = useState<UserListItem | null>(null)
     const [isDeletingId, setIsDeletingId] = useState<string | null>(null)
+    const [isResendingId, setIsResendingId] = useState<string | null>(null)
 
     // ── suspend confirm modal ──
     const [suspendTarget, setSuspendTarget] = useState<UserListItem | null>(null)
@@ -274,6 +275,19 @@ export default function Admins() {
     // ─────────────────────────────────────────────
     // Delete invited user
     // ─────────────────────────────────────────────
+    const handleResendInvitation = async (user: UserListItem) => {
+        setIsResendingId(user.user_id)
+        try {
+            await authService.resendInvitation(user.user_id)
+            toast.success(`Undangan dikirim ulang ke ${user.email}.`)
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : "Gagal mengirim ulang undangan."
+            toast.error(message)
+        } finally {
+            setIsResendingId(null)
+        }
+    }
+
     const handleDeleteConfirm = async () => {
         if (!deleteTarget) return
         setIsDeletingId(deleteTarget.user_id)
@@ -686,6 +700,7 @@ export default function Admins() {
                                     const isSuspended = user.account_status === "suspended"
                                     const isSaving = savingId === user.user_id
                                     const isDeleting = isDeletingId === user.user_id
+                                    const isResending = isResendingId === user.user_id
                                     const isSuspending = isSuspendingId === user.user_id
                                     const currentAssignment = getUserAssignment(user, groups)
                                     const pendingAssignment = pendingAssignments[user.user_id] ?? currentAssignment
@@ -778,14 +793,31 @@ export default function Admins() {
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center gap-2">
                                                     {isInvited ? (
-                                                        /* Delete invited user */
-                                                        <Button
-                                                            size="sm"
-                                                            variant="outline"
-                                                            className="rounded-xl border-rose-200 text-rose-500 hover:bg-rose-50 gap-1.5"
-                                                            disabled={isDeleting}
-                                                            onClick={() => setDeleteTarget(user)}
-                                                        >
+                                                        <>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                className="rounded-xl border-[#6B5FAE]/30 text-[#6B5FAE] hover:bg-[#6B5FAE]/5 gap-1.5"
+                                                                disabled={isResending || isDeleting}
+                                                                onClick={() => handleResendInvitation(user)}
+                                                            >
+                                                                {isResending ? (
+                                                                    <svg className="animate-spin w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                                                                    </svg>
+                                                                ) : (
+                                                                    <Send className="w-3.5 h-3.5" />
+                                                                )}
+                                                                Kirim Ulang
+                                                            </Button>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                className="rounded-xl border-rose-200 text-rose-500 hover:bg-rose-50 gap-1.5"
+                                                                disabled={isDeleting || isResending}
+                                                                onClick={() => setDeleteTarget(user)}
+                                                            >
                                                             {isDeleting ? (
                                                                 <svg className="animate-spin w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                                                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -796,6 +828,7 @@ export default function Admins() {
                                                             )}
                                                             Hapus
                                                         </Button>
+                                                        </>
                                                     ) : (
                                                         <>
                                                             {/* Save role button — only visible when role changed */}

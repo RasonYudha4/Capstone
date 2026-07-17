@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
 import { authService } from '../services/auth_service'
 import type { AuthContextType, User } from './types'
 
@@ -8,6 +8,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null)
     const [loading, setLoading] = useState<boolean>(true)
 
+    const clearSession = useCallback(() => {
+        setUser(null)
+        localStorage.removeItem('user')
+        localStorage.removeItem('accessToken')
+        localStorage.removeItem('refreshToken')
+    }, [])
+
+    const logout = useCallback(async () => {
+        const refreshToken = localStorage.getItem('refreshToken')
+        if (refreshToken) {
+            try {
+                await authService.logout(refreshToken)
+            } catch {
+                // Still clear local session if revoke fails (e.g. token already expired).
+            }
+        }
+        clearSession()
+    }, [clearSession])
+
     useEffect(() => {
         const stored = localStorage.getItem('user')
         const refreshToken = localStorage.getItem('refreshToken')
@@ -16,14 +35,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 setUser(userData);
                 localStorage.setItem('user', JSON.stringify(userData));
             }).catch(() => {
-                logout();
+                clearSession();
             }).finally(() => {
                 setLoading(false);
             });
         } else {
             setLoading(false);
         }
-    }, [])
+    }, [clearSession])
 
     const login = (userData: User, accessToken: string, refreshToken?: string) => {
         setUser(userData)
@@ -32,13 +51,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (refreshToken) {
             localStorage.setItem('refreshToken', refreshToken)
         }
-    }
-
-    const logout = () => {
-        setUser(null)
-        localStorage.removeItem('user')
-        localStorage.removeItem('accessToken')
-        localStorage.removeItem('refreshToken')
     }
 
     return (
