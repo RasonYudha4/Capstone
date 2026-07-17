@@ -85,6 +85,10 @@ func main() {
 
 		// complete invitation (setup password) - PUBLIC
 		auth.POST("/complete-invitation", authHandler.CompleteInvitation)
+
+		// self-service password reset - PUBLIC
+		auth.POST("/forgot-password", authRateLimiter, authHandler.ForgotPassword)
+		auth.POST("/reset-password", authRateLimiter, authHandler.ResetPassword)
 	}
 
 	// protected routes

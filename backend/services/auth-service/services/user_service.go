@@ -253,3 +253,66 @@ func (s *UserService) CompleteInvitation(userID, password string) error {
 	// 3. Update DB
 	return s.userRepo.CompleteInvitation(userID, hash)
 }
+
+// RequestPasswordReset generates a reset token for an active user with a password set.
+// Returns the raw token when a reset email should be sent, or empty string when no action is taken.
+func (s *UserService) RequestPasswordReset(email string) (string, error) {
+	user, err := s.GetByEmail(email)
+	if err != nil {
+		return "", err
+	}
+	if user == nil {
+		return "", nil
+	}
+	if user.AccountStatus != "active" {
+		return "", nil
+	}
+	if user.PasswordHash == nil || *user.PasswordHash == "" {
+		return "", nil
+	}
+
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("generate reset token: %w", err)
+	}
+	token := hex.EncodeToString(b)
+	expiresAt := time.Now().Add(config.ResetTokenExpiry)
+
+	if err := s.userRepo.SetResetToken(user.UserID, token, expiresAt); err != nil {
+		return "", err
+	}
+
+	return token, nil
+}
+
+// GetByResetToken finds an active user by reset token and checks expiration.
+func (s *UserService) GetByResetToken(token string) (*models.User, error) {
+	user, err := s.userRepo.GetByInvitationToken(token)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, nil
+	}
+	if user.AccountStatus != "active" {
+		return nil, nil
+	}
+	if user.TokenExpiresAt != nil && time.Now().After(*user.TokenExpiresAt) {
+		return nil, fmt.Errorf("reset token expired")
+	}
+	return user, nil
+}
+
+// CompletePasswordReset validates and stores a new password, clearing the reset token.
+func (s *UserService) CompletePasswordReset(userID, password string) error {
+	if err := ValidatePasswordPolicy(password); err != nil {
+		return err
+	}
+
+	hash, err := HashPassword(password)
+	if err != nil {
+		return err
+	}
+
+	return s.userRepo.CompletePasswordReset(userID, hash)
+}

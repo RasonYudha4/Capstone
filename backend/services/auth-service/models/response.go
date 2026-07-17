@@ -56,6 +56,17 @@ type CompleteInvitationRequest struct {
 	Password string `json:"password" binding:"required,min=8"`
 }
 
+// for POST /auth/forgot-password
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+// for POST /auth/reset-password
+type ResetPasswordRequest struct {
+	Token    string `json:"token"    binding:"required"`
+	Password string `json:"password" binding:"required,min=8"`
+}
+
 // Response DTOs
 
 // generic envelope for all JSON responses.

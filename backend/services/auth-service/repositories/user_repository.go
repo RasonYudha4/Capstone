@@ -138,6 +138,25 @@ func (r *UserRepository) CompleteInvitation(userID, passwordHash string) error {
 	return err
 }
 
+func (r *UserRepository) SetResetToken(userID, token string, expiresAt time.Time) error {
+	_, err := r.db.Exec(
+		`UPDATE users SET invitation_token = $1, token_expires_at = $2, updated_at = NOW()
+		 WHERE user_id = $3`,
+		token, expiresAt, userID,
+	)
+	return err
+}
+
+func (r *UserRepository) CompletePasswordReset(userID, passwordHash string) error {
+	_, err := r.db.Exec(
+		`UPDATE users SET password_hash = $1, invitation_token = NULL, token_expires_at = NULL,
+		 failed_attempts = 0, locked_until = NULL, updated_at = NOW()
+		 WHERE user_id = $2`,
+		passwordHash, userID,
+	)
+	return err
+}
+
 // GetAllUsers returns all users except master-admins, ordered by created_at desc.
 // Only returns the columns needed for the admin panel (no sensitive fields).
 func (r *UserRepository) GetAllUsers() ([]models.UserListItem, error) {

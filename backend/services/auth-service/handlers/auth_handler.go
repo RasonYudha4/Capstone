@@ -837,6 +837,13 @@ func (h *AuthHandler) CompleteInvitation(c *gin.Context) {
 		})
 		return
 	}
+	if user.AccountStatus != "invited" {
+		c.JSON(http.StatusNotFound, models.APIResponse{
+			Success: false,
+			Message: "Invalid or already used invitation token.",
+		})
+		return
+	}
 
 	// 2. Complete setup
 	err = h.userService.CompleteInvitation(user.UserID, req.Password)
@@ -862,6 +869,108 @@ func (h *AuthHandler) CompleteInvitation(c *gin.Context) {
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
 		Message: "Account setup complete. You can now log in.",
+	})
+}
+
+// POST /auth/forgot-password
+func (h *AuthHandler) ForgotPassword(c *gin.Context) {
+	var req models.ForgotPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Message: "Invalid request: " + err.Error(),
+		})
+		return
+	}
+
+	const genericMessage = "If an account with that email exists, a password reset link has been sent."
+
+	token, err := h.userService.RequestPasswordReset(req.Email)
+	if err != nil {
+		log.Printf("⚠️  Failed to create password reset token for %s: %v", req.Email, err)
+		c.JSON(http.StatusOK, models.APIResponse{
+			Success: true,
+			Message: genericMessage,
+		})
+		return
+	}
+
+	if token != "" {
+		user, _ := h.userService.GetByEmail(req.Email)
+		if user != nil {
+			if err := h.refreshService.RevokeAllUserTokens(user.UserID); err != nil {
+				log.Printf("⚠️  Failed to revoke tokens during password reset request for %s: %v", req.Email, err)
+			}
+			h.auditService.Log("update", "password_reset_requested", &user.UserID, "client")
+		}
+
+		if err := h.emailService.SendPasswordReset(req.Email, token); err != nil {
+			log.Printf("⚠️  Failed to send password reset email to %s: %v", req.Email, err)
+		}
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Message: genericMessage,
+	})
+}
+
+// POST /auth/reset-password
+func (h *AuthHandler) ResetPassword(c *gin.Context) {
+	var req models.ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Message: "Invalid request: " + err.Error(),
+		})
+		return
+	}
+
+	user, err := h.userService.GetByResetToken(req.Token)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Message: err.Error(),
+		})
+		return
+	}
+	if user == nil {
+		c.JSON(http.StatusNotFound, models.APIResponse{
+			Success: false,
+			Message: "Invalid or expired reset link.",
+		})
+		return
+	}
+
+	err = h.userService.CompletePasswordReset(user.UserID, req.Password)
+	if err != nil {
+		if err.Error() == "password must be at least 8 characters" || err.Error() == "password must contain at least one uppercase letter, one lowercase letter, and one digit" {
+			c.JSON(http.StatusBadRequest, models.APIResponse{
+				Success: false,
+				Message: err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Message: "Failed to reset password: " + err.Error(),
+		})
+		return
+	}
+
+	if err := h.refreshService.RevokeAllUserTokens(user.UserID); err != nil {
+		log.Printf("⚠️  Failed to revoke tokens after password reset for %s: %v", user.UserID, err)
+	}
+
+	if err := h.emailService.SendPasswordChangedNotice(user.Email); err != nil {
+		log.Printf("⚠️  Failed to send password changed notice to %s: %v", user.Email, err)
+	}
+
+	h.auditService.Log("update", "password_reset_completed", &user.UserID, "client")
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Message: "Password reset successful. You can now log in.",
 	})
 }
 
