@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/smtp"
 	"os"
+
+	"auth-service/config"
 )
 
 type EmailService struct {
@@ -46,7 +48,7 @@ func (s *EmailService) SendOTP(to string, otpCode string) error {
 }
 
 func (s *EmailService) SendInvitation(to string, role string, token string) error {
-	invitationLink := fmt.Sprintf("http://localhost:5173/setup-password?token=%s", token)
+	invitationLink := fmt.Sprintf("%s/setup-password?token=%s", config.FrontendURL, token)
 	subject := "Invitation to Join Capstone System"
 	body := fmt.Sprintf(`
 		<html>
@@ -70,6 +72,51 @@ func (s *EmailService) SendInvitation(to string, role string, token string) erro
 	`, role, invitationLink, invitationLink, invitationLink)
 
 	log.Printf("[email] SendInvitation: attempting to send to %s", to)
+	return s.sendRawEmail(to, subject, body)
+}
+
+func (s *EmailService) SendPasswordReset(to string, token string) error {
+	resetLink := fmt.Sprintf("%s/reset-password?token=%s", config.FrontendURL, token)
+	subject := "Reset Password - Smart Accreditation"
+	body := fmt.Sprintf(`
+		<html>
+		<body style="font-family: Arial, sans-serif; background-color: #f9f9f9; padding: 20px;">
+			<div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+				<h2 style="color: #6B5FAE;">Reset Your Password</h2>
+				<p>We received a request to reset your password. Click the button below to choose a new password:</p>
+				<div style="text-align: center; margin: 30px 0;">
+					<a href="%s" style="background-color: #6B5FAE; color: #ffffff; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">
+						Reset Password
+					</a>
+				</div>
+				<p style="color: #666; font-size: 14px;">This link is valid for 1 hour and can only be used once. If you did not request a password reset, please ignore this email.</p>
+				<hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+				<p style="font-size: 12px; color: #999;">If the button doesn't work, copy and paste this link into your browser:<br>
+				<a href="%s" style="color: #6B5FAE;">%s</a></p>
+			</div>
+		</body>
+		</html>
+	`, resetLink, resetLink, resetLink)
+
+	log.Printf("[email] SendPasswordReset: attempting to send to %s", to)
+	return s.sendRawEmail(to, subject, body)
+}
+
+func (s *EmailService) SendPasswordChangedNotice(to string) error {
+	subject := "Password Changed - Smart Accreditation"
+	body := `
+		<html>
+		<body style="font-family: Arial, sans-serif; background-color: #f9f9f9; padding: 20px;">
+			<div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+				<h2 style="color: #6B5FAE;">Password Updated</h2>
+				<p>Your password was changed successfully. All active sessions have been signed out.</p>
+				<p style="color: #666; font-size: 14px;">If you did not make this change, contact your system administrator immediately.</p>
+			</div>
+		</body>
+		</html>
+	`
+
+	log.Printf("[email] SendPasswordChangedNotice: attempting to send to %s", to)
 	return s.sendRawEmail(to, subject, body)
 }
 
