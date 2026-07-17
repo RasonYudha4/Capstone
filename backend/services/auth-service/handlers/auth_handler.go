@@ -800,9 +800,15 @@ func (h *AuthHandler) ResendInvitation(c *gin.Context) {
 		return
 	}
 
-	if err := h.emailService.SendInvitation(targetUser.Email, targetUser.Role, token); err != nil {
-		log.Printf("⚠️  Failed to send invitation email to %s: %v", targetUser.Email, err)
+	if config.IsDevMode {
+		log.Printf("🔗 [DEV] Invitation link for %s: %s/setup-password?token=%s", targetUser.Email, config.FrontendURL, token)
 	}
+
+	go func(email, role, inviteToken string) {
+		if err := h.emailService.SendInvitation(email, role, inviteToken); err != nil {
+			log.Printf("⚠️  Failed to send invitation email to %s: %v", email, err)
+		}
+	}(targetUser.Email, targetUser.Role, token)
 
 	h.auditService.Log("update", "invitation_resent", &targetUser.UserID, "system")
 	c.JSON(http.StatusOK, models.APIResponse{
@@ -870,13 +876,12 @@ func (h *AuthHandler) Invite(c *gin.Context) {
 		return
 	}
 
-	// 3. Send email
-	err = h.emailService.SendInvitation(req.Email, req.Role, token)
-	if err != nil {
-		log.Printf("⚠️  Failed to send invitation email to %s: %v", req.Email, err)
-		// We don't fail the request because the user is already created in DB.
-		// Admin might need a way to resend.
-	}
+	// 3. Send email asynchronously so the request is not blocked by SMTP.
+	go func(email, role, inviteToken string) {
+		if err := h.emailService.SendInvitation(email, role, inviteToken); err != nil {
+			log.Printf("⚠️  Failed to send invitation email to %s: %v", email, err)
+		}
+	}(req.Email, req.Role, token)
 
 	h.auditService.Log("insert", "user_invited", nil, "system")
 
@@ -980,9 +985,16 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 			h.auditService.Log("update", "password_reset_requested", &user.UserID, "client")
 		}
 
-		if err := h.emailService.SendPasswordReset(req.Email, token); err != nil {
-			log.Printf("⚠️  Failed to send password reset email to %s: %v", req.Email, err)
+		resetLink := fmt.Sprintf("%s/reset-password?token=%s", config.FrontendURL, token)
+		if config.IsDevMode {
+			log.Printf("🔗 [DEV] Password reset link for %s: %s", req.Email, resetLink)
 		}
+
+		go func(email, linkToken string) {
+			if err := h.emailService.SendPasswordReset(email, linkToken); err != nil {
+				log.Printf("⚠️  Failed to send password reset email to %s: %v", email, err)
+			}
+		}(req.Email, token)
 	}
 
 	c.JSON(http.StatusOK, models.APIResponse{
@@ -1039,9 +1051,11 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 		log.Printf("⚠️  Failed to revoke tokens after password reset for %s: %v", user.UserID, err)
 	}
 
-	if err := h.emailService.SendPasswordChangedNotice(user.Email); err != nil {
-		log.Printf("⚠️  Failed to send password changed notice to %s: %v", user.Email, err)
-	}
+	go func(email string) {
+		if err := h.emailService.SendPasswordChangedNotice(email); err != nil {
+			log.Printf("⚠️  Failed to send password changed notice to %s: %v", email, err)
+		}
+	}(user.Email)
 
 	h.auditService.Log("update", "password_reset_completed", &user.UserID, "client")
 	c.JSON(http.StatusOK, models.APIResponse{

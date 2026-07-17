@@ -4,8 +4,10 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log"
+	"net"
 	"net/smtp"
 	"os"
+	"time"
 
 	"auth-service/config"
 )
@@ -128,37 +130,45 @@ func (s *EmailService) sendRawEmail(to string, subject string, body string) erro
 
 	auth := smtp.PlainAuth("", s.from, s.password, s.smtpHost)
 
-	conn, err := smtp.Dial(s.smtpHost + ":" + s.smtpPort)
+	dialer := net.Dialer{Timeout: 10 * time.Second}
+	conn, err := dialer.Dial("tcp", s.smtpHost+":"+s.smtpPort)
 	if err != nil {
 		log.Printf("[email] Dial FAILED: %v", err)
 		return err
 	}
-	defer conn.Quit()
+
+	client, err := smtp.NewClient(conn, s.smtpHost)
+	if err != nil {
+		conn.Close()
+		log.Printf("[email] NewClient FAILED: %v", err)
+		return err
+	}
+	defer client.Close()
 
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: false,
 		ServerName:         s.smtpHost,
 	}
 
-	if err = conn.StartTLS(tlsConfig); err != nil {
+	if err = client.StartTLS(tlsConfig); err != nil {
 		log.Printf("[email] StartTLS FAILED: %v", err)
 		return err
 	}
 
-	if err = conn.Auth(auth); err != nil {
+	if err = client.Auth(auth); err != nil {
 		log.Printf("[email] Auth FAILED: %v", err)
 		return err
 	}
 
-	if err = conn.Mail(s.from); err != nil {
+	if err = client.Mail(s.from); err != nil {
 		return err
 	}
 
-	if err = conn.Rcpt(to); err != nil {
+	if err = client.Rcpt(to); err != nil {
 		return err
 	}
 
-	w, err := conn.Data()
+	w, err := client.Data()
 	if err != nil {
 		return err
 	}
