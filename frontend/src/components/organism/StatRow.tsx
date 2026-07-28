@@ -41,13 +41,14 @@ export default function StatRow() {
         const lastOpen = audit.data
             .filter(a =>
                 a.action.toLowerCase() === 'open' &&
-                a.username === me.email
+                a.username === me.email &&
+                a.document_name != null
             )
             .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
             .at(0)
 
         if (!lastOpen) return null
-        return { name: lastOpen.document_name, date: lastOpen.created_at }
+        return { name: lastOpen.document_name!, date: lastOpen.created_at }
     })()
 
     const pendingCount = stats?.stats.pending ?? 0

@@ -37,6 +37,9 @@ var (
 	AdminPassword       = getEnv("ADMIN_PASSWORD", "password123")
 	StaffEmail          = getEnv("STAFF_EMAIL", "staff@gmail.com")
 	StaffPassword       = getEnv("STAFF_PASSWORD", "password123")
+
+	// FrontendURL is used to build invitation and password-reset links in emails.
+	FrontendURL = getEnv("FRONTEND_URL", "http://localhost:5173")
 )
 
 // requireEnv reads an environment variable or terminates.
@@ -87,6 +90,9 @@ const (
 
 	// minimum password length for new passwords.
 	PasswordMinLength = 8
+
+	// how long a self-service password reset link remains valid.
+	ResetTokenExpiry = 1 * time.Hour
 
 	// RBAC Roles
 	// must match the user_role ENUM defined in the database migration.

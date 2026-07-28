@@ -156,16 +156,16 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
   }
 
   // ── File URL + Content Type ──────────────────────────────────────────────
-  // Backend now returns a presigned URL (JSON) instead of streaming the raw
-  // file, so there's no blob to create or revoke here anymore — `fileUrl`
-  // is used directly as the <iframe>/<a href> target.
+  // Backend now streams the raw file, so we fetch it as a blob and create
+  // an object URL for the <iframe>/<a href> target. We must revoke the URL
+  // on cleanup to prevent memory leaks.
   const [fileUrl, setFileUrl] = useState('')
   const [contentType, setContentType] = useState('')
   const [detailLoading, setDetailLoading] = useState(false)
 
   useEffect(() => {
     if (!selectedDocId) {
-      setFileUrl('')
+      setFileUrl(prev => { if (prev) URL.revokeObjectURL(prev); return '' })
       setContentType('')
       return
     }
@@ -175,8 +175,11 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
 
     documentService.getById(selectedDocId)
       .then(({ url, contentType }) => {
-        if (cancelled) return
-        setFileUrl(url)
+        if (cancelled) {
+          URL.revokeObjectURL(url)
+          return
+        }
+        setFileUrl(prev => { if (prev) URL.revokeObjectURL(prev); return url })
         setContentType(contentType)
       })
       .catch(() => {

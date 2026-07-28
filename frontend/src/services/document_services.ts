@@ -1,6 +1,5 @@
 import axioHandler from '@/cores/axios'
 import {
-    fileUrlResponseSchema,
     publicFileUrlResponseSchema,
     type DocumentListResponse,
     type CreateDocumentBody,
@@ -11,12 +10,10 @@ import {
     type StatsResponse,
 } from '@/dtos/document_dto'
 
-// Last-resort fallback only. The backend now returns the real contentType
-// (read from MinIO's stored object metadata), which is the primary source —
-// see getById / getPublicDocumentById below. This URL-based guess can't
-// actually work in most cases here: the object key is a bare UUID with no
-// extension, so it's kept purely as a safety net for the rare case the
-// backend returns an empty contentType (e.g. a StatObject error).
+
+// Last-resort fallback for getPublicDocumentById (presigned URL flow).
+// getById now fetches the file as a blob and reads Content-Type from
+// the response header directly, so this map is not used there.
 const EXTENSION_TO_MIME: Record<string, string> = {
     pdf: 'application/pdf',
     jpg: 'image/jpeg',
@@ -57,17 +54,18 @@ export const documentService = {
 
     getById: async (id: string): Promise<{ url: string; contentType: string }> => {
         try {
-            const { data } = await axioHandler.get(`/documents/${id}`)
-            const parsed = fileUrlResponseSchema.parse(data.data)
-            const ct = parsed['content-type']
-            return {
-                url: parsed.presigned_url,
-                contentType: ct || inferContentTypeFromUrl(parsed.presigned_url),
-            }
+            const response = await axioHandler.get(`/documents/${id}`, {
+                responseType: 'blob',
+            })
+            const contentType = response.headers['content-type'] || 'application/octet-stream'
+            const blob = new Blob([response.data], { type: contentType })
+            const url = URL.createObjectURL(blob)
+            return { url, contentType }
         } catch (error) {
             throw new Error('Failed to fetch document.')
         }
     },
+
 
     // ── Public endpoints (no auth) ──────────────────────────────────────────
 
@@ -193,7 +191,7 @@ export const documentService = {
             throw new Error('Failed to update document.')
         }
     },
-  approve: async (body: ApprovalRequest, signedFile?: File): Promise<ApiResponse> => {
+    approve: async (body: ApprovalRequest, signedFile?: File): Promise<ApiResponse> => {
         try {
             if (signedFile && signedFile.size > 0) {
                 const form = new FormData()
@@ -206,7 +204,7 @@ export const documentService = {
                 return data
             }
             const { data } = await axioHandler.post('/documents/status/update', body, {
-                 headers: { 'Content-Type': 'multipart/form-data' },
+                headers: { 'Content-Type': 'multipart/form-data' },
             })
             return data
         } catch (error) {

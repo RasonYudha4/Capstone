@@ -15,6 +15,7 @@ import (
 // groups the HTTP handlers for authentication endpoints.
 type AuthHandler struct {
 	userService    *services.UserService
+	groupService   *services.GroupService
 	otpService     *services.OTPService
 	emailService   *services.EmailService
 	jwtService     *services.JWTService
@@ -25,6 +26,7 @@ type AuthHandler struct {
 // creates an AuthHandler with all required services.
 func NewAuthHandler(
 	userService *services.UserService,
+	groupService *services.GroupService,
 	otpService *services.OTPService,
 	emailService *services.EmailService,
 	jwtService *services.JWTService,
@@ -33,6 +35,7 @@ func NewAuthHandler(
 ) *AuthHandler {
 	return &AuthHandler{
 		userService:    userService,
+		groupService:   groupService,
 		otpService:     otpService,
 		emailService:   emailService,
 		jwtService:     jwtService,
@@ -85,6 +88,15 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		c.JSON(http.StatusTooManyRequests, models.APIResponse{
 			Success: false,
 			Message: fmt.Sprintf("Account is locked. Try again in %s.", remaining),
+		})
+		return
+	}
+
+	if blockReason := user.LoginBlockReason(); blockReason != "" {
+		h.auditService.Log("error", "login_blocked_"+user.AccountStatus, &user.UserID, "client")
+		c.JSON(http.StatusForbidden, models.APIResponse{
+			Success: false,
+			Message: blockReason,
 		})
 		return
 	}
@@ -228,6 +240,14 @@ func (h *AuthHandler) VerifyOTP(c *gin.Context) {
 		return
 	}
 
+	if blockReason := user.LoginBlockReason(); blockReason != "" {
+		c.JSON(http.StatusForbidden, models.APIResponse{
+			Success: false,
+			Message: blockReason,
+		})
+		return
+	}
+
 	// If the user has not been marked as verified yet, mark them as verified now!
 	if !user.Verified {
 		if err := h.userService.MarkAsVerified(user.UserID); err != nil {
@@ -347,6 +367,17 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, models.APIResponse{
 			Success: false,
 			Message: "User not found.",
+		})
+		return
+	}
+
+	if blockReason := user.LoginBlockReason(); blockReason != "" {
+		if revokeErr := h.refreshService.RevokeAllUserTokens(user.UserID); revokeErr != nil {
+			log.Printf("⚠️  Failed to revoke tokens for inactive user %s: %v", user.UserID, revokeErr)
+		}
+		c.JSON(http.StatusUnauthorized, models.APIResponse{
+			Success: false,
+			Message: blockReason,
 		})
 		return
 	}
@@ -533,8 +564,36 @@ func (h *AuthHandler) UpdateRole(c *gin.Context) {
 		return
 	}
 
+	// Validate group assignment for admin role.
+	var groupID *string
+	if req.Role == config.RoleAdmin {
+		if req.GroupID == nil || *req.GroupID == "" {
+			c.JSON(http.StatusBadRequest, models.APIResponse{
+				Success: false,
+				Message: "group_id is required when role is 'admin'.",
+			})
+			return
+		}
+		exists, err := h.groupService.Exists(*req.GroupID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, models.APIResponse{
+				Success: false,
+				Message: "Failed to validate group.",
+			})
+			return
+		}
+		if !exists {
+			c.JSON(http.StatusBadRequest, models.APIResponse{
+				Success: false,
+				Message: "Invalid group_id.",
+			})
+			return
+		}
+		groupID = req.GroupID
+	}
+
 	// Perform role update.
-	if err := h.userService.UpdateRole(targetUser.UserID, req.Role); err != nil {
+	if err := h.userService.UpdateRole(targetUser.UserID, req.Role, groupID); err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
 			Message: "Failed to update role.",
@@ -704,6 +763,60 @@ func (h *AuthHandler) DeleteUser(c *gin.Context) {
 	})
 }
 
+// POST /auth/users/:id/resend-invitation
+func (h *AuthHandler) ResendInvitation(c *gin.Context) {
+	targetID := c.Param("id")
+
+	targetUser, err := h.userService.GetByID(targetID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Message: "Internal server error.",
+		})
+		return
+	}
+	if targetUser == nil {
+		c.JSON(http.StatusNotFound, models.APIResponse{
+			Success: false,
+			Message: "User not found.",
+		})
+		return
+	}
+
+	if targetUser.AccountStatus != "invited" {
+		c.JSON(http.StatusConflict, models.APIResponse{
+			Success: false,
+			Message: "Only users with 'invited' status can have their invitation resent.",
+		})
+		return
+	}
+
+	token, err := h.userService.ResendInvitation(targetUser.UserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Message: "Failed to resend invitation: " + err.Error(),
+		})
+		return
+	}
+
+	if config.IsDevMode {
+		log.Printf("🔗 [DEV] Invitation link for %s: %s/setup-password?token=%s", targetUser.Email, config.FrontendURL, token)
+	}
+
+	go func(email, role, inviteToken string) {
+		if err := h.emailService.SendInvitation(email, role, inviteToken); err != nil {
+			log.Printf("⚠️  Failed to send invitation email to %s: %v", email, err)
+		}
+	}(targetUser.Email, targetUser.Role, token)
+
+	h.auditService.Log("update", "invitation_resent", &targetUser.UserID, "system")
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Message: "Invitation resent successfully.",
+	})
+}
+
 // POST /auth/invite
 func (h *AuthHandler) Invite(c *gin.Context) {
 	var req models.InviteRequest
@@ -725,8 +838,36 @@ func (h *AuthHandler) Invite(c *gin.Context) {
 		return
 	}
 
+	// Validate group assignment for admin invites.
+	var groupID *string
+	if req.Role == config.RoleAdmin {
+		if req.GroupID == nil || *req.GroupID == "" {
+			c.JSON(http.StatusBadRequest, models.APIResponse{
+				Success: false,
+				Message: "group_id is required when role is 'admin'.",
+			})
+			return
+		}
+		exists, err := h.groupService.Exists(*req.GroupID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, models.APIResponse{
+				Success: false,
+				Message: "Failed to validate group.",
+			})
+			return
+		}
+		if !exists {
+			c.JSON(http.StatusBadRequest, models.APIResponse{
+				Success: false,
+				Message: "Invalid group_id.",
+			})
+			return
+		}
+		groupID = req.GroupID
+	}
+
 	// 2. Create invitation in DB
-	token, err := h.userService.InviteUser(req.Email, req.Role)
+	token, err := h.userService.InviteUser(req.Email, req.Role, groupID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
@@ -735,13 +876,12 @@ func (h *AuthHandler) Invite(c *gin.Context) {
 		return
 	}
 
-	// 3. Send email
-	err = h.emailService.SendInvitation(req.Email, req.Role, token)
-	if err != nil {
-		log.Printf("⚠️  Failed to send invitation email to %s: %v", req.Email, err)
-		// We don't fail the request because the user is already created in DB.
-		// Admin might need a way to resend.
-	}
+	// 3. Send email asynchronously so the request is not blocked by SMTP.
+	go func(email, role, inviteToken string) {
+		if err := h.emailService.SendInvitation(email, role, inviteToken); err != nil {
+			log.Printf("⚠️  Failed to send invitation email to %s: %v", email, err)
+		}
+	}(req.Email, req.Role, token)
 
 	h.auditService.Log("insert", "user_invited", nil, "system")
 
@@ -778,6 +918,13 @@ func (h *AuthHandler) CompleteInvitation(c *gin.Context) {
 		})
 		return
 	}
+	if user.AccountStatus != "invited" {
+		c.JSON(http.StatusNotFound, models.APIResponse{
+			Success: false,
+			Message: "Invalid or already used invitation token.",
+		})
+		return
+	}
 
 	// 2. Complete setup
 	err = h.userService.CompleteInvitation(user.UserID, req.Password)
@@ -803,6 +950,117 @@ func (h *AuthHandler) CompleteInvitation(c *gin.Context) {
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
 		Message: "Account setup complete. You can now log in.",
+	})
+}
+
+// POST /auth/forgot-password
+func (h *AuthHandler) ForgotPassword(c *gin.Context) {
+	var req models.ForgotPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Message: "Invalid request: " + err.Error(),
+		})
+		return
+	}
+
+	const genericMessage = "If an account with that email exists, a password reset link has been sent."
+
+	token, err := h.userService.RequestPasswordReset(req.Email)
+	if err != nil {
+		log.Printf("⚠️  Failed to create password reset token for %s: %v", req.Email, err)
+		c.JSON(http.StatusOK, models.APIResponse{
+			Success: true,
+			Message: genericMessage,
+		})
+		return
+	}
+
+	if token != "" {
+		user, _ := h.userService.GetByEmail(req.Email)
+		if user != nil {
+			if err := h.refreshService.RevokeAllUserTokens(user.UserID); err != nil {
+				log.Printf("⚠️  Failed to revoke tokens during password reset request for %s: %v", req.Email, err)
+			}
+			h.auditService.Log("update", "password_reset_requested", &user.UserID, "client")
+		}
+
+		resetLink := fmt.Sprintf("%s/reset-password?token=%s", config.FrontendURL, token)
+		if config.IsDevMode {
+			log.Printf("🔗 [DEV] Password reset link for %s: %s", req.Email, resetLink)
+		}
+
+		go func(email, linkToken string) {
+			if err := h.emailService.SendPasswordReset(email, linkToken); err != nil {
+				log.Printf("⚠️  Failed to send password reset email to %s: %v", email, err)
+			}
+		}(req.Email, token)
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Message: genericMessage,
+	})
+}
+
+// POST /auth/reset-password
+func (h *AuthHandler) ResetPassword(c *gin.Context) {
+	var req models.ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Message: "Invalid request: " + err.Error(),
+		})
+		return
+	}
+
+	user, err := h.userService.GetByResetToken(req.Token)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Message: err.Error(),
+		})
+		return
+	}
+	if user == nil {
+		c.JSON(http.StatusNotFound, models.APIResponse{
+			Success: false,
+			Message: "Invalid or expired reset link.",
+		})
+		return
+	}
+
+	err = h.userService.CompletePasswordReset(user.UserID, req.Password)
+	if err != nil {
+		if err.Error() == "password must be at least 8 characters" || err.Error() == "password must contain at least one uppercase letter, one lowercase letter, and one digit" {
+			c.JSON(http.StatusBadRequest, models.APIResponse{
+				Success: false,
+				Message: err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Message: "Failed to reset password: " + err.Error(),
+		})
+		return
+	}
+
+	if err := h.refreshService.RevokeAllUserTokens(user.UserID); err != nil {
+		log.Printf("⚠️  Failed to revoke tokens after password reset for %s: %v", user.UserID, err)
+	}
+
+	go func(email string) {
+		if err := h.emailService.SendPasswordChangedNotice(email); err != nil {
+			log.Printf("⚠️  Failed to send password changed notice to %s: %v", email, err)
+		}
+	}(user.Email)
+
+	h.auditService.Log("update", "password_reset_completed", &user.UserID, "client")
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Message: "Password reset successful. You can now log in.",
 	})
 }
 

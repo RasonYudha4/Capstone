@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"capstone/app/schemas"
 
 	"github.com/google/uuid"
+	"github.com/minio/minio-go/v7"
 )
 
 type DocumentService struct {
@@ -54,39 +56,102 @@ func (d *DocumentService) Get_Document(page, limit int) ([]schemas.DocumentRespo
 	return d.repo.GetDocuments(limit, offset)
 }
 
-func (d *DocumentService) Get_public_document_by_id(documentId uuid.UUID, role string) (string, string, error) {
+func (d *DocumentService) Get_public_document_by_id(documentId uuid.UUID, role string) (schemas.Response,string, string, error) {
+	storedHash, err := d.repo.Check_document_hash(documentId)
+	if err != nil {
+		return schemas.Response{},"","", err
+	}
+
+	objectId, err := d.repo.Get_object_id(documentId)
+	if err != nil {
+		return schemas.Response{},"","", err
+	}
+
+	filepath, err := d.repo.Get_document_filePath(documentId)
+	if err != nil {
+		return schemas.Response{},"","", err
+	}
+
+	objectHash, err := d.storage.GenerateObjectHMAC(objectId, filepath)
+	if err != nil {
+		return schemas.Response{},"","", err
+	}
+	log.Print(storedHash)
+	log.Print(objectId)
+	log.Print(filepath)
+	log.Print(objectHash)
+
+	if !hmac.Equal([]byte(storedHash), []byte(objectHash)) {
+		return schemas.Response{
+			Status:  false,
+			Message: "Document integrity check failed. The file hash does not match the original document fingerprint",
+		}, "","", nil
+	}
+
 	objectId, isPublic, err := d.repo.Get_document_by_id(documentId, uuid.Nil, role)
 	if err != nil {
-		return "", "", err
+		return schemas.Response{}, "", "", err
 	}
 
 	url, contentType, err := d.storage.Get_document_presign(objectId, isPublic)
 	if err != nil {
 		log.Print("error getting presigned url: ", err)
-		return "", "", err
+		return schemas.Response{}, "", "", err
 	}
-	return url, contentType, nil
+	return schemas.Response{Status: true, Message: "Success", }, url, contentType, nil
 }
 
-func (d *DocumentService) Get_document_by_id(documentId, createdById uuid.UUID, role string) (string, string, error) {
-	objectId, isPublic, err := d.repo.Get_document_by_id(documentId, createdById, role)
+func (d *DocumentService) Get_document_by_id(ctx context.Context, documentId, createdById uuid.UUID, role string) (schemas.Response,io.ReadCloser, *minio.ObjectInfo, error) {
+	storedHash, err := d.repo.Check_document_hash(documentId)
 	if err != nil {
-		return "", "", err
+		return schemas.Response{}, nil, nil, err
 	}
-	if objectId == "" {
-		return "", "", fmt.Errorf("object id is empty for document %s", documentId)
+
+	objectId, err := d.repo.Get_object_id(documentId)
+	if err != nil {
+		return schemas.Response{}, nil, nil, err
+	}
+
+	filepath, err := d.repo.Get_document_filePath(documentId)
+	if err != nil {
+		return schemas.Response{},	nil,nil, err
+	}
+
+	objectHash, err := d.storage.GenerateObjectHMAC(objectId, filepath)
+	if err != nil {
+		return schemas.Response{},nil,nil, err
+	}
+
+	if !hmac.Equal([]byte(storedHash), []byte(objectHash)) {
+		return schemas.Response{
+			Status:  false,
+			Message: "Document integrity check failed. The file hash does not match the original document fingerprint",
+		}, nil,nil, nil
+	}
+	
+	_, _, err = d.repo.Get_document_by_id(documentId, createdById, role)
+	if err != nil {
+		return schemas.Response{}, nil, nil, err
+	}
+
+	filepath, err = d.repo.Get_document_filePath(documentId)
+	if err != nil {
+		return	schemas.Response{}, nil, nil, fmt.Errorf("error getting filepath for document %s: %w", documentId, err)
 	}
 
 	if _, err := d.audit.SaveAudit("open", "Opening File", createdById, documentId, "client", time.Now(), time.Now()); err != nil {
 		log.Print("error saving open audit activity: ", err)
 	}
 
-	url, contentType, err := d.storage.Get_document_presign(objectId, isPublic)
+	object, stat, err := d.storage.GetMinioObject(ctx, filepath)
 	if err != nil {
-		log.Print("error getting presigned url: ", err)
-		return "", "", err
+		log.Print("error getting document stream: ", err)
+		return schemas.Response{},nil, nil, err
 	}
-	return url, contentType, nil
+	return schemas.Response{
+		Status: true,
+		Message: "Success",
+	},object, stat, nil
 }
 
 func (d *DocumentService) Get_document_by_status(status string, page, limit int) ([]schemas.DocumentResponse, int, int, error) {
@@ -291,18 +356,19 @@ func (d *DocumentService) Update_document(req schemas.UpdateRequest, file io.Rea
 		return schemas.Response{Status: false, Message: "Invalid document ID"}, err
 	}
 
-	isApproved, err := d.repo.Document_is_approved(documentId)
+	status, err := d.repo.Document_is_approved(documentId)
 	if err != nil {
 		return schemas.Response{}, err
 	}
-	if isApproved {
+
+	if status == "approved" || status == "pending" {
 		return schemas.Response{
 			Status:  false,
-			Message: "Cannot Edit Approved Document",
+			Message: "Cannot Edit Approved/pending Document",
 		}, nil
 	}
 
-	if userRole != "master-admin" {
+	if userRole == "admin" {
 		authorized, err := d.repo.Check_document_owner(documentId, createdById)
 		if err != nil {
 			return schemas.Response{Status: false, Message: "Authorization check failed"}, err
@@ -321,7 +387,6 @@ func (d *DocumentService) Update_document(req schemas.UpdateRequest, file io.Rea
 	if err != nil {
 		return schemas.Response{}, err
 	}
-
 
 	var updatedHash, filePath string
 	hasFile := file != nil
@@ -381,7 +446,6 @@ func (d *DocumentService) Delete_document(documentId, createdById uuid.UUID, use
 	}, nil
 }
 
-// file, fileSize and contentType replace multipart.File / *multipart.FileHeader.
 func (d *DocumentService) Approval_document(documentId, createdById uuid.UUID, status string, file io.Reader, fileSize int64, contentType string) (schemas.Response, error) {
 	storedHash, err := d.repo.Check_document_hash(documentId)
 	if err != nil {
@@ -410,11 +474,11 @@ func (d *DocumentService) Approval_document(documentId, createdById uuid.UUID, s
 		}, nil
 	}
 
-	isApproved, err := d.repo.Document_is_approved(documentId)
+	storedStatus, err := d.repo.Document_is_approved(documentId)
 	if err != nil {
 		return schemas.Response{}, err
 	}
-	if isApproved {
+	if storedStatus == "approved" {
 		return schemas.Response{
 			Status:  false,
 			Message: "Cannot change status for approved document",

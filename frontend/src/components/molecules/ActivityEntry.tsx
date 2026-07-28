@@ -4,7 +4,7 @@ interface ActivityEntryProps {
     timestamp: string
     actor: string
     action?: string
-    file: string
+    file: string | null
     isLast?: boolean
 }
 

@@ -44,6 +44,7 @@ export const logoutSchema = z.object({
 export const inviteSchema = z.object({
     email: z.string().email("Please enter a valid email address"),
     role: z.enum(["admin", "staff"]),
+    group_id: z.string().optional(),
 });
 
 // POST /auth/complete-invitation
@@ -52,9 +53,21 @@ export const completeInvitationSchema = z.object({
     password: z.string().min(8, "Password must be at least 8 characters"),
 });
 
+// POST /auth/forgot-password
+export const forgotPasswordSchema = z.object({
+    email: z.string().email("Please enter a valid email address"),
+});
+
+// POST /auth/reset-password
+export const resetPasswordSchema = z.object({
+    token: z.string(),
+    password: z.string().min(8, "Password must be at least 8 characters"),
+});
+
 // PUT /auth/users/:id/role
 export const updateRoleSchema = z.object({
     role: z.enum(["admin", "staff"]),
+    group_id: z.string().optional(),
 });
 
 // PUT /auth/users/:id/status
@@ -114,6 +127,8 @@ export const userListItemSchema = z.object({
     user_id: z.string(),
     email: z.string(),
     role: z.enum(["staff", "admin", "master-admin"]),
+    group_id: z.string().nullable().optional(),
+    group_name: z.string().nullable().optional(),
     account_status: z.enum(["invited", "active", "suspended"]),
     verified: z.boolean(),
 });
@@ -133,6 +148,8 @@ export type RefreshValues = z.infer<typeof refreshSchema>;
 export type LogoutValues = z.infer<typeof logoutSchema>;
 export type InviteValues = z.infer<typeof inviteSchema>;
 export type CompleteInvitationValues = z.infer<typeof completeInvitationSchema>;
+export type ForgotPasswordFormValues = z.infer<typeof forgotPasswordSchema>;
+export type ResetPasswordValues = z.infer<typeof resetPasswordSchema>;
 export type UpdateRoleValues = z.infer<typeof updateRoleSchema>;
 export type UpdateStatusValues = z.infer<typeof updateStatusSchema>;
 

@@ -104,19 +104,19 @@ func (r *UserRepository) UpdatePasswordHash(userID string, passwordHash string) 
 	return err
 }
 
-func (r *UserRepository) UpdateRole(userID string, role string) error {
+func (r *UserRepository) UpdateRole(userID string, role string, groupID *string) error {
 	_, err := r.db.Exec(
-		`UPDATE users SET role = $1, updated_at = NOW() WHERE user_id = $2`,
-		role, userID,
+		`UPDATE users SET role = $1, group_id = $2, updated_at = NOW() WHERE user_id = $3`,
+		role, groupID, userID,
 	)
 	return err
 }
 
-func (r *UserRepository) CreateInvitedUser(email, role, token string, expiresAt time.Time) error {
+func (r *UserRepository) CreateInvitedUser(email, role string, groupID *string, token string, expiresAt time.Time) error {
 	_, err := r.db.Exec(
-		`INSERT INTO users (email, role, account_status, invitation_token, token_expires_at, verified, created_at, updated_at)
-		 VALUES ($1, $2, 'invited', $3, $4, false, NOW(), NOW())`,
-		email, role, token, expiresAt,
+		`INSERT INTO users (email, role, group_id, account_status, invitation_token, token_expires_at, verified, created_at, updated_at)
+		 VALUES ($1, $2, $3, 'invited', $4, $5, false, NOW(), NOW())`,
+		email, role, groupID, token, expiresAt,
 	)
 	return err
 }
@@ -138,14 +138,43 @@ func (r *UserRepository) CompleteInvitation(userID, passwordHash string) error {
 	return err
 }
 
+func (r *UserRepository) SetResetToken(userID, token string, expiresAt time.Time) error {
+	_, err := r.db.Exec(
+		`UPDATE users SET invitation_token = $1, token_expires_at = $2, updated_at = NOW()
+		 WHERE user_id = $3`,
+		token, expiresAt, userID,
+	)
+	return err
+}
+
+func (r *UserRepository) UpdateInvitationToken(userID, token string, expiresAt time.Time) error {
+	_, err := r.db.Exec(
+		`UPDATE users SET invitation_token = $1, token_expires_at = $2, updated_at = NOW()
+		 WHERE user_id = $3 AND account_status = 'invited'`,
+		token, expiresAt, userID,
+	)
+	return err
+}
+
+func (r *UserRepository) CompletePasswordReset(userID, passwordHash string) error {
+	_, err := r.db.Exec(
+		`UPDATE users SET password_hash = $1, invitation_token = NULL, token_expires_at = NULL,
+		 failed_attempts = 0, locked_until = NULL, updated_at = NOW()
+		 WHERE user_id = $2`,
+		passwordHash, userID,
+	)
+	return err
+}
+
 // GetAllUsers returns all users except master-admins, ordered by created_at desc.
 // Only returns the columns needed for the admin panel (no sensitive fields).
 func (r *UserRepository) GetAllUsers() ([]models.UserListItem, error) {
 	rows, err := r.db.Query(
-		`SELECT user_id, email, role, account_status, verified
-		 FROM users
-		 WHERE role != 'master-admin'
-		 ORDER BY created_at DESC`,
+		`SELECT u.user_id, u.email, u.role, u.group_id, g.group_name, u.account_status, u.verified
+		 FROM users u
+		 LEFT JOIN groups g ON u.group_id = g.group_id
+		 WHERE u.role != 'master-admin'
+		 ORDER BY u.created_at DESC`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("query all users: %w", err)
@@ -155,7 +184,7 @@ func (r *UserRepository) GetAllUsers() ([]models.UserListItem, error) {
 	var users []models.UserListItem
 	for rows.Next() {
 		var u models.UserListItem
-		if err := rows.Scan(&u.UserID, &u.Email, &u.Role, &u.AccountStatus, &u.Verified); err != nil {
+		if err := rows.Scan(&u.UserID, &u.Email, &u.Role, &u.GroupID, &u.GroupName, &u.AccountStatus, &u.Verified); err != nil {
 			return nil, fmt.Errorf("scan user row: %w", err)
 		}
 		users = append(users, u)

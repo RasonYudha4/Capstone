@@ -58,8 +58,8 @@ function isPreviewableContentType(contentType?: string): boolean {
     )
 }
 
-// contentType isn't always available from the API (e.g. a bare
-// { presignedUrl } response), so fall back to the filename extension —
+// contentType isn't always available from the API (e.g. when the header
+// is missing or empty), so fall back to the filename extension —
 // otherwise every previewable file silently drops into the
 // "not previewable" branch.
 function canPreviewFile(contentType: string | undefined, filename: string): boolean {
@@ -268,10 +268,8 @@ export default function FileDetailModal({
                                     </div>
                                 )}
 
-                                {/* Escape hatch: cross-origin iframes can silently fail to
-                                    render (expired presigned URL, mixed content, X-Frame
-                                    restrictions) without ever firing a JS error, so always
-                                    offer a direct link the user can fall back to. */}
+                                {/* Fallback: open the file directly in a new tab in case
+                                    the iframe preview doesn't render correctly. */}
                                 {fileUrl && (
                                     <a
                                         href={fileUrl}
@@ -363,15 +361,7 @@ export default function FileDetailModal({
                                             access-denied/XML error page (cross-origin content
                                             can't be inspected), so keep a visible fallback for
                                             "the preview looks broken" cases. */}
-                                        <a
-                                            href={fileUrl}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="absolute bottom-2 right-2 flex items-center gap-1.5 px-2.5 py-1.5 bg-black/60 hover:bg-black/80 text-white/70 hover:text-white text-[11px] rounded-lg transition-colors backdrop-blur-sm"
-                                        >
-                                            <ExternalLink className="w-3 h-3" />
-                                            Tidak muncul? Buka di tab baru
-                                        </a>
+                                    
                                     </>
                                 )}
                             </div>
@@ -423,29 +413,54 @@ export default function FileDetailModal({
                                             <MetaRow label="Terakhir Diperbarui" value={displayUpdatedAt} />
                                         </div>
 
-                                        <Separator className="bg-white/20" />
+                                        {role === 'master-admin' && (
+                                            <>
+                                                <Separator className="bg-white/20" />
 
-                                        {/* Review form */}
-                                        <div className="flex flex-col gap-2">
-                                            <p className="text-xs font-semibold text-white/80">Nama Berkas</p>
-                                            <Input
-                                                {...register('filename')}
-                                                placeholder={strippedName}
-                                                className="bg-white/10 border-white/20 text-white placeholder:text-white/40 text-sm rounded-xl focus:border-white/50 focus:ring-0"
-                                            />
-                                            <p className="text-xs font-semibold text-white/80 mt-1">Catatan Review</p>
-                                            <Textarea
-                                                {...register('catatan')}
-                                                placeholder="Tambahkan catatan untuk reviewer..."
-                                                rows={3}
-                                                className="bg-white/10 border-white/20 text-white placeholder:text-white/40 text-sm rounded-xl resize-none focus:border-white/50 focus:ring-0"
-                                            />
-                                            <p className="text-xs font-semibold text-white/80 mt-1">Lampiran</p>
-                                            <FileDropzone
-                                                file={attachedFile}
-                                                onFileSelect={(f) => setAttachedFile(f)}
-                                            />
-                                        </div>
+                                                {/* Review form */}
+                                                <div className="flex flex-col gap-2">
+                                                    <p className="text-xs font-semibold text-white/80">Nama Berkas</p>
+                                                    <Input
+                                                        {...register('filename')}
+                                                        placeholder={strippedName}
+                                                        className="bg-white/10 border-white/20 text-white placeholder:text-white/40 text-sm rounded-xl focus:border-white/50 focus:ring-0"
+                                                    />
+                                                    <p className="text-xs font-semibold text-white/80 mt-1">Catatan Review</p>
+                                                    <Textarea
+                                                        {...register('catatan')}
+                                                        placeholder="Tambahkan catatan untuk reviewer..."
+                                                        rows={3}
+                                                        className="bg-white/10 border-white/20 text-white placeholder:text-white/40 text-sm rounded-xl resize-none focus:border-white/50 focus:ring-0"
+                                                    />
+                                                    <p className="text-xs font-semibold text-white/80 mt-1">Lampiran</p>
+                                                    <FileDropzone
+                                                        file={attachedFile}
+                                                        onFileSelect={(f) => setAttachedFile(f)}
+                                                    />
+                                                </div>
+                                            </>
+                                        )}
+
+                                        {role === 'admin' && displayStatus === 'rejected' && (
+                                            <>
+                                                <Separator className="bg-white/20" />
+
+                                                {/* Admin re-upload form (rejected only) */}
+                                                <div className="flex flex-col gap-2">
+                                                    <p className="text-xs font-semibold text-white/80">Nama Berkas</p>
+                                                    <Input
+                                                        {...register('filename')}
+                                                        placeholder={strippedName}
+                                                        className="bg-white/10 border-white/20 text-white placeholder:text-white/40 text-sm rounded-xl focus:border-white/50 focus:ring-0"
+                                                    />
+                                                    <p className="text-xs font-semibold text-white/80 mt-1">Lampiran</p>
+                                                    <FileDropzone
+                                                        file={attachedFile}
+                                                        onFileSelect={(f) => setAttachedFile(f)}
+                                                    />
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
                                 )}
                             </ScrollArea>
@@ -477,7 +492,7 @@ export default function FileDetailModal({
                                 )}
 
                                 <div className="flex gap-2">
-                                    {displayStatus !== 'approved' && (
+                                    {role === 'admin' && displayStatus === 'rejected' && (
                                         <Button
                                             type="button"
                                             onClick={handleUpdate}

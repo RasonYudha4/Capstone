@@ -125,9 +125,9 @@ export const documentListResponseSchema = z.object({
     data: z.array(documentResponseSchema),
 });
 
-// GET /documents/:id
-// Backend returns ApiResponse with data: { presigned_url, "content-type" }
-// The service layer unwraps .data and normalizes keys.
+// GET /documents/:id — now streams the raw file binary (no JSON).
+// This schema is kept for backward compatibility but is no longer
+// used by documentService.getById.
 export const fileUrlResponseSchema = z.object({
     presigned_url: z.string().url(),
     "content-type": z.string().optional().default(''),

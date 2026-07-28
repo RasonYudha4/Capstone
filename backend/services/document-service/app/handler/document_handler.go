@@ -2,12 +2,14 @@ package api
 
 import (
 	"errors"
+	"fmt"
+	"io"
 	"log"
 	"mime/multipart"
 	"net/http"
 	"path/filepath"
 	"strconv"
-	"io"
+
 	"capstone/app/schemas"
 	"capstone/app/services"
 
@@ -29,7 +31,7 @@ func NewDocumentHandler(document *services.DocumentService, notification *servic
 
 func respondError(c *gin.Context, httpStatus int, message string) {
 	c.JSON(httpStatus, schemas.ApiResponse{
-		Success:     false,
+		Success:    false,
 		Message:    message,
 		StatusCode: httpStatus,
 		Data:       nil,
@@ -38,7 +40,7 @@ func respondError(c *gin.Context, httpStatus int, message string) {
 
 func respondSuccess(c *gin.Context, httpStatus int, message string, data any) {
 	c.JSON(httpStatus, schemas.ApiResponse{
-		Success:     true,
+		Success:    true,
 		Message:    message,
 		StatusCode: httpStatus,
 		Data:       data,
@@ -52,11 +54,22 @@ func (d *DocumentHandler) Get_public_document_by_id_handler(c *gin.Context) {
 		return
 	}
 
-	url, contentType, err := d.documentService.Get_public_document_by_id(documentId, "public")
+	status,url, contentType, err := d.documentService.Get_public_document_by_id(documentId, "public")
 	if err != nil {
 		log.Print("error getting public document url: ", err)
 		respondError(c, 500, "Failed Getting Url")
 		return
+	}
+
+	if !status.Status{
+		switch status.Message{
+		case "Document integrity check failed. The file hash does not match the original document fingerprint":
+			respondError(c, 409, status.Message)
+			return
+		default:
+			respondError(c,500,"Internal Server Error")
+			return
+		}
 	}
 
 	respondSuccess(c, 200, "Success getting Url", schemas.PresignedUrlResponse{
@@ -68,26 +81,50 @@ func (d *DocumentHandler) Get_public_document_by_id_handler(c *gin.Context) {
 func (d *DocumentHandler) Get_document_by_id_handler(c *gin.Context) {
 	documentId, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		respondError(c, 400, "Bad Request, error parse document id")
+		respondError(c, http.StatusBadRequest, "Bad Request, Error parse document id")
 		return
 	}
 
 	createdById, err := uuid.Parse(c.GetString("user_id"))
 	if err != nil {
-		respondError(c, 400, "Bad Request, error parse user id")
+		respondError(c, http.StatusBadRequest, "Bad Request, Error parse user id")
 		return
 	}
 
-	url, contentType, err := d.documentService.Get_document_by_id(documentId, createdById, c.GetString("role"))
+	status,object, stat, err := d.documentService.Get_document_by_id(c.Request.Context(), documentId, createdById, c.GetString("role"))
 	if err != nil {
-		respondError(c, 500, "Internal Server Error, Error getting presigned Url")
+		log.Printf("StreamDocument error: %v", err)
+		respondError(c, http.StatusInternalServerError, "Failed to stream document")
 		return
 	}
+	defer object.Close()
 
-	respondSuccess(c, 200, "Success", schemas.PresignedUrlResponse{
-		PresignedUrl: url,
-		ContentType:  contentType,
-	})
+	
+	if !status.Status{
+		switch status.Message{
+		case "Document integrity check failed. The file hash does not match the original document fingerprint":
+			respondError(c, 409, status.Message)
+			return
+		default:
+			respondError(c,500,"Internal Server Error")
+			return
+		}
+	}
+
+	contentType := stat.ContentType
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	log.Printf("streaming file: content-type: '%s', size: %d", contentType, stat.Size)
+
+	c.Header("Content-Type", contentType)
+	c.Header("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, stat.Key))
+	c.Header("Content-Length", strconv.FormatInt(stat.Size, 10))
+	c.Status(http.StatusOK)
+
+	if _, err := io.Copy(c.Writer, object); err != nil {
+		log.Printf("error streaming document to client: %v", err)
+	}
 }
 
 func (d *DocumentHandler) Get_document_by_status_handler(c *gin.Context) {
@@ -285,7 +322,7 @@ func (d *DocumentHandler) Create_document_handler(c *gin.Context) {
 	allowedMimeTypes := map[string]bool{
 		"application/pdf": true,
 		"image/jpeg":      true,
-		"image/jpg":	   true,
+		"image/jpg":       true,
 		"image/png":       true,
 	}
 
@@ -308,12 +345,12 @@ func (d *DocumentHandler) Create_document_handler(c *gin.Context) {
 	}
 
 	buf := make([]byte, 512)
-		n, err := file.Read(buf)
+	n, err := file.Read(buf)
 	if err != nil && err != io.EOF {
 		respondError(c, 500, "Internal Server Error, Error Reading File")
 		return
 	}
-		detectedType := http.DetectContentType(buf[:n])
+	detectedType := http.DetectContentType(buf[:n])
 
 	if !allowedMimeTypes[detectedType] {
 		respondError(c, 400, "Bad Request, File Content Doesn't Match Allowed Types")
@@ -365,11 +402,10 @@ func (d *DocumentHandler) Update_document_handler(c *gin.Context) {
 	allowedMimeTypes := map[string]bool{
 		"application/pdf": true,
 		"image/jpeg":      true,
-		"image/jpg":	   true,
+		"image/jpg":       true,
 		"image/png":       true,
 	}
-	
-	
+
 	var (
 		file        multipart.File
 		fileSize    int64
@@ -418,10 +454,8 @@ func (d *DocumentHandler) Update_document_handler(c *gin.Context) {
 		}
 
 		fileSize = fileHeader.Size
-		contentType = detectedType 
+		contentType = detectedType
 	}
-
-	
 
 	userId, err := uuid.Parse(c.GetString("user_id"))
 	if err != nil {
@@ -498,32 +532,28 @@ func (d *DocumentHandler) Approval_document_handler(c *gin.Context) {
 		return
 	}
 
-	
-
 	var (
 		file        multipart.File
 		fileSize    int64
 		contentType string
 	)
 
-
 	if fileHeader, err := c.FormFile("uploadedFile"); err == nil {
-		
+
 		fileExtension := filepath.Ext(fileHeader.Filename)
 		allowedFile := map[string]bool{
-		".pdf":  true,
-		".jpg":  true,
-		".jpeg": true,
-		".png":  true,
+			".pdf":  true,
+			".jpg":  true,
+			".jpeg": true,
+			".png":  true,
 		}
 
-	
 		allowedMimeTypes := map[string]bool{
-		"application/pdf": true,
-		"image/jpeg":      true,
-		"image/png":       true,
+			"application/pdf": true,
+			"image/jpeg":      true,
+			"image/png":       true,
 		}
-		
+
 		if !allowedFile[fileExtension] {
 			respondError(c, 400, "Bad Request, File Not Allowed")
 			return
@@ -553,7 +583,7 @@ func (d *DocumentHandler) Approval_document_handler(c *gin.Context) {
 			respondError(c, 500, "Internal Server Error, Error Seeking File")
 			return
 		}
-		
+
 		file = f
 		fileSize = fileHeader.Size
 		contentType = detectedType
@@ -594,4 +624,3 @@ func (h *DocumentHandler) GetStats(c *gin.Context) {
 
 	respondSuccess(c, 200, "Getting Current Stats", result)
 }
-

@@ -532,19 +532,16 @@ func (s *DocumentRepo) Check_document_name(filename string, groupId uuid.UUID) (
 	return isSameName, nil
 }
 
-func (s *DocumentRepo) Document_is_approved(documentId uuid.UUID) (bool, error) {
-	var isApproved bool
+func (s *DocumentRepo) Document_is_approved(documentId uuid.UUID) (string, error) {
+	var status string	
 	err := s.db.QueryRow(context.Background(), `
-		SELECT EXISTS(
-			SELECT 1 FROM documents
+			SELECT status FROM documents
 			WHERE document_id = $1
-			AND status = 'approved'
-		)
-	`, documentId).Scan(&isApproved)
+	`, documentId).Scan(&status)
 	if err != nil {
-		return false, err
+		return "", err
 	}
-	return isApproved, nil
+	return status, nil
 }
 
 func (s *DocumentRepo) Check_document_hash(documentId uuid.UUID) (string, error) {

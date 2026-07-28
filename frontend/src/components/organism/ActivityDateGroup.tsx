@@ -10,7 +10,7 @@ interface Activity {
     timeLabel: string
     actor: string
     action?: string
-    file: string
+    file: string | null
 }
 
 interface ActivityDateGroupProps {

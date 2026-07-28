@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { FileText, User, Tag, Clock, Fingerprint, Eye } from 'lucide-react'
+import { toast } from 'sonner'
 import { documentService } from '@/services/document_services'
 import type { DocumentResponse } from '@/dtos/document_dto'
 import FileDetailModal from '@/components/organism/FiledetailModal'
@@ -135,10 +136,10 @@ export default function QueueList() {
         setModalLoading(true)
         try {
             const { url, contentType } = await documentService.getById(doc.document_id)
-            setFileUrl(url)
+            setFileUrl(prev => { if (prev) URL.revokeObjectURL(prev); return url })
             setContentType(contentType)
         } catch {
-            setFileUrl(undefined)
+            setFileUrl(prev => { if (prev) URL.revokeObjectURL(prev); return undefined })
             setContentType('')
         } finally {
             setModalLoading(false)
@@ -150,7 +151,7 @@ export default function QueueList() {
         if (!open) {
             setModalOpen(false)
             setSelected(null)
-            setFileUrl(undefined)
+            setFileUrl(prev => { if (prev) URL.revokeObjectURL(prev); return undefined })
             setContentType('')
         }
     }
@@ -159,7 +160,7 @@ export default function QueueList() {
     async function afterAction() {
         setModalOpen(false)
         setSelected(null)
-        setFileUrl(undefined)
+        setFileUrl(prev => { if (prev) URL.revokeObjectURL(prev); return undefined })
         setContentType('')
         if (docs.length === 1 && page > 1) {
             setPage(p => p - 1)
@@ -233,29 +234,49 @@ export default function QueueList() {
                     contentType={contentType}
                     role="master-admin"
                     onApprove={async (file, _catatan, attachment) => {
-                        await documentService.approve(
-                            { document_id: file.id, status: 'approved' },
-                            attachment
-                        )
-                        await afterAction()
+                        try {
+                            await documentService.approve(
+                                { document_id: file.id, status: 'approved' },
+                                attachment
+                            )
+                            toast.success('Berkas berhasil disetujui.')
+                            await afterAction()
+                        } catch {
+                            toast.error('Gagal menyetujui berkas.')
+                        }
                     }}
                     onReject={async (file, _catatan, attachment) => {
-                        await documentService.approve(
-                            { document_id: file.id, status: 'rejected' },
-                            attachment
-                        )
-                        await afterAction()
+                        try {
+                            await documentService.approve(
+                                { document_id: file.id, status: 'rejected' },
+                                attachment
+                            )
+                            toast.success('Berkas berhasil ditolak.')
+                            await afterAction()
+                        } catch {
+                            toast.error('Gagal menolak berkas.')
+                        }
                     }}
                     onUpdate={async (file, catatan, attachment, filename) => {
-                        await documentService.update(
-                            { document_id: file.id, filename, description: catatan },
-                            attachment
-                        )
-                        await afterAction()
+                        try {
+                            await documentService.update(
+                                { document_id: file.id, filename, description: catatan },
+                                attachment
+                            )
+                            toast.success('Berkas berhasil diperbarui.')
+                            await afterAction()
+                        } catch {
+                            toast.error('Gagal memperbarui berkas.')
+                        }
                     }}
                     onDelete={async (file) => {
-                        await documentService.delete(file.id)
-                        await afterAction()
+                        try {
+                            await documentService.delete(file.id)
+                            toast.success('Berkas berhasil dihapus.')
+                            await afterAction()
+                        } catch {
+                            toast.error('Gagal menghapus berkas.')
+                        }
                     }}
                 />
             )}

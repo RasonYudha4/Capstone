@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router'
+import { NavLink, useNavigate } from 'react-router'
 import { iconMap, sidebarSections } from '../../configs/sidebar_config'
 import { useAuth } from '../../cores/AuthContext'
 import { LogOut } from 'lucide-react'
@@ -16,6 +16,7 @@ import {
 
 export default function AppSidebar() {
     const { user, logout } = useAuth()
+    const navigate = useNavigate()
     const role = user?.role ?? 'staff'
 
     const filteredSections = sidebarSections.filter(
@@ -80,8 +81,9 @@ export default function AppSidebar() {
                 <SidebarMenu>
                     <SidebarMenuItem>
                         <SidebarMenuButton
-                            onClick={() => {
-                                logout()
+                            onClick={async () => {
+                                await logout()
+                                navigate('/login', { replace: true })
                             }}
                             className="w-full flex items-center gap-3 px-4 py-2.5 rounded-full text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-all cursor-pointer"
                         >

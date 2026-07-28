@@ -23,12 +23,14 @@ func main() {
 
 	// repositories
 	userRepo := repositories.NewUserRepository(services.DB)
+	groupRepo := repositories.NewGroupRepository(services.DB)
 	otpRepo := repositories.NewOTPRepository(services.DB)
 	refreshRepo := repositories.NewRefreshRepository(services.DB)
 	auditRepo := repositories.NewAuditRepository(services.DB)
 
 	// services
 	userService := services.NewUserService(userRepo)
+	groupService := services.NewGroupService(groupRepo)
 
 	
 	emailService := services.NewEmailService()
@@ -47,9 +49,10 @@ func main() {
 		log.Printf("⚠️  Failed to seed passwords: %v", err)
 	}
 	authHandler := handlers.NewAuthHandler(
-		userService, otpService, emailService, jwtService, refreshService, auditService,
+		userService, groupService, otpService, emailService, jwtService, refreshService, auditService,
 	)
 	documentHandler := handlers.NewDocumentHandler()
+	groupHandler := handlers.NewGroupHandler(groupService)
 
 	// router
 	router := gin.Default()
@@ -82,11 +85,15 @@ func main() {
 
 		// complete invitation (setup password) - PUBLIC
 		auth.POST("/complete-invitation", authHandler.CompleteInvitation)
+
+		// self-service password reset - PUBLIC
+		auth.POST("/forgot-password", authRateLimiter, authHandler.ForgotPassword)
+		auth.POST("/reset-password", authRateLimiter, authHandler.ResetPassword)
 	}
 
 	// protected routes
 	protected := router.Group("/")
-	protected.Use(middleware.JWTAuth(jwtService))
+	protected.Use(middleware.JWTAuth(jwtService, userService))
 	{
 		// current user profile — accessible by ALL authenticated roles.
 		protected.GET("/auth/me", authHandler.Me)
@@ -125,6 +132,18 @@ func main() {
 		protected.DELETE("/auth/users/:id",
 			middleware.RequireRoles(config.RoleMasterAdmin),
 			authHandler.DeleteUser,
+		)
+
+		// resend invitation email for invited users.
+		protected.POST("/auth/users/:id/resend-invitation",
+			middleware.RequireRoles(config.RoleMasterAdmin),
+			authHandler.ResendInvitation,
+		)
+
+		// list admin groups for role assignment.
+		protected.GET("/groups",
+			middleware.RequireRoles(config.RoleMasterAdmin),
+			groupHandler.ListGroups,
 		)
 
 		// document listing — accessible by ALL authenticated roles.

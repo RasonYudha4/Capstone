@@ -76,8 +76,12 @@ export const authService = {
     },
 
     // POST /auth/invite
-    inviteUser: async (email: string, role: string): Promise<void> => {
-        const { data } = await axioHandler.post('/auth/invite', { email, role })
+    inviteUser: async (email: string, role: string, groupId?: string): Promise<void> => {
+        const body: { email: string; role: string; group_id?: string } = { email, role }
+        if (role === 'admin' && groupId) {
+            body.group_id = groupId
+        }
+        const { data } = await axioHandler.post('/auth/invite', body)
         const parsed = voidApiResponseSchema.parse(data)
         if (!parsed.success) {
             throw new Error(parsed.message)
@@ -87,6 +91,24 @@ export const authService = {
     // POST /auth/complete-invitation
     completeInvitation: async (token: string, password: string): Promise<void> => {
         const { data } = await axioHandler.post('/auth/complete-invitation', { token, password })
+        const parsed = voidApiResponseSchema.parse(data)
+        if (!parsed.success) {
+            throw new Error(parsed.message)
+        }
+    },
+
+    // POST /auth/forgot-password
+    forgotPassword: async (email: string): Promise<void> => {
+        const { data } = await axioHandler.post('/auth/forgot-password', { email })
+        const parsed = voidApiResponseSchema.parse(data)
+        if (!parsed.success) {
+            throw new Error(parsed.message)
+        }
+    },
+
+    // POST /auth/reset-password
+    resetPassword: async (token: string, password: string): Promise<void> => {
+        const { data } = await axioHandler.post('/auth/reset-password', { token, password })
         const parsed = voidApiResponseSchema.parse(data)
         if (!parsed.success) {
             throw new Error(parsed.message)
@@ -104,8 +126,16 @@ export const authService = {
     },
 
     // PUT /auth/users/:id/role — update user role (master-admin only)
-    updateUserRole: async (userId: string, role: 'admin' | 'staff'): Promise<void> => {
-        const { data } = await axioHandler.put(`/auth/users/${userId}/role`, { role })
+    updateUserRole: async (
+        userId: string,
+        role: 'admin' | 'staff',
+        groupId?: string,
+    ): Promise<void> => {
+        const body: { role: 'admin' | 'staff'; group_id?: string } = { role }
+        if (role === 'admin' && groupId) {
+            body.group_id = groupId
+        }
+        const { data } = await axioHandler.put(`/auth/users/${userId}/role`, body)
         const parsed = voidApiResponseSchema.parse(data)
         if (!parsed.success) {
             throw new Error(parsed.message)
@@ -124,6 +154,15 @@ export const authService = {
     // DELETE /auth/users/:id — delete invited user (master-admin only)
     deleteUser: async (userId: string): Promise<void> => {
         const { data } = await axioHandler.delete(`/auth/users/${userId}`)
+        const parsed = voidApiResponseSchema.parse(data)
+        if (!parsed.success) {
+            throw new Error(parsed.message)
+        }
+    },
+
+    // POST /auth/users/:id/resend-invitation — resend invite email (master-admin only)
+    resendInvitation: async (userId: string): Promise<void> => {
+        const { data } = await axioHandler.post(`/auth/users/${userId}/resend-invitation`)
         const parsed = voidApiResponseSchema.parse(data)
         if (!parsed.success) {
             throw new Error(parsed.message)

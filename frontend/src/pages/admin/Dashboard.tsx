@@ -57,7 +57,7 @@ export default function DashboardPage() {
 
     useEffect(() => {
         if (!selectedDocId) {
-            setFileUrl('')
+            setFileUrl(prev => { if (prev) URL.revokeObjectURL(prev); return '' })
             setContentType('')
             return
         }
@@ -67,8 +67,11 @@ export default function DashboardPage() {
 
         documentService.getById(selectedDocId)
             .then(({ url, contentType }) => {
-                if (cancelled) return
-                setFileUrl(url)
+                if (cancelled) {
+                    URL.revokeObjectURL(url)
+                    return
+                }
+                setFileUrl(prev => { if (prev) URL.revokeObjectURL(prev); return url })
                 setContentType(contentType)
             })
             .catch(() => {
@@ -102,7 +105,7 @@ export default function DashboardPage() {
     const closeModal = () => {
         setSelectedDocId(null)
         setSelectedDocument(null)
-        setFileUrl('')
+        setFileUrl(prev => { if (prev) URL.revokeObjectURL(prev); return '' })
         setContentType('')
     }
 

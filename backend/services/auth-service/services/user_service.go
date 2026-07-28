@@ -93,9 +93,9 @@ func (s *UserService) MarkAsVerified(userID string) error {
 	return s.userRepo.MarkAsVerified(userID)
 }
 
-// UpdateRole updates a user's role in the database.
-func (s *UserService) UpdateRole(userID string, role string) error {
-	return s.userRepo.UpdateRole(userID, role)
+// UpdateRole updates a user's role and group assignment in the database.
+func (s *UserService) UpdateRole(userID string, role string, groupID *string) error {
+	return s.userRepo.UpdateRole(userID, role, groupID)
 }
 
 // GetAllUsers returns all non-master-admin users ordered by creation date.
@@ -199,7 +199,7 @@ func (s *UserService) SeedPasswords() error {
 }
 
 // InviteUser creates a new user in 'invited' status and returns a secure token.
-func (s *UserService) InviteUser(email, role string) (string, error) {
+func (s *UserService) InviteUser(email, role string, groupID *string) (string, error) {
 	// 1. Generate secure random token
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -211,8 +211,35 @@ func (s *UserService) InviteUser(email, role string) (string, error) {
 	expiresAt := time.Now().Add(24 * time.Hour)
 
 	// 3. Create user in DB
-	err := s.userRepo.CreateInvitedUser(email, role, token, expiresAt)
+	err := s.userRepo.CreateInvitedUser(email, role, groupID, token, expiresAt)
 	if err != nil {
+		return "", err
+	}
+
+	return token, nil
+}
+
+// ResendInvitation refreshes the invitation token for an invited user.
+func (s *UserService) ResendInvitation(userID string) (string, error) {
+	user, err := s.GetByID(userID)
+	if err != nil {
+		return "", err
+	}
+	if user == nil {
+		return "", fmt.Errorf("user not found")
+	}
+	if user.AccountStatus != "invited" {
+		return "", fmt.Errorf("only invited users can have their invitation resent")
+	}
+
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("generate invitation token: %w", err)
+	}
+	token := hex.EncodeToString(b)
+	expiresAt := time.Now().Add(24 * time.Hour)
+
+	if err := s.userRepo.UpdateInvitationToken(userID, token, expiresAt); err != nil {
 		return "", err
 	}
 
@@ -252,4 +279,67 @@ func (s *UserService) CompleteInvitation(userID, password string) error {
 
 	// 3. Update DB
 	return s.userRepo.CompleteInvitation(userID, hash)
+}
+
+// RequestPasswordReset generates a reset token for an active user with a password set.
+// Returns the raw token when a reset email should be sent, or empty string when no action is taken.
+func (s *UserService) RequestPasswordReset(email string) (string, error) {
+	user, err := s.GetByEmail(email)
+	if err != nil {
+		return "", err
+	}
+	if user == nil {
+		return "", nil
+	}
+	if user.AccountStatus != "active" {
+		return "", nil
+	}
+	if user.PasswordHash == nil || *user.PasswordHash == "" {
+		return "", nil
+	}
+
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("generate reset token: %w", err)
+	}
+	token := hex.EncodeToString(b)
+	expiresAt := time.Now().Add(config.ResetTokenExpiry)
+
+	if err := s.userRepo.SetResetToken(user.UserID, token, expiresAt); err != nil {
+		return "", err
+	}
+
+	return token, nil
+}
+
+// GetByResetToken finds an active user by reset token and checks expiration.
+func (s *UserService) GetByResetToken(token string) (*models.User, error) {
+	user, err := s.userRepo.GetByInvitationToken(token)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, nil
+	}
+	if user.AccountStatus != "active" {
+		return nil, nil
+	}
+	if user.TokenExpiresAt != nil && time.Now().After(*user.TokenExpiresAt) {
+		return nil, fmt.Errorf("reset token expired")
+	}
+	return user, nil
+}
+
+// CompletePasswordReset validates and stores a new password, clearing the reset token.
+func (s *UserService) CompletePasswordReset(userID, password string) error {
+	if err := ValidatePasswordPolicy(password); err != nil {
+		return err
+	}
+
+	hash, err := HashPassword(password)
+	if err != nil {
+		return err
+	}
+
+	return s.userRepo.CompletePasswordReset(userID, hash)
 }
