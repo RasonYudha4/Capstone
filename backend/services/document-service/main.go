@@ -33,6 +33,10 @@ func main(){
     if err != nil{
         log.Fatal("Error init objectStorage: ", err)
     }
+    
+    if err := objectStorage.CreateBuckets(objectStorageConn); err != nil {
+        log.Fatal("Error creating buckets: ", err)
+    }
 
     repo := repositories.NewDocumentRepo(dbConn)
     audit := repositories.NewAuditRepo(dbConn)

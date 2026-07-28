@@ -3,7 +3,6 @@ package api
 import (
 	"capstone/app/services"
 	"log"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
@@ -22,8 +21,8 @@ func (h *FormOptionsHandler) GetFormOptions(c *gin.Context) {
 
 	data, err := h.service.GetFormOptions(c.Request.Context(), userId)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		RespondSuccess(c, 200, "Internal Server Error", nil)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": data})
+	RespondSuccess(c, 200, "Success Getting Form Options", data)
 }

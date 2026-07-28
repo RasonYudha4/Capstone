@@ -26,13 +26,13 @@ func NewNotificationHandler(svc *services.NotificationService, repo *repositorie
 func (h *NotificationHandler) SSEHandler(c *gin.Context) {
 	userID := c.GetString("user_id")
 	if userID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "missing user_id"})
+		RespondError(c, 400, "missing user_id")
 		return
 	}
 
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "streaming not supported"})
+		RespondError(c, 500, "streaming not supported")
 		return
 	}
 
@@ -44,7 +44,7 @@ func (h *NotificationHandler) SSEHandler(c *gin.Context) {
 	c.Writer.Header().Set("Cache-Control", "no-cache")
 	c.Writer.Header().Set("Connection", "keep-alive")
 	c.Writer.Header().Set("Transfer-Encoding", "chunked")
-	c.Status(http.StatusOK)
+	c.Status(200)
 
 	ch := make(chan services.SSEEvent, 10)
 	h.notificationService.RegisterSSE(userID, connID, ch)
@@ -59,6 +59,9 @@ func (h *NotificationHandler) SSEHandler(c *gin.Context) {
 		log.Printf("[SSE] failed to fetch unread for user=%s: %v", userID, err)
 	}
 	if len(missed) > 0 {
+		// NOTE: this "sync" payload has a different shape than services.SSEEvent
+		// (no document_id/status, has "count" instead). See dto fix below —
+		// sseEventSchema on the frontend must be a union to accept this.
 		type syncPayload struct {
 			Type  string `json:"type"`
 			Count int    `json:"count"`
@@ -93,39 +96,45 @@ func (h *NotificationHandler) GetAll(c *gin.Context) {
 	userID := c.GetString("user_id")
 	uid, err := uuid.Parse(userID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user_id"})
+		RespondError(c, 400, "invalid user_id")
 		return
 	}
+
 	notifications, err := h.notificationRepo.Get_all_notification(uid)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch notifications"})
+		RespondError(c, 500, "failed to fetch notifications")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": notifications})
+
+	RespondSuccess(c, 200, "Success Getting Notifications", notifications)
 }
 
 func (h *NotificationHandler) MarkRead(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid notification id"})
+		RespondError(c, 400, "invalid notification id")
 		return
 	}
+
 	if err := h.notificationRepo.Mark_read_notification(id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to mark as read"})
+		RespondError(c, 500, "failed to mark as read")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "marked as read"})
+
+	RespondSuccess(c, 200, "marked as read", nil)
 }
 
 func (h *NotificationHandler) MarkAllRead(c *gin.Context) {
 	uid, err := uuid.Parse(c.GetString("user_id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user_id"})
+		RespondError(c, 400, "invalid user_id")
 		return
 	}
+
 	if err := h.notificationRepo.Mark_all_read_notification(uid); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to mark all as read"})
+		RespondError(c, 500, "failed to mark all as read")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "all marked as read"})
+
+	RespondSuccess(c, 200, "all marked as read", nil)
 }

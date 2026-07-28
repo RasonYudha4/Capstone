@@ -7,7 +7,7 @@ export const auditResponseSchema = z.object({
     action:        z.string(),
     description:   z.string(),
     username:      z.string(),
-    document_name: z.string(),
+    document_name: z.string().nullable(),   
     source:        z.string().optional(),
     created_at:    z.string().datetime({ offset: true }),
     updated_at:    z.string().datetime({ offset: true }),
@@ -24,16 +24,16 @@ export type GetAuditResponse = z.infer<typeof getAuditResponseSchema>;
 // ─── UI models ────────────────────────────────────────────────────────────────
 
 export interface Activity {
-    id:        string
-    timestamp: string
-    date:      string
+    id:           string
+    timestamp:    string
+    date:         string
     isoDate:      string
     isoTimestamp: string   // full ISO string for precise sorting
     timeLabel:    string
-    actor:     string
-    action:    string
-    file:      string
-    rawAction: string
+    actor:        string
+    action:       string
+    file:         string   // ✅ normalized fallback, never null in the UI model
+    rawAction:    string
 }
 
 export interface ActivityGroup {
@@ -73,7 +73,7 @@ export function mapAuditToActivity(dto: AuditResponse): Activity {
         timeLabel,
         actor:     dto.username,
         action:    mapActionLabel(dto.action),
-        file:      dto.document_name,
+        file:      dto.document_name ?? '-',   // ✅ null-safe fallback for deleted/missing docs
         rawAction: dto.action,
     }
 }

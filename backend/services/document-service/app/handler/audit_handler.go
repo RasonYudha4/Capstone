@@ -2,7 +2,6 @@ package api
 
 import (
 	"capstone/app/services"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
@@ -17,14 +16,12 @@ func NewAuditHandler(service *services.AuditService) *AuditHandler {
 	}
 }
 
-func (a *AuditHandler) GetAudit(r *gin.Context) {
+func (a *AuditHandler) GetAudit(c *gin.Context) {
 	audit, err := a.service.Get_audit()
 	if err != nil {
-		r.JSON(http.StatusInternalServerError, gin.H{"error": "Internal error"})
+		RespondSuccess(c, 500, "Internal Server Error", nil)
 		return
 	}
 
-	r.JSON(http.StatusOK, gin.H{
-		"data": audit,
-	})
+	RespondSuccess(c, 200, "Success Getting Audit log", audit)
 }

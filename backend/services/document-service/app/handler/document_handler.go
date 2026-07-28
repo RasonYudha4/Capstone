@@ -29,7 +29,7 @@ func NewDocumentHandler(document *services.DocumentService, notification *servic
 	}
 }
 
-func respondError(c *gin.Context, httpStatus int, message string) {
+func RespondError(c *gin.Context, httpStatus int, message string) {
 	c.JSON(httpStatus, schemas.ApiResponse{
 		Success:    false,
 		Message:    message,
@@ -38,7 +38,7 @@ func respondError(c *gin.Context, httpStatus int, message string) {
 	})
 }
 
-func respondSuccess(c *gin.Context, httpStatus int, message string, data any) {
+func RespondSuccess(c *gin.Context, httpStatus int, message string, data any) {
 	c.JSON(httpStatus, schemas.ApiResponse{
 		Success:    true,
 		Message:    message,
@@ -50,29 +50,29 @@ func respondSuccess(c *gin.Context, httpStatus int, message string, data any) {
 func (d *DocumentHandler) Get_public_document_by_id_handler(c *gin.Context) {
 	documentId, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		respondError(c, 400, "Bad Request, Error parse document id")
+		RespondError(c, 400, "Bad Request, Error parse document id")
 		return
 	}
 
 	status,url, contentType, err := d.documentService.Get_public_document_by_id(documentId, "public")
 	if err != nil {
 		log.Print("error getting public document url: ", err)
-		respondError(c, 500, "Failed Getting Url")
+		RespondError(c, 500, "Failed Getting Url")
 		return
 	}
 
 	if !status.Status{
 		switch status.Message{
 		case "Document integrity check failed. The file hash does not match the original document fingerprint":
-			respondError(c, 409, status.Message)
+			RespondError(c, 409, status.Message)
 			return
 		default:
-			respondError(c,500,"Internal Server Error")
+			RespondError(c,500,"Internal Server Error")
 			return
 		}
 	}
 
-	respondSuccess(c, 200, "Success getting Url", schemas.PresignedUrlResponse{
+	RespondSuccess(c, 200, "Success getting Url", schemas.PresignedUrlResponse{
 		PresignedUrl: url,
 		ContentType:  contentType,
 	})
@@ -81,20 +81,20 @@ func (d *DocumentHandler) Get_public_document_by_id_handler(c *gin.Context) {
 func (d *DocumentHandler) Get_document_by_id_handler(c *gin.Context) {
 	documentId, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		respondError(c, http.StatusBadRequest, "Bad Request, Error parse document id")
+		RespondError(c, http.StatusBadRequest, "Bad Request, Error parse document id")
 		return
 	}
 
 	createdById, err := uuid.Parse(c.GetString("user_id"))
 	if err != nil {
-		respondError(c, http.StatusBadRequest, "Bad Request, Error parse user id")
+		RespondError(c, http.StatusBadRequest, "Bad Request, Error parse user id")
 		return
 	}
 
 	status,object, stat, err := d.documentService.Get_document_by_id(c.Request.Context(), documentId, createdById, c.GetString("role"))
 	if err != nil {
 		log.Printf("StreamDocument error: %v", err)
-		respondError(c, http.StatusInternalServerError, "Failed to stream document")
+		RespondError(c, http.StatusInternalServerError, "Failed to stream document")
 		return
 	}
 	defer object.Close()
@@ -103,10 +103,10 @@ func (d *DocumentHandler) Get_document_by_id_handler(c *gin.Context) {
 	if !status.Status{
 		switch status.Message{
 		case "Document integrity check failed. The file hash does not match the original document fingerprint":
-			respondError(c, 409, status.Message)
+			RespondError(c, 409, status.Message)
 			return
 		default:
-			respondError(c,500,"Internal Server Error")
+			RespondError(c,500,"Internal Server Error")
 			return
 		}
 	}
@@ -134,11 +134,11 @@ func (d *DocumentHandler) Get_document_by_status_handler(c *gin.Context) {
 
 	data, page, limit, err := d.documentService.Get_document_by_status(statusParam, page, limit)
 	if err != nil {
-		respondError(c, 500, "Internal Server Error")
+		RespondError(c, 500, "Internal Server Error")
 		return
 	}
 
-	respondSuccess(c, 200, "Success", schemas.DocumentDataResponse{
+	RespondSuccess(c, 200, "Success", schemas.DocumentDataResponse{
 		Data:  data,
 		Page:  page,
 		Limit: limit,
@@ -151,11 +151,11 @@ func (d *DocumentHandler) Get_document_by_type_handler(c *gin.Context) {
 
 	data, page, limit, err := d.documentService.Get_documents_by_type(page, limit)
 	if err != nil {
-		respondError(c, 500, "Internal Server Error")
+		RespondError(c, 500, "Internal Server Error")
 		return
 	}
 
-	respondSuccess(c, 200, "Success", schemas.DocumentDataResponse{
+	RespondSuccess(c, 200, "Success", schemas.DocumentDataResponse{
 		Data:  data,
 		Page:  page,
 		Limit: limit,
@@ -165,7 +165,7 @@ func (d *DocumentHandler) Get_document_by_type_handler(c *gin.Context) {
 func (d *DocumentHandler) Get_document_by_group_handler(c *gin.Context) {
 	groupId, err := uuid.Parse(c.Param("group"))
 	if err != nil {
-		respondError(c, 400, "Bad Request, Error parse Group Id")
+		RespondError(c, 400, "Bad Request, Error parse Group Id")
 		return
 	}
 
@@ -174,11 +174,11 @@ func (d *DocumentHandler) Get_document_by_group_handler(c *gin.Context) {
 
 	data, page, limit, err := d.documentService.Get_document_by_group(groupId, page, limit)
 	if err != nil {
-		respondError(c, 500, "Internal Server Error")
+		RespondError(c, 500, "Internal Server Error")
 		return
 	}
 
-	respondSuccess(c, 200, "Success", schemas.DocumentDataResponse{
+	RespondSuccess(c, 200, "Success", schemas.DocumentDataResponse{
 		Data:  data,
 		Page:  page,
 		Limit: limit,
@@ -188,7 +188,7 @@ func (d *DocumentHandler) Get_document_by_group_handler(c *gin.Context) {
 func (d *DocumentHandler) Get_document_by_standard_handler(c *gin.Context) {
 	standardId, err := uuid.Parse(c.Param("standard"))
 	if err != nil {
-		respondError(c, 400, "Bad Request, Error parse Standard Id")
+		RespondError(c, 400, "Bad Request, Error parse Standard Id")
 		return
 	}
 
@@ -197,18 +197,18 @@ func (d *DocumentHandler) Get_document_by_standard_handler(c *gin.Context) {
 
 	userId, err := uuid.Parse(c.GetString("user_id"))
 	if err != nil {
-		respondError(c, 400, "Bad Request, Error parse User Id")
+		RespondError(c, 400, "Bad Request, Error parse User Id")
 		return
 	}
 
 	role := c.GetString("role")
 	data, page, limit, err := d.documentService.Get_document_by_standard(standardId, userId, page, limit, role)
 	if err != nil {
-		respondError(c, 500, "Internal Server Error")
+		RespondError(c, 500, "Internal Server Error")
 		return
 	}
 
-	respondSuccess(c, 200, "Success", schemas.DocumentDataResponse{
+	RespondSuccess(c, 200, "Success", schemas.DocumentDataResponse{
 		Data:  data,
 		Page:  page,
 		Limit: limit,
@@ -218,7 +218,7 @@ func (d *DocumentHandler) Get_document_by_standard_handler(c *gin.Context) {
 func (d *DocumentHandler) Get_document_by_service_handler(c *gin.Context) {
 	serviceId, err := uuid.Parse(c.Param("service"))
 	if err != nil {
-		respondError(c, 400, "Bad Request, Error parse service id")
+		RespondError(c, 400, "Bad Request, Error parse service id")
 		return
 	}
 
@@ -227,18 +227,18 @@ func (d *DocumentHandler) Get_document_by_service_handler(c *gin.Context) {
 
 	userId, err := uuid.Parse(c.GetString("user_id"))
 	if err != nil {
-		respondError(c, 400, "Bad Request, Error parse User Id")
+		RespondError(c, 400, "Bad Request, Error parse User Id")
 		return
 	}
 
 	role := c.GetString("role")
 	data, page, limit, err := d.documentService.Get_document_by_service(serviceId, userId, page, limit, role)
 	if err != nil {
-		respondError(c, 500, "Internal Server Error")
+		RespondError(c, 500, "Internal Server Error")
 		return
 	}
 
-	respondSuccess(c, 200, "Success", schemas.DocumentDataResponse{
+	RespondSuccess(c, 200, "Success", schemas.DocumentDataResponse{
 		Data:  data,
 		Page:  page,
 		Limit: limit,
@@ -248,7 +248,7 @@ func (d *DocumentHandler) Get_document_by_service_handler(c *gin.Context) {
 func (d *DocumentHandler) Get_document_by_assessment_handler(c *gin.Context) {
 	assessmentId, err := uuid.Parse(c.Param("assessment"))
 	if err != nil {
-		respondError(c, 400, "Bad Request, Error Parse assessment id")
+		RespondError(c, 400, "Bad Request, Error Parse assessment id")
 		return
 	}
 
@@ -257,18 +257,18 @@ func (d *DocumentHandler) Get_document_by_assessment_handler(c *gin.Context) {
 
 	userId, err := uuid.Parse(c.GetString("user_id"))
 	if err != nil {
-		respondError(c, 400, "Bad Request, error parse user id")
+		RespondError(c, 400, "Bad Request, error parse user id")
 		return
 	}
 
 	role := c.GetString("role")
 	data, page, limit, err := d.documentService.Get_document_by_assessment(assessmentId, userId, page, limit, role)
 	if err != nil {
-		respondError(c, 500, "Internal Server Error")
+		RespondError(c, 500, "Internal Server Error")
 		return
 	}
 
-	respondSuccess(c, 200, "Success", schemas.DocumentDataResponse{
+	RespondSuccess(c, 200, "Success", schemas.DocumentDataResponse{
 		Data:  data,
 		Page:  page,
 		Limit: limit,
@@ -278,7 +278,7 @@ func (d *DocumentHandler) Get_document_by_assessment_handler(c *gin.Context) {
 func (d *DocumentHandler) Get_document_by_createdBy_handler(c *gin.Context) {
 	userId, err := uuid.Parse(c.GetString("user_id"))
 	if err != nil {
-		respondError(c, 400, "Bad Request, Error parse user id")
+		RespondError(c, 400, "Bad Request, Error parse user id")
 		return
 	}
 
@@ -287,11 +287,11 @@ func (d *DocumentHandler) Get_document_by_createdBy_handler(c *gin.Context) {
 
 	data, page, limit, err := d.documentService.Get_document_by_createdBy(userId, page, limit)
 	if err != nil {
-		respondError(c, 500, "Internal Server Error")
+		RespondError(c, 500, "Internal Server Error")
 		return
 	}
 
-	respondSuccess(c, 200, "Success", schemas.DocumentDataResponse{
+	RespondSuccess(c, 200, "Success", schemas.DocumentDataResponse{
 		Data:  data,
 		Page:  page,
 		Limit: limit,
@@ -301,13 +301,13 @@ func (d *DocumentHandler) Get_document_by_createdBy_handler(c *gin.Context) {
 func (d *DocumentHandler) Create_document_handler(c *gin.Context) {
 	var req schemas.DocumentRequest
 	if err := c.ShouldBind(&req); err != nil {
-		respondError(c, 400, "Bad Request, Error parse multiform/form")
+		RespondError(c, 400, "Bad Request, Error parse multiform/form")
 		return
 	}
 
 	fileHeader, err := c.FormFile("uploadedFile")
 	if err != nil {
-		respondError(c, 400, "Bad Request, Error Getting File")
+		RespondError(c, 400, "Bad Request, Error Getting File")
 		return
 	}
 
@@ -327,38 +327,38 @@ func (d *DocumentHandler) Create_document_handler(c *gin.Context) {
 	}
 
 	if !allowedFile[fileExtension] {
-		respondError(c, 400, "Bad Request, File Not Allowed")
+		RespondError(c, 400, "Bad Request, File Not Allowed")
 		return
 	}
 
 	file, err := fileHeader.Open()
 	if err != nil {
-		respondError(c, 500, "Internal Server Error, Error Opening File")
+		RespondError(c, 500, "Internal Server Error, Error Opening File")
 		return
 	}
 	defer file.Close()
 
 	userId, err := uuid.Parse(c.GetString("user_id"))
 	if err != nil {
-		respondError(c, 400, "Bad Request, Error parse user id")
+		RespondError(c, 400, "Bad Request, Error parse user id")
 		return
 	}
 
 	buf := make([]byte, 512)
 	n, err := file.Read(buf)
 	if err != nil && err != io.EOF {
-		respondError(c, 500, "Internal Server Error, Error Reading File")
+		RespondError(c, 500, "Internal Server Error, Error Reading File")
 		return
 	}
 	detectedType := http.DetectContentType(buf[:n])
 
 	if !allowedMimeTypes[detectedType] {
-		respondError(c, 400, "Bad Request, File Content Doesn't Match Allowed Types")
+		RespondError(c, 400, "Bad Request, File Content Doesn't Match Allowed Types")
 		return
 	}
 
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		respondError(c, 500, "Internal Server Error, Error Seeking File")
+		RespondError(c, 500, "Internal Server Error, Error Seeking File")
 		return
 	}
 
@@ -366,29 +366,29 @@ func (d *DocumentHandler) Create_document_handler(c *gin.Context) {
 
 	result, err := d.documentService.Create_document(req, file, fileHeader.Filename, fileHeader.Size, fileHeader.Header.Get("Content-Type"), userId, role)
 	if err != nil {
-		respondError(c, 500, "Internal Server Error")
+		RespondError(c, 500, "Internal Server Error")
 		return
 	}
 
 	if !result.Status {
 		switch result.Message {
 		case "filename already exist":
-			respondError(c, 409, "Conflict, Filename already exist")
+			RespondError(c, 409, "Conflict, Filename already exist")
 		case "Not Authorized, service/standard/assessment is not under the current group":
-			respondError(c, 401, "Unauthorized, Access denied")
+			RespondError(c, 401, "Unauthorized, Access denied")
 		default:
-			respondError(c, 500, "Internal Server Error")
+			RespondError(c, 500, "Internal Server Error")
 		}
 		return
 	}
 
-	respondSuccess(c, 200, "Successfully uploaded file", nil)
+	RespondSuccess(c, 200, "Successfully uploaded file", nil)
 }
 
 func (d *DocumentHandler) Update_document_handler(c *gin.Context) {
 	var req schemas.UpdateRequest
 	if err := c.ShouldBind(&req); err != nil {
-		respondError(c, 400, "Bad Request, Error parse multiform/form")
+		RespondError(c, 400, "Bad Request, Error parse multiform/form")
 		return
 	}
 
@@ -418,19 +418,19 @@ func (d *DocumentHandler) Update_document_handler(c *gin.Context) {
 			file = nil
 			fileHeader = nil
 		} else {
-			respondError(c, 400, "Bad Request, Error getting file")
+			RespondError(c, 400, "Bad Request, Error getting file")
 			return
 		}
 	} else {
 		fileExtension := filepath.Ext(fileHeader.Filename)
 		if !allowedFile[fileExtension] {
-			respondError(c, 400, "Bad Request, File Not Allowed")
+			RespondError(c, 400, "Bad Request, File Not Allowed")
 			return
 		}
 
 		file, err = fileHeader.Open()
 		if err != nil {
-			respondError(c, 500, "Internal Server Error, Error Opening File")
+			RespondError(c, 500, "Internal Server Error, Error Opening File")
 			return
 		}
 		defer file.Close()
@@ -438,18 +438,18 @@ func (d *DocumentHandler) Update_document_handler(c *gin.Context) {
 		buf := make([]byte, 512)
 		n, err := file.Read(buf)
 		if err != nil && err != io.EOF {
-			respondError(c, 500, "Internal Server Error, Error Reading File")
+			RespondError(c, 500, "Internal Server Error, Error Reading File")
 			return
 		}
 		detectedType := http.DetectContentType(buf[:n])
 
 		if !allowedMimeTypes[detectedType] {
-			respondError(c, 400, "Bad Request, File Content Doesn't Match Allowed Types")
+			RespondError(c, 400, "Bad Request, File Content Doesn't Match Allowed Types")
 			return
 		}
 
 		if _, err := file.Seek(0, io.SeekStart); err != nil {
-			respondError(c, 500, "Internal Server Error, Error Seeking File")
+			RespondError(c, 500, "Internal Server Error, Error Seeking File")
 			return
 		}
 
@@ -459,76 +459,76 @@ func (d *DocumentHandler) Update_document_handler(c *gin.Context) {
 
 	userId, err := uuid.Parse(c.GetString("user_id"))
 	if err != nil {
-		respondError(c, 400, "Bad Request, Error parse user id")
+		RespondError(c, 400, "Bad Request, Error parse user id")
 		return
 	}
 	userRole := c.GetString("role")
 
 	result, err := d.documentService.Update_document(req, file, fileSize, contentType, userId, userRole)
 	if err != nil {
-		respondError(c, 500, "Internal Server Error")
+		RespondError(c, 500, "Internal Server Error")
 		return
 	}
 
 	if !result.Status {
 		switch result.Message {
 		case "Cannot Edit Approved Document":
-			respondError(c, 409, "Conflict, Cannot edit Approved document")
+			RespondError(c, 409, "Conflict, Cannot edit Approved document")
 		case "Unauthorized: cannot edit this document":
-			respondError(c, 401, "Unauthorized, Access Denied")
+			RespondError(c, 401, "Unauthorized, Access Denied")
 		default:
-			respondError(c, 500, "Internal Server Error")
+			RespondError(c, 500, "Internal Server Error")
 		}
 		return
 	}
 
-	respondSuccess(c, 200, "Success Updating File", nil)
+	RespondSuccess(c, 200, "Success Updating File", nil)
 }
 
 func (d *DocumentHandler) Delete_document_handler(c *gin.Context) {
 	documentId, err := uuid.Parse(c.Param("documentId"))
 	if err != nil {
-		respondError(c, 400, "Bad Request, Error parse Document Id")
+		RespondError(c, 400, "Bad Request, Error parse Document Id")
 		return
 	}
 
 	userId, err := uuid.Parse(c.GetString("user_id"))
 	if err != nil {
-		respondError(c, 400, "Bad Request, Error parse User id")
+		RespondError(c, 400, "Bad Request, Error parse User id")
 		return
 	}
 	userRole := c.GetString("role")
 
 	result, err := d.documentService.Delete_document(documentId, userId, userRole)
 	if err != nil {
-		respondError(c, 500, "Internal Server Error")
+		RespondError(c, 500, "Internal Server Error")
 		return
 	}
 
 	if !result.Status {
-		respondError(c, 500, result.Message)
+		RespondError(c, 500, result.Message)
 		return
 	}
 
-	respondSuccess(c, 200, "Success Delete File", nil)
+	RespondSuccess(c, 200, "Success Delete File", nil)
 }
 
 func (d *DocumentHandler) Approval_document_handler(c *gin.Context) {
 	var req schemas.ApprovalRequest
 	if err := c.ShouldBind(&req); err != nil {
-		respondError(c, 400, "Bad Request, Error parse Multiform/form")
+		RespondError(c, 400, "Bad Request, Error parse Multiform/form")
 		return
 	}
 
 	documentId, err := uuid.Parse(req.DocumentId)
 	if err != nil {
-		respondError(c, 400, "Bad Request, Error Parse document id")
+		RespondError(c, 400, "Bad Request, Error Parse document id")
 		return
 	}
 
 	userId, err := uuid.Parse(c.GetString("user_id"))
 	if err != nil {
-		respondError(c, 400, "Bad Request, Error parse User id")
+		RespondError(c, 400, "Bad Request, Error parse User id")
 		return
 	}
 
@@ -555,13 +555,13 @@ func (d *DocumentHandler) Approval_document_handler(c *gin.Context) {
 		}
 
 		if !allowedFile[fileExtension] {
-			respondError(c, 400, "Bad Request, File Not Allowed")
+			RespondError(c, 400, "Bad Request, File Not Allowed")
 			return
 		}
 
 		f, err := fileHeader.Open()
 		if err != nil {
-			respondError(c, 400, "Bad Request, Error Getting File")
+			RespondError(c, 400, "Bad Request, Error Getting File")
 			return
 		}
 		defer f.Close()
@@ -569,18 +569,18 @@ func (d *DocumentHandler) Approval_document_handler(c *gin.Context) {
 		buf := make([]byte, 512)
 		n, err := f.Read(buf)
 		if err != nil && err != io.EOF {
-			respondError(c, 500, "Internal Server Error, Error Reading File")
+			RespondError(c, 500, "Internal Server Error, Error Reading File")
 			return
 		}
 		detectedType := http.DetectContentType(buf[:n])
 
 		if !allowedMimeTypes[detectedType] {
-			respondError(c, 400, "Bad Request, File Content Doesn't Match Allowed Types")
+			RespondError(c, 400, "Bad Request, File Content Doesn't Match Allowed Types")
 			return
 		}
 
 		if _, err := f.Seek(0, io.SeekStart); err != nil {
-			respondError(c, 500, "Internal Server Error, Error Seeking File")
+			RespondError(c, 500, "Internal Server Error, Error Seeking File")
 			return
 		}
 
@@ -591,36 +591,36 @@ func (d *DocumentHandler) Approval_document_handler(c *gin.Context) {
 
 	result, err := d.documentService.Approval_document(documentId, userId, req.Status, file, fileSize, contentType)
 	if err != nil {
-		respondError(c, 500, "Internal Server Error")
+		RespondError(c, 500, "Internal Server Error")
 		return
 	}
 
 	if !result.Status {
 		switch result.Message {
 		case "Document integrity check failed. The file hash does not match the original document fingerprint":
-			respondError(c, 400, "Bad Request, File hash does not match the original document fingerprint")
+			RespondError(c, 400, "Bad Request, File hash does not match the original document fingerprint")
 		default:
-			respondError(c, 500, "Internal Server Error")
+			RespondError(c, 500, "Internal Server Error")
 		}
 		return
 	}
 
-	respondSuccess(c, 200, "Success Document approval", nil)
+	RespondSuccess(c, 200, "Success Document approval", nil)
 }
 
 func (h *DocumentHandler) GetStats(c *gin.Context) {
 	userId, err := uuid.Parse(c.GetString("user_id"))
 	if err != nil {
-		respondError(c, 400, "Bad Request, Error parse user id")
+		RespondError(c, 400, "Bad Request, Error parse user id")
 		return
 	}
 
 	role := c.GetString("role")
 	result, err := h.documentService.GetStats(userId, role)
 	if err != nil {
-		respondError(c, 500, "Internal Server Error")
+		RespondError(c, 500, "Internal Server Error")
 		return
 	}
 
-	respondSuccess(c, 200, "Getting Current Stats", result)
+	RespondSuccess(c, 200, "Getting Current Stats", result)
 }
