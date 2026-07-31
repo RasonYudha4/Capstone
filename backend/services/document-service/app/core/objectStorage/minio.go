@@ -7,6 +7,7 @@ import (
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/minio/minio-go/v7/pkg/sse"
 )
 
 func InitMinio() (*minio.Client, error) {
@@ -47,6 +48,13 @@ func CreateBuckets(client *minio.Client) error {
 			return err
 		}
 		log.Printf("bucket %s created\n", bucket)
+
+		encryptionConfig := sse.NewConfigurationSSEKMS(os.Getenv("KMS_KEY_ID"))
+		if err := client.SetBucketEncryption(ctx, bucket, encryptionConfig); err != nil {
+			return err
+		}
+
+		log.Printf("SSE-S3 encryption set for bucket %s\n", bucket)
 	}
 
 	return nil
