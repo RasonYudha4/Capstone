@@ -2,218 +2,282 @@ package services
 
 import (
 	"bytes"
-	"capstone/app/core/utils"
-	"capstone/app/repositories"
-	"capstone/app/schemas"
 	"context"
 	"crypto/hmac"
 	"fmt"
 	"io"
 	"log"
-	"mime/multipart"
 	"time"
+
+	"capstone/app/core/utils"
+	"capstone/app/repositories"
+	"capstone/app/schemas"
 
 	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7"
 )
+
 type DocumentService struct {
-	repo *repositories.DocumentRepo
-	audit *repositories.AuditRepo
-	storage *repositories.StorageRepo
+	repo         *repositories.DocumentRepo
+	audit        *repositories.AuditRepo
+	storage      *repositories.StorageRepo
 	notification *NotificationService
 }
 
-func NewDocumentService(repo *repositories.DocumentRepo, audit *repositories.AuditRepo, storage *repositories.StorageRepo, notification *NotificationService) *DocumentService{
+func NewDocumentService(repo *repositories.DocumentRepo, audit *repositories.AuditRepo, storage *repositories.StorageRepo, notification *NotificationService) *DocumentService {
 	return &DocumentService{
-		repo : repo,
-		audit : audit,
-		storage : storage,
+		repo:         repo,
+		audit:        audit,
+		storage:      storage,
 		notification: notification,
 	}
 }
 
-func pageLimit(page, limit int)(int, int, int){
+func pageLimit(page, limit int) (int, int, int) {
 	if page < 1 {
 		page = 1
 	}
-
 	if limit < 1 || limit > 10 {
 		limit = 10
 	}
-
 	offset := (page - 1) * limit
-
 	return page, limit, offset
 }
 
-func return_Internal_error()(schemas.Response, error){
+func return_Internal_error() (schemas.Response, error) {
 	return schemas.Response{
-		Status: false,
+		Status:  false,
 		Message: "Internal Server Error",
 	}, nil
 }
 
-func (d *DocumentService) Get_Document(page,limit int)([]schemas.DocumentResponse,error){
+func (d *DocumentService) Get_Document(page, limit int) ([]schemas.DocumentResponse, error) {
 	page, limit, offset := pageLimit(page, limit)
-	
-	docs, err := d.repo.GetDocuments(limit, offset)
-	if err != nil{
-		return nil, err
-	}
-	return docs, nil
+	return d.repo.GetDocuments(limit, offset)
 }
 
-func (d *DocumentService) Get_public_document_by_id(documentId uuid.UUID, role string)(string, error){
-	filepath,_, err := d.repo.Get_document_by_id(documentId,uuid.Nil, role)
-	if err != nil{
-		return "", err
-	}
-	return filepath, nil
-}
-
-func (d *DocumentService) Get_document_by_id(ctx context.Context, documentId, createdById uuid.UUID, role string)(*minio.Object, *minio.ObjectInfo, error){
-	filePath, _ ,err := d.repo.Get_document_by_id(documentId,createdById, role)
+func (d *DocumentService) Get_public_document_by_id(documentId uuid.UUID, role string) (schemas.Response,string, string, error) {
+	storedHash, err := d.repo.Check_document_hash(documentId)
 	if err != nil {
-    	return nil,nil, err
-	}
-	if filePath == "" {
-    	return nil, nil, err
+		return schemas.Response{},"","", err
 	}
 
-	log.Printf("StreamDocument — filePath: '%s'", filePath)
-	_, err = d.audit.SaveAudit("open","Opening File ",createdById,documentId,"client",time.Now(),time.Now())
+	objectId, err := d.repo.Get_object_id(documentId)
 	if err != nil {
-		log.Print("Error saving open audit activty")
+		return schemas.Response{},"","", err
 	}
-	
-	object, stat, err := d.storage.GetMinioObject(ctx, filePath)
-    if err != nil {
-        return nil, nil, err
-    }
-	return object,stat, nil
+
+	filepath, err := d.repo.Get_document_filePath(documentId)
+	if err != nil {
+		return schemas.Response{},"","", err
+	}
+
+	objectHash, err := d.storage.GenerateObjectHMAC(objectId, filepath)
+	if err != nil {
+		return schemas.Response{},"","", err
+	}
+	log.Print(storedHash)
+	log.Print(objectId)
+	log.Print(filepath)
+	log.Print(objectHash)
+
+	if !hmac.Equal([]byte(storedHash), []byte(objectHash)) {
+		return schemas.Response{
+			Status:  false,
+			Message: "Document integrity check failed. The file hash does not match the original document fingerprint",
+		}, "","", nil
+	}
+
+	objectId, isPublic, err := d.repo.Get_document_by_id(documentId, uuid.Nil, role)
+	if err != nil {
+		return schemas.Response{}, "", "", err
+	}
+
+	url, contentType, err := d.storage.Get_document_presign(objectId, isPublic)
+	if err != nil {
+		log.Print("error getting presigned url: ", err)
+		return schemas.Response{}, "", "", err
+	}
+	return schemas.Response{Status: true, Message: "Success", }, url, contentType, nil
 }
 
-func (d *DocumentService) Get_document_by_status(status string, page,limit int)([]schemas.DocumentResponse, int, int, error){
-	page,limit,offset:= pageLimit(page, limit)
+func (d *DocumentService) Get_document_by_id(ctx context.Context, documentId, createdById uuid.UUID, role string) (schemas.Response,io.ReadCloser, *minio.ObjectInfo, error) {
+	storedHash, err := d.repo.Check_document_hash(documentId)
+	if err != nil {
+		return schemas.Response{}, nil, nil, err
+	}
+
+	objectId, err := d.repo.Get_object_id(documentId)
+	if err != nil {
+		return schemas.Response{}, nil, nil, err
+	}
+
+	filepath, err := d.repo.Get_document_filePath(documentId)
+	if err != nil {
+		return schemas.Response{},	nil,nil, err
+	}
+
+	objectHash, err := d.storage.GenerateObjectHMAC(objectId, filepath)
+	if err != nil {
+		return schemas.Response{},nil,nil, err
+	}
+
+	if !hmac.Equal([]byte(storedHash), []byte(objectHash)) {
+		return schemas.Response{
+			Status:  false,
+			Message: "Document integrity check failed. The file hash does not match the original document fingerprint",
+		}, nil,nil, nil
+	}
+	
+	_, _, err = d.repo.Get_document_by_id(documentId, createdById, role)
+	if err != nil {
+		return schemas.Response{}, nil, nil, err
+	}
+
+	filepath, err = d.repo.Get_document_filePath(documentId)
+	if err != nil {
+		return	schemas.Response{}, nil, nil, fmt.Errorf("error getting filepath for document %s: %w", documentId, err)
+	}
+
+	if _, err := d.audit.SaveAudit("open", "Opening File", createdById, documentId, "client", time.Now(), time.Now()); err != nil {
+		log.Print("error saving open audit activity: ", err)
+	}
+
+	object, stat, err := d.storage.GetMinioObject(ctx, filepath)
+	if err != nil {
+		log.Print("error getting document stream: ", err)
+		return schemas.Response{},nil, nil, err
+	}
+	return schemas.Response{
+		Status: true,
+		Message: "Success",
+	},object, stat, nil
+}
+
+func (d *DocumentService) Get_document_by_status(status string, page, limit int) ([]schemas.DocumentResponse, int, int, error) {
+	page, limit, offset := pageLimit(page, limit)
 	docs, err := d.repo.Get_document_by_status(status, limit, offset)
 	if err != nil {
 		return []schemas.DocumentResponse{}, 0, 0, err
 	}
-
 	return docs, page, limit, nil
 }
 
 func (d *DocumentService) Get_documents_by_type(page, limit int) ([]schemas.DocumentResponse, int, int, error) {
 	page, limit, offset := pageLimit(page, limit)
-
 	docs, err := d.repo.Get_documents_by_type(limit, offset)
 	if err != nil {
 		return []schemas.DocumentResponse{}, 0, 0, err
 	}
-
 	return docs, page, limit, nil
 }
 
-func (d *DocumentService) Get_document_by_group(groupId uuid.UUID, page, limit int)([]schemas.DocumentResponse, int, int, error){
-	page, limit, offset := pageLimit(page,limit)
+func (d *DocumentService) Get_document_by_group(groupId uuid.UUID, page, limit int) ([]schemas.DocumentResponse, int, int, error) {
+	page, limit, offset := pageLimit(page, limit)
 	docs, err := d.repo.Get_document_by_group(groupId, limit, offset)
-	if err != nil {
-		return 	[]schemas.DocumentResponse{}, 0,0, err
-	}
-	return docs, page, limit, nil
-}
-
-func(d *DocumentService) Get_document_by_standard(standardId,createdById uuid.UUID, page, limit int, role string)([]schemas.DocumentResponse, int, int, error){
-	page, limit, offset := pageLimit(page,limit)
-	docs, err := d.repo.Get_document_by_standard(standardId,createdById ,limit,offset, role)
-	if err != nil {
-		return []schemas.DocumentResponse{}, 0,0, err
-	}
-	return docs,page,limit, nil
-}
-
-func (d *DocumentService) Get_document_by_service(serviceId,createdById uuid.UUID, page,limit int, role string)([]schemas.DocumentResponse, int, int, error){
-	page, limit, offset := pageLimit(page,limit)
-	docs, err := d.repo.Get_document_by_service(serviceId,createdById,limit, offset, role)
 	if err != nil {
 		return []schemas.DocumentResponse{}, 0, 0, err
 	}
-	return docs, page,limit,nil
+	return docs, page, limit, nil
 }
 
-func (d *DocumentService) Get_document_by_assessment(assessmentId,createdById uuid.UUID, page, limit int, role string)([]schemas.DocumentResponse, int,int,error){
+func (d *DocumentService) Get_document_by_standard(standardId, createdById uuid.UUID, page, limit int, role string) ([]schemas.DocumentResponse, int, int, error) {
 	page, limit, offset := pageLimit(page, limit)
-	docs, err := d.repo.Get_document_by_assessment(assessmentId,createdById ,limit, offset, role )
-	if err != nil{
-		return []schemas.DocumentResponse{}, 0,0, err
+	docs, err := d.repo.Get_document_by_standard(standardId, createdById, limit, offset, role)
+	if err != nil {
+		return []schemas.DocumentResponse{}, 0, 0, err
 	}
-	return docs, page,limit, nil
+	return docs, page, limit, nil
 }
 
-func(d *DocumentService) Get_document_by_createdBy(createdById uuid.UUID, page, limit int)([]schemas.DocumentResponse, int, int, error){
-	page, limit, offset := pageLimit(page,limit)
+func (d *DocumentService) Get_document_by_service(serviceId, createdById uuid.UUID, page, limit int, role string) ([]schemas.DocumentResponse, int, int, error) {
+	page, limit, offset := pageLimit(page, limit)
+	docs, err := d.repo.Get_document_by_service(serviceId, createdById, limit, offset, role)
+	if err != nil {
+		return []schemas.DocumentResponse{}, 0, 0, err
+	}
+	return docs, page, limit, nil
+}
+
+func (d *DocumentService) Get_document_by_assessment(assessmentId, createdById uuid.UUID, page, limit int, role string) ([]schemas.DocumentResponse, int, int, error) {
+	page, limit, offset := pageLimit(page, limit)
+	docs, err := d.repo.Get_document_by_assessment(assessmentId, createdById, limit, offset, role)
+	if err != nil {
+		return []schemas.DocumentResponse{}, 0, 0, err
+	}
+	return docs, page, limit, nil
+}
+
+func (d *DocumentService) Get_document_by_createdBy(createdById uuid.UUID, page, limit int) ([]schemas.DocumentResponse, int, int, error) {
+	page, limit, offset := pageLimit(page, limit)
 	docs, err := d.repo.Get_document_by_createdBy(createdById, limit, offset)
 	if err != nil {
-		return []schemas.DocumentResponse{}, 0, 0 , err
+		return []schemas.DocumentResponse{}, 0, 0, err
 	}
-	return docs, page,limit, nil
+	return docs, page, limit, nil
 }
 
-func (d *DocumentService) Create_document(req schemas.DocumentRequest, file multipart.File, header *multipart.FileHeader, createdById uuid.UUID, role string) (schemas.Response, error) {
+func (d *DocumentService) Create_document(req schemas.DocumentRequest, file io.Reader, fileName string, fileSize int64, contentType string, createdById uuid.UUID, role string) (schemas.Response, error) {
 	documentTypeId, err := uuid.Parse(req.DocumentTypeId)
-	if err != nil{
-		log.Print("Error Parsing document type id: ", err)
-		return_Internal_error()
+	if err != nil {
+		log.Print("error parsing document type id: ", err)
+		return return_Internal_error()
+	}
+	assessmentId, err := uuid.Parse(req.AssessmentId)
+	if err != nil {
+		log.Print("error parsing assessment id: ", err)
+		return return_Internal_error()
+	}
+	serviceId, err := uuid.Parse(req.ServicesId)
+	if err != nil {
+		log.Print("error parsing service id: ", err)
+		return return_Internal_error()
+	}
+	standardId, err := uuid.Parse(req.StandardId)
+	if err != nil {
+		log.Print("error parsing standard id: ", err)
+		return return_Internal_error()
 	}
 
 	groupId, err := d.repo.Get_group_id_by_serviceId(req.ServicesId)
-	if err != nil{
+	if err != nil {
 		log.Print("error getting group id: ", err)
-		return_Internal_error()
+		return return_Internal_error()
 	}
 
 	isSameName, err := d.repo.Check_document_name(req.FileName, groupId)
 	if err != nil {
 		log.Print("error checking same file name: ", err)
-		return_Internal_error()
+		return return_Internal_error()
 	}
-
-	if isSameName{
+	if isSameName {
 		return schemas.Response{
-			Status : false,
+			Status:  false,
 			Message: "filename already exist",
 		}, nil
 	}
 
 	isPublic, err := d.repo.Is_public_document(documentTypeId)
-	if err != nil{
-		log.Print("error document is public check ", err)
-		return_Internal_error()
-	}
-
-	fileBytes, _ := io.ReadAll(file)
-	fileHash := utils.GenerateHMAC(fileBytes)
-	
-	var filepath string 
-	objectId := uuid.NewString()
-	fileSize := header.Size
-	contentType := header.Header.Get("Content-Type")
-	
-	if isPublic {
-		filepath, err = d.storage.Upload_document(bytes.NewReader(fileBytes), objectId, isPublic, fileSize, contentType)
-	}else{
-		filepath, err = d.storage.Upload_document(bytes.NewReader(fileBytes), objectId, isPublic, fileSize, contentType)
-	}
-
 	if err != nil {
-		log.Print("error upload document do object storage: ", err)
-		return_Internal_error()
+		log.Print("error checking if document type is public: ", err)
+		return return_Internal_error()
 	}
-	
-	assessmentId, _ := uuid.Parse(req.AssessmentId)
-	serviceId, _ := uuid.Parse(req.ServicesId)
-	standardId, _ := uuid.Parse(req.StandardId)
-	document_Id, isCreated, isAuthorized, err := d.repo.Create_document(
+
+	fileBytes, err := io.ReadAll(file)
+	if err != nil {
+		log.Print("error reading uploaded file: ", err)
+		return return_Internal_error()
+	}
+	fileHash := utils.GenerateHMAC(fileBytes)
+	objectId := uuid.NewString()
+
+	filepath, err := d.storage.Upload_document(bytes.NewReader(fileBytes), objectId, isPublic, fileSize, contentType)
+	if err != nil {
+		log.Print("error uploading document to object storage: ", err)
+		return return_Internal_error()
+	}
+
+	documentIdStr, isCreated, isAuthorized, err := d.repo.Create_document(
 		assessmentId,
 		documentTypeId,
 		createdById,
@@ -226,15 +290,14 @@ func (d *DocumentService) Create_document(req schemas.DocumentRequest, file mult
 		role,
 		isPublic,
 	)
-	documentId, _ := uuid.Parse(document_Id)
-
 	if err != nil {
 		d.storage.Delete_document(filepath)
-		log.Print("error inerting data into database: ", err)
-		return_Internal_error()
+		log.Print("error inserting document into database: ", err)
+		return return_Internal_error()
 	}
 
 	if !isAuthorized {
+		d.storage.Delete_document(filepath)
 		return schemas.Response{
 			Status:  false,
 			Message: "Not Authorized, service/standard/assessment is not under the current group",
@@ -243,22 +306,31 @@ func (d *DocumentService) Create_document(req schemas.DocumentRequest, file mult
 
 	if !isCreated {
 		d.storage.Delete_document(filepath)
-		_, err = d.audit.SaveAudit("error", "error inserting data into database", createdById, documentId, "system", time.Now(), time.Now())
-		log.Print("Error inserting data, data is not inserted: ", err)
-		return_Internal_error()
-	}
-		
-	filename, err := d.audit.SaveAudit("insert", "Upload new document", createdById, documentId, "client", time.Now(), time.Now())
-	if err != nil {
-		log.Print("Error adding create log: ", err)
-	}
-	
-	adminEmail, adminId, err := d.repo.Get_admin_email()
-	if err != nil {
-		log.Print("Error getting master admin email", err)
+		if _, auditErr := d.audit.SaveAudit("error", "error inserting data into database", createdById, uuid.Nil, "system", time.Now(), time.Now()); auditErr != nil {
+			log.Print("error saving audit log: ", auditErr)
+		}
+		return return_Internal_error()
 	}
 
-	go d.TriggerIngestEvidence(bytes.NewReader(fileBytes), header.Filename, req, document_Id)
+	documentId, err := uuid.Parse(documentIdStr)
+	if err != nil {
+		log.Print("error parsing created document id: ", err)
+		return return_Internal_error()
+	}
+
+	filename, err := d.audit.SaveAudit("insert", "Upload new document", createdById, documentId, "client", time.Now(), time.Now())
+	if err != nil {
+		log.Print("error saving create audit log: ", err)
+	}
+
+	adminEmail, adminId, err := d.repo.Get_admin_email()
+	if err != nil {
+		log.Print("error getting master admin email: ", err)
+	}
+
+	uploaderEmail, _, _ := d.repo.Get_document_owner_email(documentId)
+
+	go d.TriggerIngestEvidence(bytes.NewReader(fileBytes), fileName, req, documentIdStr)
 
 	go func() {
 		d.notification.NotifyDeptHead(adminEmail, filename)
@@ -269,35 +341,34 @@ func (d *DocumentService) Create_document(req schemas.DocumentRequest, file mult
 		Type:       "new_document",
 		DocumentId: documentId.String(),
 		Status:     "Pending",
-		Message:    fmt.Sprintf("A new document (%s) requires your approval", req.FileName),
+		Message:    fmt.Sprintf("A new document (%s by %s) requires your approval", req.FileName, uploaderEmail),
 	})
 
 	return schemas.Response{
 		Status:  true,
-		Message: "Successfull adding document",
+		Message: "Successfully added document",
 	}, nil
 }
 
-func(d *DocumentService) Update_document(req schemas.UpdateRequest, file multipart.File, header *multipart.FileHeader,createdById uuid.UUID, userRole string)(schemas.Response, error){
+func (d *DocumentService) Update_document(req schemas.UpdateRequest, file io.Reader, fileSize int64, contentType string, createdById uuid.UUID, userRole string) (schemas.Response, error) {
 	documentId, err := uuid.Parse(req.DocumentId)
 	if err != nil {
 		return schemas.Response{Status: false, Message: "Invalid document ID"}, err
 	}
 
-	isApproved, err := d.repo.Document_is_approved(documentId)
+	status, err := d.repo.Document_is_approved(documentId)
 	if err != nil {
-		log.Print("error", err)
 		return schemas.Response{}, err
 	}
 
-	if isApproved {
+	if status == "approved" || status == "pending" {
 		return schemas.Response{
-			Status: false,
-			Message: "Cannot Edit Approved Document",
+			Status:  false,
+			Message: "Cannot Edit Approved/pending Document",
 		}, nil
 	}
-	
-	if userRole != "master-admin" {
+
+	if userRole == "admin" {
 		authorized, err := d.repo.Check_document_owner(documentId, createdById)
 		if err != nil {
 			return schemas.Response{Status: false, Message: "Authorization check failed"}, err
@@ -308,157 +379,148 @@ func(d *DocumentService) Update_document(req schemas.UpdateRequest, file multipa
 	}
 
 	oldFilePath, err := d.repo.Get_document_filePath(documentId)
-	if err != nil{
+	if err != nil {
 		return schemas.Response{}, err
 	}
 
-	hasfile := file != nil
-	hasfileName := req.FileName != ""
-	
-	objectId, _  := d.repo.Get_object_id(documentId)
-
-	var newFileName,updatedHash, filePath string
-	if hasfile && hasfileName{	
-		newFileName, updatedHash,filePath, err = d.storage.Update_document(file,header,oldFilePath, req.FileName, objectId)
-		if err != nil{
-			return schemas.Response{}, err
-		}
-	}else if hasfile{
-		newFileName,updatedHash, filePath, err = d.storage.Update_documentFile(file,header,oldFilePath, objectId)
-		if err != nil {
-			return schemas.Response{}, err
-		}
-	}else if hasfileName{
-		newFileName, filePath, err = d.storage.Update_documentName(oldFilePath, req.FileName)
-		if err != nil{
-			return schemas.Response{}, err 
-		}
-	}else {
-		newFileName = ""
-		filePath = ""
+	objectId, err := d.repo.Get_object_id(documentId)
+	if err != nil {
+		return schemas.Response{}, err
 	}
-	log.Print(updatedHash, "update")
 
- 	result, err := d.repo.Update_document(documentId,createdById,newFileName,filePath, req.Description, updatedHash)
-	if err != nil{
-		log.Print("Error updating file :", err)
+	var updatedHash, filePath string
+	hasFile := file != nil
+	hasFileName := req.FileName != ""
+	newFileName := req.FileName
+
+	switch {
+	case hasFile && hasFileName:
+		newFileName, updatedHash, filePath, err = d.storage.Update_document(file, fileSize, contentType, oldFilePath, req.FileName, objectId)
+	case hasFile:
+		newFileName, updatedHash, filePath, err = d.storage.Update_documentFile(file, fileSize, contentType, oldFilePath, objectId)
+	}
+	if err != nil {
+		return schemas.Response{}, err
+	}
+
+	result, err := d.repo.Update_document(documentId, createdById, newFileName, filePath, updatedHash)
+	if err != nil {
+		log.Print("error updating document: ", err)
 		return schemas.Response{Status: false, Message: "Error Updating document"}, nil
 	}
-
 	if result == 0 {
-		log.Print("Now row affected for document update :", err )
 		return schemas.Response{Status: false, Message: "Document not Found"}, nil
 	}
-
-	_, err = d.audit.SaveAudit("edit",fmt.Sprintf("Updating file %s", documentId), createdById, documentId,"client",time.Now(),time.Now())
-	if err != nil {
-		log.Print("Error adding update log: ", err)
+	if _, err := d.audit.SaveAudit("edit", fmt.Sprintf("Updating file %s", documentId), createdById, documentId, "client", time.Now(), time.Now()); err != nil {
+		log.Print("error adding update log: ", err)
 	}
-	return schemas.Response{Status: true, Message: "sucess update document"},  nil
+
+	return schemas.Response{Status: true, Message: "Success updating document"}, nil
 }
 
-
-func (d *DocumentService) Delete_document(documentId uuid.UUID, createdById uuid.UUID, userRole string)(schemas.Response, error){
-	filepath, isDeleted ,err := d.repo.Delete_document(documentId, createdById, userRole)
-	if err != nil{
-		log.Print("error delete document data",err)
-		return schemas.Response{},err
+func (d *DocumentService) Delete_document(documentId, createdById uuid.UUID, userRole string) (schemas.Response, error) {
+	filepath, isDeleted, err := d.repo.Delete_document(documentId, createdById, userRole)
+	if err != nil {
+		log.Print("error deleting document data: ", err)
+		return schemas.Response{}, err
 	}
-	
-	log.Print(isDeleted)
-	if !isDeleted{
+
+	if !isDeleted {
 		return schemas.Response{
-			Status: false,
+			Status:  false,
 			Message: "Document Not found",
 		}, nil
 	}
 
-	err = d.storage.Delete_document(filepath) 
-	log.Print("error gak nih ", err)
-	if err != nil{
-		log.Print("Error deleting document at the storage", err)
+	if err := d.storage.Delete_document(filepath); err != nil {
+		log.Print("error deleting document at the storage: ", err)
 	}
 
-	_, err = d.audit.SaveAudit("delete",fmt.Sprintf("Deleting file %s",documentId),createdById,documentId,"client",time.Now(),time.Now())
-	if err != nil{
+	if _, err := d.audit.SaveAudit("delete", fmt.Sprintf("Deleting file %s", documentId), createdById, documentId, "client", time.Now(), time.Now()); err != nil {
 		log.Print("error adding delete log: ", err)
 	}
 
 	return schemas.Response{
-		Status: true,
-		Message: "Sucess deleting document",
+		Status:  true,
+		Message: "Success deleting document",
 	}, nil
 }
 
-func (d *DocumentService) Approval_document(documentId, createdById uuid.UUID, status string, file multipart.File, fileHeader *multipart.FileHeader) (schemas.Response, error) {
-
+func (d *DocumentService) Approval_document(documentId, createdById uuid.UUID, status string, file io.Reader, fileSize int64, contentType string) (schemas.Response, error) {
 	storedHash, err := d.repo.Check_document_hash(documentId)
-	if err != nil{
+	if err != nil {
 		return schemas.Response{}, err
 	}
 
-	objectId, _  := d.repo.Get_object_id(documentId)
+	objectId, err := d.repo.Get_object_id(documentId)
+	if err != nil {
+		return schemas.Response{}, err
+	}
+
 	filepath, err := d.repo.Get_document_filePath(documentId)
-	objectHash, _ := d.storage.GenerateObjectHMAC(objectId, filepath)
-
-	if !hmac.Equal(
-		[]byte(storedHash),
-    	[]byte(objectHash),
-	){
-		return schemas.Response{
-			Status: false,
-			Message: "Document integrity check failed. The file hash does not match the original document fingerprint",
-		}, err
-	}
-
-	isApproved, err := d.repo.Document_is_approved(documentId)
-	if err != nil{
+	if err != nil {
 		return schemas.Response{}, err
 	}
 
-	if isApproved{
+	objectHash, err := d.storage.GenerateObjectHMAC(objectId, filepath)
+	if err != nil {
+		return schemas.Response{}, err
+	}
+
+	if !hmac.Equal([]byte(storedHash), []byte(objectHash)) {
 		return schemas.Response{
-			Status: false,
+			Status:  false,
+			Message: "Document integrity check failed. The file hash does not match the original document fingerprint",
+		}, nil
+	}
+
+	storedStatus, err := d.repo.Document_is_approved(documentId)
+	if err != nil {
+		return schemas.Response{}, err
+	}
+	if storedStatus == "approved" {
+		return schemas.Response{
+			Status:  false,
 			Message: "Cannot change status for approved document",
 		}, nil
 	}
 
 	var rows int64
-	if status == "approved" && file != nil && fileHeader != nil {
-		fileSize := fileHeader.Size
-		contentType := fileHeader.Header.Get("Content-Type") 
-
-    	filepath, _ := d.storage.Upload_document(file,objectId, false, fileSize, contentType)
-
-    	rows, err = d.repo.Approval_document(documentId, status, filepath, file)
-	}else {
-		
-		rows, err = d.repo.Approval_document(documentId, status, "",file)
+	if status == "approved" && file != nil {
+		uploadedPath, err := d.storage.Upload_document(file, objectId, false, fileSize, contentType)
+		if err != nil {
+			return schemas.Response{}, err
+		}
+		rows, err = d.repo.Approval_document(documentId, status, uploadedPath, file)
+		if err != nil {
+			return schemas.Response{}, err
+		}
+	} else {
+		rows, err = d.repo.Approval_document(documentId, status, "", file)
+		if err != nil {
+			return schemas.Response{}, err
+		}
 	}
-	
-	if err != nil {
-		return schemas.Response{}, err
-	}
 
-	if rows == 0 {	
+	if rows == 0 {
 		return schemas.Response{
 			Status:  false,
 			Message: "error updating document status or document not found",
 		}, nil
 	}
 
-	filename, err := d.audit.SaveAudit("update","Updating document status",createdById, documentId, "client", time.Now(), time.Now())
+	filename, err := d.audit.SaveAudit("update", "Updating document status", createdById, documentId, "client", time.Now(), time.Now())
 	if err != nil {
-		log.Print("error adding approval log: ", err)
+		log.Print("error saving approval audit log: ", err)
 	}
+
 	ownerEmail, ownerId, err := d.repo.Get_document_owner_email(documentId)
 	if err != nil {
-		log.Print("failed to get document owner email:", err)
+		log.Print("failed to get document owner email: ", err)
 	} else {
-		msg := fmt.Sprintf("Your Document (%s) is now %s", filename, status)
+		msg := fmt.Sprintf("Your Document (%s by %s) is now %s", filename, ownerEmail, status)
 
 		go d.notification.NotifyOwner(ownerEmail, filename, msg)
-
 		go d.notification.NotifySSE([]uuid.UUID{ownerId}, SSEEvent{
 			Type:       "document_status_update",
 			DocumentId: documentId.String(),
@@ -476,16 +538,14 @@ func (d *DocumentService) Approval_document(documentId, createdById uuid.UUID, s
 func (s *DocumentService) GetStats(createdById uuid.UUID, role string) (schemas.StatsResponse, error) {
 	groups, stat, err := s.repo.Get_stats(createdById, role)
 	if err != nil {
-		return schemas.StatsResponse{Status: false}, err
+		return schemas.StatsResponse{}, fmt.Errorf("get document stats: %w", err)
 	}
- 
+
 	total := stat.Approved + stat.Pending + stat.Rejected
- 
+
 	return schemas.StatsResponse{
-		Status: true,
 		Groups: groups,
 		Stats:  stat,
 		Total:  total,
 	}, nil
 }
-

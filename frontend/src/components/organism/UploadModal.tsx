@@ -3,6 +3,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { X, AlertCircle } from "lucide-react";
 import axios from "axios";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -134,6 +135,7 @@ export default function UploadModal({ open, onOpenChange }: UploadModalProps) {
         },
         file: pendingData.file,
       });
+      toast.success('Berkas berhasil diunggah.');
       setConfirmOpen(false);
       setPendingData(null);
       reset();
@@ -141,6 +143,7 @@ export default function UploadModal({ open, onOpenChange }: UploadModalProps) {
     } catch (error) {
       setConfirmOpen(false);
       setSubmitError(getErrorMessage(error));
+      toast.error('Gagal mengunggah berkas.');
     }
   };
 

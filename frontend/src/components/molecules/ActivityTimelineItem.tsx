@@ -5,7 +5,7 @@ interface ActivityTimelineItemProps {
     timeLabel: string
     actor: string
     action?: string
-    file: string
+    file: string | null
     isLast: boolean
 }
 

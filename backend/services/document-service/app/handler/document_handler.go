@@ -1,108 +1,130 @@
 package api
 
 import (
+	"errors"
+	"fmt"
+	"io"
+	"log"
+	"mime/multipart"
+	"net/http"
+	"path/filepath"
+	"strconv"
+
 	"capstone/app/schemas"
 	"capstone/app/services"
-	"log"
-	"strconv"
-	"net/http"
-	"mime/multipart"
-	"path/filepath"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"io"
-
 )
 
-type DocumentHandler struct{
-	documentService *services.DocumentService
+type DocumentHandler struct {
+	documentService     *services.DocumentService
 	notificationService *services.NotificationService
 }
 
-func NewDocumentHandler(document *services.DocumentService, notification *services.NotificationService) *DocumentHandler{
+func NewDocumentHandler(document *services.DocumentService, notification *services.NotificationService) *DocumentHandler {
 	return &DocumentHandler{
-		documentService : document,
-		notificationService : notification,
+		documentService:     document,
+		notificationService: notification,
 	}
 }
 
-// listResponse builds the paginated envelope expected by the frontend.
-func listResponse(c *gin.Context, docs []schemas.DocumentResponse, page, limit int) {
-	if docs == nil {
-		docs = []schemas.DocumentResponse{}
-	}
-	c.JSON(http.StatusOK, gin.H{
-		"status": true,
-		"data":   docs,
-		"page":   page,
-		"limit":  limit,
+func RespondError(c *gin.Context, httpStatus int, message string) {
+	c.JSON(httpStatus, schemas.ApiResponse{
+		Success:    false,
+		Message:    message,
+		StatusCode: httpStatus,
+		Data:       nil,
 	})
 }
 
-/*
-func (d *DocumentHandler)Get_all_documents_Handler(c *gin.Context) {
-    page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-    limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
-    
-    docs,err := d.documentService.Get_Document(page, limit)
-    if err != nil {
-        c.JSON(500, gin.H{"error": err.Error()})
-        return
-    }
-    
-    c.JSON(200, gin.H{
-        "data":   docs,
-        "page":   page,
-        "limit":  limit,
-    })
-}*/
-func(d *DocumentHandler) Get_public_document_by_id_handler(c *gin.Context){
+func RespondSuccess(c *gin.Context, httpStatus int, message string, data any) {
+	c.JSON(httpStatus, schemas.ApiResponse{
+		Success:    true,
+		Message:    message,
+		StatusCode: httpStatus,
+		Data:       data,
+	})
+}
+
+func (d *DocumentHandler) Get_public_document_by_id_handler(c *gin.Context) {
 	documentId, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(400, gin.H{"error" :"invalid Document ID"})
+		RespondError(c, 400, "Bad Request, Error parse document id")
 		return
 	}
 
-	filepath, err := d.documentService.Get_public_document_by_id(documentId, "public")
-	if err != nil{
-		c.JSON(500, gin.H{"error" : "Failed to get filepath"})
+	status,url, contentType, err := d.documentService.Get_public_document_by_id(documentId, "public")
+	if err != nil {
+		log.Print("error getting public document url: ", err)
+		RespondError(c, 500, "Failed Getting Url")
 		return
 	}
 
-	c.JSON(200, gin.H{
-		"url" : filepath,
+	if !status.Status{
+		switch status.Message{
+		case "Document integrity check failed. The file hash does not match the original document fingerprint":
+			RespondError(c, 409, status.Message)
+			return
+		default:
+			RespondError(c,500,"Internal Server Error")
+			return
+		}
+	}
+
+	RespondSuccess(c, 200, "Success getting Url", schemas.PresignedUrlResponse{
+		PresignedUrl: url,
+		ContentType:  contentType,
 	})
 }
 
 func (d *DocumentHandler) Get_document_by_id_handler(c *gin.Context) {
-    documentId, err := uuid.Parse(c.Param("id"))
-    if err != nil {
-        c.JSON(400, gin.H{"error": "Invalid document ID"})
-        return
-    }
+	documentId, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		RespondError(c, http.StatusBadRequest, "Bad Request, Error parse document id")
+		return
+	}
 
-    createdById, err := uuid.Parse(c.GetString("user_id"))
-    if err != nil {
-        c.JSON(400, gin.H{"error": "Invalid user ID"})
-        return
-    }
+	createdById, err := uuid.Parse(c.GetString("user_id"))
+	if err != nil {
+		RespondError(c, http.StatusBadRequest, "Bad Request, Error parse user id")
+		return
+	}
 
-    object, stat, err := d.documentService.Get_document_by_id(c.Request.Context(), documentId, createdById, c.GetString("role"))
-    if err != nil {
-		 log.Printf("StreamDocument error: %v", err) 
-        c.JSON(500, gin.H{"error": "Failed to stream document"})
-        return
-    }
-    defer object.Close()
-	 contentType := stat.ContentType
-	 log.Printf("streaming file: '%s', content-type: '%s', size: %d", stat.Key, contentType, stat.Size)
+	status,object, stat, err := d.documentService.Get_document_by_id(c.Request.Context(), documentId, createdById, c.GetString("role"))
+	if err != nil {
+		log.Printf("StreamDocument error: %v", err)
+		RespondError(c, http.StatusInternalServerError, "Failed to stream document")
+		return
+	}
+	defer object.Close()
 
-    c.Header("Content-Type", stat.ContentType)
-    c.Header("Content-Disposition", "inline; filename="+stat.Key)
-    c.Header("Content-Length", strconv.FormatInt(stat.Size, 10))
+	
+	if !status.Status{
+		switch status.Message{
+		case "Document integrity check failed. The file hash does not match the original document fingerprint":
+			RespondError(c, 409, status.Message)
+			return
+		default:
+			RespondError(c,500,"Internal Server Error")
+			return
+		}
+	}
 
-	log.Print(">>> ContentType from MinIO:", stat.ContentType) 
-    io.Copy(c.Writer, object)
+	contentType := stat.ContentType
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	log.Printf("streaming file: content-type: '%s', size: %d", contentType, stat.Size)
+
+	c.Header("Content-Type", contentType)
+	c.Header("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, stat.Key))
+	c.Header("Content-Length", strconv.FormatInt(stat.Size, 10))
+	c.Status(http.StatusOK)
+
+	if _, err := io.Copy(c.Writer, object); err != nil {
+		log.Printf("error streaming document to client: %v", err)
+	}
 }
 
 func (d *DocumentHandler) Get_document_by_status_handler(c *gin.Context) {
@@ -110,103 +132,119 @@ func (d *DocumentHandler) Get_document_by_status_handler(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 
-	status, page, limit, err := d.documentService.Get_document_by_status(statusParam, page, limit)
+	data, page, limit, err := d.documentService.Get_document_by_status(statusParam, page, limit)
 	if err != nil {
-		c.JSON(500, gin.H{"error": "Internal server error"})
+		RespondError(c, 500, "Internal Server Error")
 		return
 	}
-	listResponse(c, status, page, limit)
+	RespondSuccess(c, 200, "Success", schemas.DocumentDataResponse{
+		Data:  data,
+		Page:  page,
+		Limit: limit,
+	})
 }
 
 func (d *DocumentHandler) Get_document_by_type_handler(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 
-	docs, page, limit, err := d.documentService.Get_documents_by_type(page, limit)
+	data, page, limit, err := d.documentService.Get_documents_by_type(page, limit)
 	if err != nil {
-		log.Print("Error fetching public documents: ", err)
-		c.JSON(500, gin.H{"error": "Internal Server Error"})
+		RespondError(c, 500, "Internal Server Error")
 		return
 	}
 
-	listResponse(c, docs, page, limit)
+	RespondSuccess(c, 200, "Success", schemas.DocumentDataResponse{
+		Data:  data,
+		Page:  page,
+		Limit: limit,
+	})
 }
 
 func (d *DocumentHandler) Get_document_by_group_handler(c *gin.Context) {
 	groupId, err := uuid.Parse(c.Param("group"))
 	if err != nil {
-		log.Print("Error parse groupid uuid: ", err)
-		c.JSON(400, gin.H{"error": "Invalid group ID"})
+		RespondError(c, 400, "Bad Request, Error parse Group Id")
 		return
 	}
+
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 
-	group, page, limit, err := d.documentService.Get_document_by_group(groupId, page, limit)
+	data, page, limit, err := d.documentService.Get_document_by_group(groupId, page, limit)
 	if err != nil {
-		c.JSON(500, gin.H{"error": "Internal Server Error"})
+		RespondError(c, 500, "Internal Server Error")
 		return
 	}
-	listResponse(c, group, page, limit)
+	RespondSuccess(c, 200, "Success", schemas.DocumentDataResponse{
+		Data:  data,
+		Page:  page,
+		Limit: limit,
+	})
 }
 
 func (d *DocumentHandler) Get_document_by_standard_handler(c *gin.Context) {
 	standardId, err := uuid.Parse(c.Param("standard"))
 	if err != nil {
-		log.Print("error Parse standard uuid: ", err)
-		c.JSON(400, gin.H{"error": "Invalid standard ID"})
+		RespondError(c, 400, "Bad Request, Error parse Standard Id")
 		return
 	}
+
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 
 	userId, err := uuid.Parse(c.GetString("user_id"))
 	if err != nil {
-		log.Print("Error Parse user id: ", err)
-		c.JSON(400, gin.H{"error": "Invalid user ID"})
+		RespondError(c, 400, "Bad Request, Error parse User Id")
 		return
 	}
 
 	role := c.GetString("role")
-	standard, page, limit, err := d.documentService.Get_document_by_standard(standardId, userId, page, limit, role)
+	data, page, limit, err := d.documentService.Get_document_by_standard(standardId, userId, page, limit, role)
 	if err != nil {
-		c.JSON(500, gin.H{"error": "Internal server error"})
+		RespondError(c, 500, "Internal Server Error")
 		return
 	}
-	listResponse(c, standard, page, limit)
+	RespondSuccess(c, 200, "Success", schemas.DocumentDataResponse{
+		Data:  data,
+		Page:  page,
+		Limit: limit,
+	})
 }
 
 func (d *DocumentHandler) Get_document_by_service_handler(c *gin.Context) {
 	serviceId, err := uuid.Parse(c.Param("service"))
 	if err != nil {
-		log.Print("error parsing documentService uuid: ", err)
-		c.JSON(400, gin.H{"error": "Invalid service ID"})
+		RespondError(c, 400, "Bad Request, Error parse service id")
 		return
 	}
+
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 
 	userId, err := uuid.Parse(c.GetString("user_id"))
 	if err != nil {
-		log.Print("Error Parse user id: ", err)
-		c.JSON(400, gin.H{"error": "Invalid user ID"})
+		RespondError(c, 400, "Bad Request, Error parse User Id")
 		return
 	}
 
 	role := c.GetString("role")
-	service, page, limit, err := d.documentService.Get_document_by_service(serviceId, userId, page, limit, role)
+	data, page, limit, err := d.documentService.Get_document_by_service(serviceId, userId, page, limit, role)
 	if err != nil {
-		c.JSON(500, gin.H{"error": "Internal server error"})
+		RespondError(c, 500, "Internal Server Error")
 		return
 	}
-	listResponse(c, service, page, limit)
+	RespondSuccess(c, 200, "Success", schemas.DocumentDataResponse{
+		Data:  data,
+		Page:  page,
+		Limit: limit,
+	})
 }
 
 func (d *DocumentHandler) Get_document_by_assessment_handler(c *gin.Context) {
 	assessmentId, err := uuid.Parse(c.Param("assessment"))
 	if err != nil {
-		log.Print("error parse assessment uuid: ", err)
-		c.JSON(400, gin.H{"error": "Invalid assessment ID"})
+		RespondError(c, 400, "Bad Request, Error Parse assessment id")
 		return
 	}
 
@@ -215,263 +253,369 @@ func (d *DocumentHandler) Get_document_by_assessment_handler(c *gin.Context) {
 
 	userId, err := uuid.Parse(c.GetString("user_id"))
 	if err != nil {
-		log.Print("Error Parse user id: ", err)
-		c.JSON(400, gin.H{"error": "Invalid user ID"})
+		RespondError(c, 400, "Bad Request, error parse user id")
 		return
 	}
 
 	role := c.GetString("role")
-	assessment, page, limit, err := d.documentService.Get_document_by_assessment(assessmentId, userId, page, limit, role)
+	data, page, limit, err := d.documentService.Get_document_by_assessment(assessmentId, userId, page, limit, role)
 	if err != nil {
-		c.JSON(500, gin.H{"error": "Internal server error"})
+		RespondError(c, 500, "Internal Server Error")
 		return
 	}
-	listResponse(c, assessment, page, limit)
+	RespondSuccess(c, 200, "Success", schemas.DocumentDataResponse{
+		Data:  data,
+		Page:  page,
+		Limit: limit,
+	})
 }
 
 func (d *DocumentHandler) Get_document_by_createdBy_handler(c *gin.Context) {
 	userId, err := uuid.Parse(c.GetString("user_id"))
 	if err != nil {
-		log.Print("error parsing user_id from token: ", err)
-		c.JSON(500, gin.H{"error": "unauthorized"})
+		RespondError(c, 400, "Bad Request, Error parse user id")
 		return
 	}
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 
-	docs, page, limit, err := d.documentService.Get_document_by_createdBy(userId, page, limit)
+	data, page, limit, err := d.documentService.Get_document_by_createdBy(userId, page, limit)
 	if err != nil {
-		c.JSON(500, gin.H{"error": "internal server error"})
+		RespondError(c, 500, "Internal Server Error")
 		return
 	}
 
-	listResponse(c, docs, page, limit)
+	RespondSuccess(c, 200, "Success", schemas.DocumentDataResponse{
+		Data:  data,
+		Page:  page,
+		Limit: limit,
+	})
 }
 
 func (d *DocumentHandler) Create_document_handler(c *gin.Context) {
 	var req schemas.DocumentRequest
 	if err := c.ShouldBind(&req); err != nil {
-		log.Print("error parse multipart: ", err)
-		c.JSON(400, gin.H{"error": err.Error()})
+		RespondError(c, 400, "Bad Request, Error parse multiform/form")
 		return
 	}
+
 	fileHeader, err := c.FormFile("uploadedFile")
 	if err != nil {
-		log.Print("Error getting file: ", err)
-		c.JSON(400, gin.H{"error": err.Error()})
+		RespondError(c, 400, "Bad Request, Error Getting File")
 		return
 	}
-	file, _ := fileHeader.Open()
-	defer file.Close()
 
 	fileExtension := filepath.Ext(fileHeader.Filename)
-
 	allowedFile := map[string]bool{
-		".pdf": true,
-		".docx": true,
-		".jpg": true,
+		".pdf":  true,
+		".jpg":  true,
 		".jpeg": true,
-		".png": true,
+		".png":  true,
 	}
-	if !allowedFile[fileExtension]{
-		c.JSON(400, gin.H{"error":"File not allowed"})
+
+	allowedMimeTypes := map[string]bool{
+		"application/pdf": true,
+		"image/jpeg":      true,
+		"image/jpg":       true,
+		"image/png":       true,
+	}
+
+	if !allowedFile[fileExtension] {
+		RespondError(c, 400, "Bad Request, File Not Allowed")
 		return
 	}
+
+	file, err := fileHeader.Open()
+	if err != nil {
+		RespondError(c, 500, "Internal Server Error, Error Opening File")
+		return
+	}
+	defer file.Close()
 
 	userId, err := uuid.Parse(c.GetString("user_id"))
 	if err != nil {
-		c.JSON(400, gin.H{"error": err.Error()})
+		RespondError(c, 400, "Bad Request, Error parse user id")
+		return
+	}
+
+	buf := make([]byte, 512)
+	n, err := file.Read(buf)
+	if err != nil && err != io.EOF {
+		RespondError(c, 500, "Internal Server Error, Error Reading File")
+		return
+	}
+	detectedType := http.DetectContentType(buf[:n])
+
+	if !allowedMimeTypes[detectedType] {
+		RespondError(c, 400, "Bad Request, File Content Doesn't Match Allowed Types")
+		return
+	}
+
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		RespondError(c, 500, "Internal Server Error, Error Seeking File")
 		return
 	}
 
 	role := c.GetString("role")
 
-	result, err := d.documentService.Create_document(req, file, fileHeader, userId, role)
+	result, err := d.documentService.Create_document(req, file, fileHeader.Filename, fileHeader.Size, fileHeader.Header.Get("Content-Type"), userId, role)
 	if err != nil {
-		c.JSON(500, gin.H{"error": "Internal server error"})
+		RespondError(c, 500, "Internal Server Error")
 		return
 	}
 
 	if !result.Status {
-		switch result.Message{
+		switch result.Message {
 		case "filename already exist":
-			c.JSON(409, result)
+			RespondError(c, 409, "Conflict, Filename already exist")
 		case "Not Authorized, service/standard/assessment is not under the current group":
-			c.JSON(401, result)
+			RespondError(c, 401, "Unauthorized, Access denied")
 		default:
-			c.JSON(500, result)
+			RespondError(c, 500, "Internal Server Error")
 		}
 		return
 	}
 
-	c.JSON(200, result)
+	RespondSuccess(c, 200, "Successfully uploaded file", nil)
 }
- 
+
 func (d *DocumentHandler) Update_document_handler(c *gin.Context) {
-    var req schemas.UpdateRequest
-
-    if err := c.ShouldBind(&req); err != nil {
-        log.Print("Error binding request: ", err)
-        c.JSON(400, gin.H{"status": false, "message": err.Error()})
-        return
-    }
-
-    fileHeader, err := c.FormFile("uploadedFile")
-    var file multipart.File
-    if err != nil {
-        if err == http.ErrMissingFile {
-            file = nil
-            fileHeader = nil
-        } else {
-            log.Print("Error reading file: ", err)
-            c.JSON(400, gin.H{"status": false, "message": "Failed to read file"})
-            return
-        }
-    } else {
-        file, err = fileHeader.Open()
-        if err != nil {
-            log.Print("Error opening file: ", err)
-            c.JSON(500, gin.H{"status": false, "message": "Failed to open file"})
-            return
-        }
-        defer file.Close()
-    }
-
-    userId, err := uuid.Parse(c.GetString("user_id"))
-    userRole := c.GetString("role")
-    if err != nil {
-        log.Print("Failed parse user id: ", err)
-        c.JSON(400, gin.H{"status": false, "message": "Invalid user"})
-        return
-    }
-    
-    result, err := d.documentService.Update_document(req, file, fileHeader, userId, userRole)
-    if err != nil {
-        log.Print("Failed update document: ", err)
-        c.JSON(500, gin.H{"status": false, "message": "Internal server error"})
-        return
-    }
-
-    if !result.Status {
-		switch result.Message{
-		case "Cannot Edit Approved Document":
-			c.JSON(409, result)
-		case "Unauthorized: cannot edit this document":
-			c.JSON(401,result)
-		default:
-			c.JSON(500,result)
-		}
-        return
-    }
-
-    c.JSON(200, result)
-}
-
-
-func (d *DocumentHandler) Delete_document_handler(c *gin.Context) {
-	documentIdParam := c.Param("documentId")
-	documentId, err := uuid.Parse(documentIdParam)
-	if err != nil {
-		log.Print("error parse documentid: ", err)
-		c.JSON(400, gin.H{"error": "Invalid document ID"})
+	var req schemas.UpdateRequest
+	if err := c.ShouldBind(&req); err != nil {
+		RespondError(c, 400, "Bad Request, Error parse multiform/form")
 		return
 	}
+
+	allowedFile := map[string]bool{
+		".pdf":  true,
+		".jpg":  true,
+		".jpeg": true,
+		".png":  true,
+	}
+
+	allowedMimeTypes := map[string]bool{
+		"application/pdf": true,
+		"image/jpeg":      true,
+		"image/jpg":       true,
+		"image/png":       true,
+	}
+
+	var (
+		file        multipart.File
+		fileSize    int64
+		contentType string
+	)
+
+	fileHeader, err := c.FormFile("uploadedFile")
+	if err != nil {
+		if errors.Is(err, http.ErrMissingFile) {
+			file = nil
+			fileHeader = nil
+		} else {
+			RespondError(c, 400, "Bad Request, Error getting file")
+			return
+		}
+	} else {
+		fileExtension := filepath.Ext(fileHeader.Filename)
+		if !allowedFile[fileExtension] {
+			RespondError(c, 400, "Bad Request, File Not Allowed")
+			return
+		}
+
+		file, err = fileHeader.Open()
+		if err != nil {
+			RespondError(c, 500, "Internal Server Error, Error Opening File")
+			return
+		}
+		defer file.Close()
+
+		buf := make([]byte, 512)
+		n, err := file.Read(buf)
+		if err != nil && err != io.EOF {
+			RespondError(c, 500, "Internal Server Error, Error Reading File")
+			return
+		}
+		detectedType := http.DetectContentType(buf[:n])
+
+		if !allowedMimeTypes[detectedType] {
+			RespondError(c, 400, "Bad Request, File Content Doesn't Match Allowed Types")
+			return
+		}
+
+		if _, err := file.Seek(0, io.SeekStart); err != nil {
+			RespondError(c, 500, "Internal Server Error, Error Seeking File")
+			return
+		}
+
+		fileSize = fileHeader.Size
+		contentType = detectedType
+	}
+
 	userId, err := uuid.Parse(c.GetString("user_id"))
 	if err != nil {
-		log.Print("error parsing user id: ", err)
-		c.JSON(400, gin.H{"error": "Invalid user ID"})
+		RespondError(c, 400, "Bad Request, Error parse user id")
+		return
+	}
+	userRole := c.GetString("role")
+
+	result, err := d.documentService.Update_document(req, file, fileSize, contentType, userId, userRole)
+	if err != nil {
+		RespondError(c, 500, "Internal Server Error")
+		return
+	}
+
+	if !result.Status {
+		switch result.Message {
+		case "Cannot Edit Approved Document":
+			RespondError(c, 409, "Conflict, Cannot edit Approved document")
+		case "Unauthorized: cannot edit this document":
+			RespondError(c, 401, "Unauthorized, Access Denied")
+		default:
+			RespondError(c, 500, "Internal Server Error")
+		}
+		return
+	}
+
+	RespondSuccess(c, 200, "Success Updating File", nil)
+}
+
+func (d *DocumentHandler) Delete_document_handler(c *gin.Context) {
+	documentId, err := uuid.Parse(c.Param("documentId"))
+	if err != nil {
+		RespondError(c, 400, "Bad Request, Error parse Document Id")
+		return
+	}
+
+	userId, err := uuid.Parse(c.GetString("user_id"))
+	if err != nil {
+		RespondError(c, 400, "Bad Request, Error parse User id")
 		return
 	}
 	userRole := c.GetString("role")
 
 	result, err := d.documentService.Delete_document(documentId, userId, userRole)
 	if err != nil {
-		c.JSON(500, result)
+		RespondError(c, 500, "Internal Server Error")
 		return
 	}
 
 	if !result.Status {
-		c.JSON(500, result)
+		RespondError(c, 500, result.Message)
 		return
 	}
 
-	c.JSON(200, result)
+	RespondSuccess(c, 200, "Success Delete File", nil)
 }
-
 
 func (d *DocumentHandler) Approval_document_handler(c *gin.Context) {
 	var req schemas.ApprovalRequest
 	if err := c.ShouldBind(&req); err != nil {
-		log.Print("error multi-part: ", err)
-		c.JSON(400, gin.H{"error parse multipart" : err.Error()})
+		RespondError(c, 400, "Bad Request, Error parse Multiform/form")
 		return
 	}
 
-	log.Print("apakah document id nya tuan", req.DocumentId)
 	documentId, err := uuid.Parse(req.DocumentId)
 	if err != nil {
-		log.Print("error parsing document id: ", err)
-		c.JSON(400, gin.H{"error": "invalid document id"})
+		RespondError(c, 400, "Bad Request, Error Parse document id")
 		return
 	}
 
 	userId, err := uuid.Parse(c.GetString("user_id"))
 	if err != nil {
-		log.Print("error parsing user id: ", err)
-		c.JSON(400, gin.H{"error": "invalid user id"})
+		RespondError(c, 400, "Bad Request, Error parse User id")
 		return
 	}
 
-	
-	fileHeader, err := c.FormFile("uploadedFile")
-	if err != nil {
-		log.Print("error getting the file", err)
-		c.JSON(400, gin.H{"error parse file" : err.Error()})
-		return 
+	var (
+		file        multipart.File
+		fileSize    int64
+		contentType string
+	)
+
+	if fileHeader, err := c.FormFile("uploadedFile"); err == nil {
+
+		fileExtension := filepath.Ext(fileHeader.Filename)
+		allowedFile := map[string]bool{
+			".pdf":  true,
+			".jpg":  true,
+			".jpeg": true,
+			".png":  true,
+		}
+
+		allowedMimeTypes := map[string]bool{
+			"application/pdf": true,
+			"image/jpeg":      true,
+			"image/png":       true,
+		}
+
+		if !allowedFile[fileExtension] {
+			RespondError(c, 400, "Bad Request, File Not Allowed")
+			return
+		}
+
+		f, err := fileHeader.Open()
+		if err != nil {
+			RespondError(c, 400, "Bad Request, Error Getting File")
+			return
+		}
+		defer f.Close()
+
+		buf := make([]byte, 512)
+		n, err := f.Read(buf)
+		if err != nil && err != io.EOF {
+			RespondError(c, 500, "Internal Server Error, Error Reading File")
+			return
+		}
+		detectedType := http.DetectContentType(buf[:n])
+
+		if !allowedMimeTypes[detectedType] {
+			RespondError(c, 400, "Bad Request, File Content Doesn't Match Allowed Types")
+			return
+		}
+
+		if _, err := f.Seek(0, io.SeekStart); err != nil {
+			RespondError(c, 500, "Internal Server Error, Error Seeking File")
+			return
+		}
+
+		file = f
+		fileSize = fileHeader.Size
+		contentType = detectedType
 	}
-	file, _ := fileHeader.Open()
-	defer file.Close()
 
-	log.Print("filenya adakah abangku", file, "atau tidak adakah?", file, "dan apakah headernya?", fileHeader)
-
-	result, err := d.documentService.Approval_document(documentId, userId, req.Status, file, fileHeader)
+	result, err := d.documentService.Approval_document(documentId, userId, req.Status, file, fileSize, contentType)
 	if err != nil {
-		log.Print("error ", err)
-		c.JSON(500, gin.H{"error": "internal server error"})
+		RespondError(c, 500, "Internal Server Error")
 		return
 	}
 
 	if !result.Status {
-		switch result.Message{
+		switch result.Message {
 		case "Document integrity check failed. The file hash does not match the original document fingerprint":
-			c.JSON(400, result)
+			RespondError(c, 400, "Bad Request, File hash does not match the original document fingerprint")
 		default:
-			c.JSON(500, result)
+			RespondError(c, 500, "Internal Server Error")
 		}
 		return
 	}
 
-	c.JSON(200, result)
+	RespondSuccess(c, 200, "Success Document approval", nil)
 }
 
 func (h *DocumentHandler) GetStats(c *gin.Context) {
 	userId, err := uuid.Parse(c.GetString("user_id"))
 	if err != nil {
-		c.JSON(500, gin.H{"error": "Internal server error"})
+		RespondError(c, 400, "Bad Request, Error parse user id")
 		return
 	}
 
 	role := c.GetString("role")
-
 	result, err := h.documentService.GetStats(userId, role)
 	if err != nil {
-		c.JSON(500, gin.H{
-			"status":  false,
-			"message": "Failed to fetch statistics",
-		})
+		RespondError(c, 500, "Internal Server Error")
 		return
 	}
-	c.JSON(200, result)
-}
 
+	RespondSuccess(c, 200, "Getting Current Stats", result)
+}

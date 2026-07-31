@@ -105,9 +105,11 @@ CREATE TABLE IF NOT EXISTS notifications (
     message VARCHAR(255),
     read BOOLEAN,
     user_id UUID,
+    document_id UUID,
     created_at TIMESTAMP,
     updated_at TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(user_id)
+    FOREIGN KEY (user_id) REFERENCES users(user_id),
+    FOREIGN KEY (document_id) REFERENCES documents(document_id)
 );
 
 CREATE TABLE IF NOT EXISTS otp_entries (

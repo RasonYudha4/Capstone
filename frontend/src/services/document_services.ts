@@ -1,20 +1,52 @@
 import axioHandler from '@/cores/axios'
-import type {
-    DocumentListResponse,
-    CreateDocumentBody,
-    UpdateDocumentBody,
-    ApprovalRequest,
-    ApiResponse,
-    PaginationQuery,
-    StatsResponse,
+import {
+    publicFileUrlResponseSchema,
+    type DocumentListResponse,
+    type CreateDocumentBody,
+    type UpdateDocumentBody,
+    type ApprovalRequest,
+    type ApiResponse,
+    type PaginationQuery,
+    type StatsResponse,
 } from '@/dtos/document_dto'
+
+
+// Last-resort fallback for getPublicDocumentById (presigned URL flow).
+// getById now fetches the file as a blob and reads Content-Type from
+// the response header directly, so this map is not used there.
+const EXTENSION_TO_MIME: Record<string, string> = {
+    pdf: 'application/pdf',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    gif: 'image/gif',
+    webp: 'image/webp',
+    doc: 'application/msword',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xls: 'application/vnd.ms-excel',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ppt: 'application/vnd.ms-powerpoint',
+    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    txt: 'text/plain',
+    csv: 'text/csv',
+}
+
+function inferContentTypeFromUrl(url: string): string {
+    try {
+        const pathname = new URL(url).pathname
+        const ext = pathname.split('.').pop()?.toLowerCase() ?? ''
+        return EXTENSION_TO_MIME[ext] ?? ''
+    } catch {
+        return ''
+    }
+}
 
 export const documentService = {
 
     getAll: async (query?: PaginationQuery): Promise<DocumentListResponse> => {
         try {
             const { data } = await axioHandler.get('/documents', { params: query })
-            return data
+            return data.data
         } catch (error) {
             throw new Error('Failed to fetch documents.')
         }
@@ -22,35 +54,39 @@ export const documentService = {
 
     getById: async (id: string): Promise<{ url: string; contentType: string }> => {
         try {
-            const { data, headers } = await axioHandler.get(`/documents/${id}`, {
-                responseType: 'blob'
+            const response = await axioHandler.get(`/documents/${id}`, {
+                responseType: 'blob',
             })
-            return {
-                url: URL.createObjectURL(data),
-                contentType: headers['content-type'] ?? ''
-                
-            }
-            
+            const contentType = response.headers['content-type'] || 'application/octet-stream'
+            const blob = new Blob([response.data], { type: contentType })
+            const url = URL.createObjectURL(blob)
+            return { url, contentType }
         } catch (error) {
             throw new Error('Failed to fetch document.')
         }
     },
+
 
     // ── Public endpoints (no auth) ──────────────────────────────────────────
 
     getPublicDocuments: async (query?: PaginationQuery): Promise<DocumentListResponse> => {
         try {
             const { data } = await axioHandler.get('/documents/public', { params: query })
-            return data
+            return data.data
         } catch (error) {
             throw new Error('Failed to fetch public documents.')
         }
     },
 
-    getPublicDocumentById: async (id: string): Promise<{ url: string }> => {
+    getPublicDocumentById: async (id: string): Promise<{ url: string; contentType: string }> => {
         try {
             const { data } = await axioHandler.get(`/documents/public/${id}`)
-            return data
+            const parsed = publicFileUrlResponseSchema.parse(data.data)
+            const ct = parsed['content-type']
+            return {
+                url: parsed.presigned_url,
+                contentType: ct || inferContentTypeFromUrl(parsed.presigned_url),
+            }
         } catch (error) {
             throw new Error('Failed to fetch public document URL.')
         }
@@ -61,7 +97,7 @@ export const documentService = {
     getByType: async (type: string, query?: PaginationQuery): Promise<DocumentListResponse> => {
         try {
             const { data } = await axioHandler.get(`/documents/type/${type}`, { params: query })
-            return data
+            return data.data
         } catch (error) {
             throw new Error('Failed to fetch documents by type.')
         }
@@ -70,7 +106,7 @@ export const documentService = {
     getByGroup: async (group: string, query?: PaginationQuery): Promise<DocumentListResponse> => {
         try {
             const { data } = await axioHandler.get(`/documents/groups/${group}`, { params: query })
-            return data
+            return data.data
         } catch (error) {
             throw new Error('Failed to fetch documents by group.')
         }
@@ -79,7 +115,7 @@ export const documentService = {
     getByService: async (service: string, query?: PaginationQuery): Promise<DocumentListResponse> => {
         try {
             const { data } = await axioHandler.get(`/documents/services/${service}`, { params: query })
-            return data
+            return data.data
         } catch (error) {
             throw new Error('Failed to fetch documents by service.')
         }
@@ -88,7 +124,7 @@ export const documentService = {
     getByStandard: async (standard: string, query?: PaginationQuery): Promise<DocumentListResponse> => {
         try {
             const { data } = await axioHandler.get(`/documents/standards/${standard}`, { params: query })
-            return data
+            return data.data
         } catch (error) {
             throw new Error('Failed to fetch documents by standard.')
         }
@@ -97,7 +133,7 @@ export const documentService = {
     getByAssessment: async (assessment: string, query?: PaginationQuery): Promise<DocumentListResponse> => {
         try {
             const { data } = await axioHandler.get(`/documents/assessments/${assessment}`, { params: query })
-            return data
+            return data.data
         } catch (error) {
             throw new Error('Failed to fetch documents by assessment.')
         }
@@ -106,7 +142,7 @@ export const documentService = {
     getMyDocuments: async (query?: PaginationQuery): Promise<DocumentListResponse> => {
         try {
             const { data } = await axioHandler.get('/documents/createdBy/my-document', { params: query })
-            return data
+            return data.data
         } catch (error) {
             throw new Error('Failed to fetch your documents.')
         }
@@ -115,7 +151,7 @@ export const documentService = {
     getByStatus: async (status: string, query?: PaginationQuery): Promise<DocumentListResponse> => {
         try {
             const { data } = await axioHandler.get(`/documents/masterAdmin/status/${status}`, { params: query })
-            return data
+            return data.data
         } catch (error) {
             throw new Error('Failed to fetch documents by status.')
         }
@@ -141,15 +177,10 @@ export const documentService = {
         }
 
         Object.entries(body).forEach(([key, value]) => {
-            console.log(`FormData: key=${key} value=${String(value)} included=${value !== undefined && value !== ''}`)
             if (value !== undefined && value !== '') {
                 form.append(key, String(value))
             }
         })
-
-        for (const [key, value] of form.entries()) {
-            console.log(`Final FormData: ${key} =`, value)
-        }
 
         try {
             const { data } = await axioHandler.patch('/documents/edit', form, {
@@ -160,7 +191,6 @@ export const documentService = {
             throw new Error('Failed to update document.')
         }
     },
-
     approve: async (body: ApprovalRequest, signedFile?: File): Promise<ApiResponse> => {
         try {
             if (signedFile && signedFile.size > 0) {
@@ -173,7 +203,9 @@ export const documentService = {
                 })
                 return data
             }
-            const { data } = await axioHandler.post('/documents/status/update', body)
+            const { data } = await axioHandler.post('/documents/status/update', body, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            })
             return data
         } catch (error) {
             throw new Error('Failed to update document status.')
@@ -194,7 +226,7 @@ export const statsService = {
     getStats: async (): Promise<StatsResponse> => {
         try {
             const { data } = await axioHandler.get('/documents/stats')
-            return data
+            return data.data
         } catch (error) {
             throw new Error('Failed to fetch statistics.')
         }

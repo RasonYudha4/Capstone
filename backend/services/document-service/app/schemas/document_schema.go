@@ -65,9 +65,25 @@ type StatusStat struct {
 }
 
 type StatsResponse struct {
-	Status  bool        `json:"status"`
 	Groups  []GroupStat `json:"groups"`
 	Stats   StatusStat  `json:"stats"`
 	Total   int         `json:"total"`
 }
 
+type ApiResponse struct {
+	Success	bool `json:"success"`
+	Message string `json:"message"`
+	StatusCode int `json:"status_code"`
+	Data any `json:"data"`
+}
+
+type PresignedUrlResponse struct{
+	PresignedUrl string `json:"presigned_url"`
+	ContentType string `json:"content-type"`
+}
+
+type DocumentDataResponse struct {
+	Data []DocumentResponse `json:"data"`
+	Page int `json:"page"`
+	Limit int `json:"limit"`
+}

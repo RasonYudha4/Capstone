@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react"
-import type { DocumentStatus } from "@/dtos/document_dto"
-import { useMyDocuments } from "@/hooks/useDocument"
+import { toast } from 'sonner'
+import { useQueryClient } from '@tanstack/react-query'
+import type { DocumentStatus, DocumentResponse } from "@/dtos/document_dto"
+import { useMyDocuments, documentKeys } from "@/hooks/useDocument"
+import { documentService } from '@/services/document_services'
+import FileDetailModal from '@/components/organism/FiledetailModal'
+import { useMe } from '@/hooks/useAuth'
+import type { FileRecord } from '@/components/molecules/FileTableRow'
 
 const tabs: { key: DocumentStatus; label: string }[] = [
     { key: "pending", label: "Pending" },
@@ -33,12 +39,127 @@ function formatDate(iso: string): string {
 const LIMIT = 10
 
 export default function DashboardPage() {
+    const queryClient = useQueryClient()
+    const { data: me } = useMe()
+
     const [activeTab, setActiveTab] = useState<DocumentStatus>("pending")
     const [page, setPage] = useState(1)
 
     const { data, isLoading, isError } = useMyDocuments({ page, limit: LIMIT })
 
     useEffect(() => console.log("Data ", data), []);
+
+    const [selectedDocId, setSelectedDocId] = useState<string | null>(null)
+    const [selectedDocument, setSelectedDocument] = useState<DocumentResponse | null>(null)
+    const [fileUrl, setFileUrl] = useState('')
+    const [contentType, setContentType] = useState('')
+    const [detailLoading, setDetailLoading] = useState(false)
+
+    useEffect(() => {
+        if (!selectedDocId) {
+            setFileUrl(prev => { if (prev) URL.revokeObjectURL(prev); return '' })
+            setContentType('')
+            return
+        }
+
+        let cancelled = false
+        setDetailLoading(true)
+
+        documentService.getById(selectedDocId)
+            .then(({ url, contentType }) => {
+                if (cancelled) {
+                    URL.revokeObjectURL(url)
+                    return
+                }
+                setFileUrl(prev => { if (prev) URL.revokeObjectURL(prev); return url })
+                setContentType(contentType)
+            })
+            .catch(() => {
+                if (!cancelled) toast.error('Gagal memuat berkas.')
+            })
+            .finally(() => {
+                if (!cancelled) setDetailLoading(false)
+            })
+
+        return () => {
+            cancelled = true
+        }
+    }, [selectedDocId])
+
+    const handleRowClick = (doc: DocumentResponse) => {
+        setSelectedDocument(doc)
+        setSelectedDocId(doc.document_id)
+    }
+
+    const selectedFile: FileRecord | null = selectedDocument
+        ? {
+            id: selectedDocument.document_id,
+            name: selectedDocument.filename,
+            type: selectedDocument.document_type,
+            uploadedBy: selectedDocument.created_by,
+            lastUpdated: formatDate(selectedDocument.updated_at),
+            status: selectedDocument.status,
+        }
+        : null
+
+    const closeModal = () => {
+        setSelectedDocId(null)
+        setSelectedDocument(null)
+        setFileUrl(prev => { if (prev) URL.revokeObjectURL(prev); return '' })
+        setContentType('')
+    }
+
+    const invalidateList = () => {
+        queryClient.invalidateQueries({ queryKey: documentKeys.mine({ page, limit: LIMIT }) })
+        queryClient.invalidateQueries({ queryKey: documentKeys.all })
+    }
+
+    const handleApprove = async (file: FileRecord, _catatan: string, attachment?: File) => {
+        try {
+            await documentService.approve({ document_id: file.id, status: 'approved' }, attachment)
+            toast.success('Berkas berhasil disetujui.')
+            invalidateList()
+            closeModal()
+        } catch {
+            toast.error('Gagal menyetujui berkas.')
+        }
+    }
+
+    const handleReject = async (file: FileRecord, _catatan: string, attachment?: File) => {
+        try {
+            await documentService.approve({ document_id: file.id, status: 'rejected' }, attachment)
+            toast.success('Berkas berhasil ditolak.')
+            invalidateList()
+            closeModal()
+        } catch {
+            toast.error('Gagal menolak berkas.')
+        }
+    }
+
+    const handleUpdate = async (file: FileRecord, _catatan: string, attachment?: File, filename?: string) => {
+        if (!selectedDocument) return
+        try {
+            await documentService.update({ document_id: file.id, filename }, attachment)
+            toast.success('Berkas berhasil diperbarui.')
+            invalidateList()
+            closeModal()
+        } catch (err) {
+            console.error('Update error:', err)
+            toast.error('Gagal memperbarui berkas.')
+        }
+    }
+
+    const handleDelete = async (file: FileRecord) => {
+        try {
+            await documentService.delete(file.id)
+            toast.success('Berkas berhasil dihapus.')
+            invalidateList()
+            closeModal()
+            if (filtered.length === 1 && page > 1) setPage(p => p - 1)
+        } catch {
+            toast.error('Gagal menghapus berkas.')
+        }
+    }
 
     const allDocs = data?.data ?? []
     const filtered = allDocs.filter(d => d.status === activeTab)
@@ -55,6 +176,21 @@ export default function DashboardPage() {
 
     return (
         <div className="bg-white shadow-xl rounded-2xl border border-gray-100 p-5">
+            <FileDetailModal
+                file={selectedFile}
+                document={selectedDocument}
+                isLoading={detailLoading}
+                fileUrl={fileUrl}
+                contentType={contentType}
+                open={!!selectedDocId}
+                onOpenChange={(open) => { if (!open) closeModal() }}
+                onApprove={handleApprove}
+                onReject={handleReject}
+                onUpdate={handleUpdate}
+                onDelete={handleDelete}
+                role={me?.role}
+            />
+
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
                 <span className="text-sm font-medium text-gray-800">Dokumen Saya</span>
@@ -128,7 +264,8 @@ export default function DashboardPage() {
                             filtered.map(doc => (
                                 <tr
                                     key={doc.document_id}
-                                    className="border-b border-gray-50 hover:bg-gray-50 transition-colors"
+                                    onClick={() => handleRowClick(doc)}
+                                    className="border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer"
                                 >
                                     <td className="py-3 pr-4 max-w-0">
                                         <span className="truncate block text-gray-800" title={doc.filename}>
@@ -186,7 +323,7 @@ export default function DashboardPage() {
                         </button>
                         <button
                             onClick={() => setPage(p => p + 1)}
-                            disabled={(data?.data.length ?? 0) < LIMIT}
+                            disabled={allDocs.length < LIMIT}
                             className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                         >
                             Selanjutnya

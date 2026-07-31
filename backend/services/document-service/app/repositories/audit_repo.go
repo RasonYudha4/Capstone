@@ -32,7 +32,7 @@ func(a *AuditRepo) GetAudit()([]schemas.AuditResponse, error){
 		a.updated_at
 	FROM audit a
 	JOIN users u ON u.user_id = a.user_id
-	JOIN documents d ON d.document_id = a.document_id
+	LEFT JOIN documents d ON d.document_id = a.document_id
 	WHERE a.source = 'client'
 	`)
 	if err != nil{

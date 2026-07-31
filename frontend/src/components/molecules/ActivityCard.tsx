@@ -3,7 +3,7 @@ import GradientCard from '@/components/atoms/GradientCard'
 interface ActivityCardProps {
     actor: string
     action?: string
-    file: string
+    file: string | null
 }
 
 export default function ActivityCard({ actor, action, file }: ActivityCardProps) {

@@ -1,7 +1,7 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { X, Minus, Plus, FileText, Loader2, CheckCircle, XCircle, RefreshCw, Trash2, Download } from 'lucide-react'
+import { X, Minus, Plus, FileText, Loader2, CheckCircle, XCircle, RefreshCw, Trash2, Download, ExternalLink } from 'lucide-react'
 import {
     Dialog,
     DialogContent,
@@ -40,6 +40,14 @@ interface FileDetailModalProps {
     onDelete?: (file: FileRecord) => void
 }
 
+const PREVIEWABLE_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png']
+
+function getFileExtension(filename?: string): string {
+    if (!filename) return ''
+    const match = filename.match(/\.([^.]+)$/)
+    return match ? match[1].toLowerCase() : ''
+}
+
 function isPreviewableContentType(contentType?: string): boolean {
     if (!contentType) return false
     return (
@@ -48,6 +56,15 @@ function isPreviewableContentType(contentType?: string): boolean {
         contentType.includes('jpg') ||
         contentType.includes('png')
     )
+}
+
+// contentType isn't always available from the API (e.g. when the header
+// is missing or empty), so fall back to the filename extension —
+// otherwise every previewable file silently drops into the
+// "not previewable" branch.
+function canPreviewFile(contentType: string | undefined, filename: string): boolean {
+    if (isPreviewableContentType(contentType)) return true
+    return PREVIEWABLE_EXTENSIONS.includes(getFileExtension(filename))
 }
 
 function formatDate(iso?: string | null): string {
@@ -85,12 +102,13 @@ export default function FileDetailModal({
     onDelete,
 }: FileDetailModalProps) {
     const canReview = role === 'master-admin'
-    const canPreview = isPreviewableContentType(contentType)
 
     const displayName = document?.filename ?? file?.name ?? '—'
     const displayCreatedBy = document?.created_by ?? file?.uploadedBy ?? '—'
     const displayUpdatedAt = formatDate(document?.updated_at)
     const displayStatus = (document?.status ?? file?.status) as FileStatus | undefined
+
+    const canPreview = canPreviewFile(contentType, displayName)
 
     const strippedName = displayName.replace(/\.[^.]+$/, '')
 
@@ -105,6 +123,7 @@ export default function FileDetailModal({
     const [zoom, setZoom] = useState(100)
     const [attachedFile, setAttachedFile] = useState<File | null>(null)
     const [isUpdating, setIsUpdating] = useState(false)
+    const [previewLoaded, setPreviewLoaded] = useState(false)
 
     const [confirm, setConfirm] = useState<{
         open: boolean
@@ -199,7 +218,13 @@ export default function FileDetailModal({
 
     const embedUrl = fileUrl && canPreview ? `${fileUrl}#toolbar=0&zoom=${zoom}` : null
     const disabled = isLoading || isUpdating || !file
-console.log('>>> canPreview:', canPreview, 'contentType:', contentType, 'fileUrl:', fileUrl)
+
+    // Reset the "did it load" flag whenever we point the iframe at a new URL,
+    // so the spinner overlay reappears while the new document loads.
+    useEffect(() => {
+        setPreviewLoaded(false)
+    }, [embedUrl])
+
     return (
         <>
             <ConfirmDialog
@@ -243,16 +268,30 @@ console.log('>>> canPreview:', canPreview, 'contentType:', contentType, 'fileUrl
                                     </div>
                                 )}
 
+                                {/* Fallback: open the file directly in a new tab in case
+                                    the iframe preview doesn't render correctly. */}
+                                {fileUrl && (
+                                    <a
+                                        href={fileUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className={`text-white/60 hover:text-white transition-colors shrink-0 ${canPreview ? '' : 'ml-auto'}`}
+                                        title="Buka di tab baru"
+                                    >
+                                        <ExternalLink className="w-4 h-4" />
+                                    </a>
+                                )}
+
                                 {fileUrl && (
                                     <a
                                         href={fileUrl}
                                         download={displayName}
-                                        className={`text-white/60 hover:text-white transition-colors shrink-0 ${canPreview ? '' : 'ml-auto'}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-white/60 hover:text-white transition-colors shrink-0"
                                         title="Download"
                                     >
-                                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
-                                        </svg>
+                                        <Download className="w-4 h-4" />
                                     </a>
                                 )}
                             </div>
@@ -293,6 +332,8 @@ console.log('>>> canPreview:', canPreview, 'contentType:', contentType, 'fileUrl
                                         <a
                                             href={fileUrl}
                                             download={displayName}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
                                             className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white/70 hover:text-white text-xs rounded-xl transition-colors"
                                         >
                                             <Download className="w-4 h-4" />
@@ -303,12 +344,25 @@ console.log('>>> canPreview:', canPreview, 'contentType:', contentType, 'fileUrl
 
                                 {/* PDF / jpg / png — iframe preview */}
                                 {!isLoading && !isUpdating && embedUrl && (
-                                    <iframe
-                                        key={embedUrl}
-                                        src={embedUrl}
-                                        className="w-full h-full border-0"
-                                        title={displayName}
-                                    />
+                                    <>
+                                        {!previewLoaded && (
+                                            <div className="absolute inset-0 flex items-center justify-center bg-[#2D2D2D] z-10">
+                                                <Loader2 className="w-6 h-6 text-white/30 animate-spin" />
+                                            </div>
+                                        )}
+                                        <iframe
+                                            key={embedUrl}
+                                            src={embedUrl}
+                                            onLoad={() => setPreviewLoaded(true)}
+                                            className="w-full h-full border-0"
+                                            title={displayName}
+                                        />
+                                        {/* onLoad fires even if the iframe content is an
+                                            access-denied/XML error page (cross-origin content
+                                            can't be inspected), so keep a visible fallback for
+                                            "the preview looks broken" cases. */}
+                                    
+                                    </>
                                 )}
                             </div>
                         </div>
@@ -359,29 +413,54 @@ console.log('>>> canPreview:', canPreview, 'contentType:', contentType, 'fileUrl
                                             <MetaRow label="Terakhir Diperbarui" value={displayUpdatedAt} />
                                         </div>
 
-                                        <Separator className="bg-white/20" />
+                                        {role === 'master-admin' && (
+                                            <>
+                                                <Separator className="bg-white/20" />
 
-                                        {/* Review form */}
-                                        <div className="flex flex-col gap-2">
-                                            <p className="text-xs font-semibold text-white/80">Nama Berkas</p>
-                                            <Input
-                                                {...register('filename')}
-                                                placeholder={strippedName}
-                                                className="bg-white/10 border-white/20 text-white placeholder:text-white/40 text-sm rounded-xl focus:border-white/50 focus:ring-0"
-                                            />
-                                            <p className="text-xs font-semibold text-white/80 mt-1">Catatan Review</p>
-                                            <Textarea
-                                                {...register('catatan')}
-                                                placeholder="Tambahkan catatan untuk reviewer..."
-                                                rows={3}
-                                                className="bg-white/10 border-white/20 text-white placeholder:text-white/40 text-sm rounded-xl resize-none focus:border-white/50 focus:ring-0"
-                                            />
-                                            <p className="text-xs font-semibold text-white/80 mt-1">Lampiran</p>
-                                            <FileDropzone
-                                                file={attachedFile}
-                                                onFileSelect={(f) => setAttachedFile(f)}
-                                            />
-                                        </div>
+                                                {/* Review form */}
+                                                <div className="flex flex-col gap-2">
+                                                    <p className="text-xs font-semibold text-white/80">Nama Berkas</p>
+                                                    <Input
+                                                        {...register('filename')}
+                                                        placeholder={strippedName}
+                                                        className="bg-white/10 border-white/20 text-white placeholder:text-white/40 text-sm rounded-xl focus:border-white/50 focus:ring-0"
+                                                    />
+                                                    <p className="text-xs font-semibold text-white/80 mt-1">Catatan Review</p>
+                                                    <Textarea
+                                                        {...register('catatan')}
+                                                        placeholder="Tambahkan catatan untuk reviewer..."
+                                                        rows={3}
+                                                        className="bg-white/10 border-white/20 text-white placeholder:text-white/40 text-sm rounded-xl resize-none focus:border-white/50 focus:ring-0"
+                                                    />
+                                                    <p className="text-xs font-semibold text-white/80 mt-1">Lampiran</p>
+                                                    <FileDropzone
+                                                        file={attachedFile}
+                                                        onFileSelect={(f) => setAttachedFile(f)}
+                                                    />
+                                                </div>
+                                            </>
+                                        )}
+
+                                        {role === 'admin' && displayStatus === 'rejected' && (
+                                            <>
+                                                <Separator className="bg-white/20" />
+
+                                                {/* Admin re-upload form (rejected only) */}
+                                                <div className="flex flex-col gap-2">
+                                                    <p className="text-xs font-semibold text-white/80">Nama Berkas</p>
+                                                    <Input
+                                                        {...register('filename')}
+                                                        placeholder={strippedName}
+                                                        className="bg-white/10 border-white/20 text-white placeholder:text-white/40 text-sm rounded-xl focus:border-white/50 focus:ring-0"
+                                                    />
+                                                    <p className="text-xs font-semibold text-white/80 mt-1">Lampiran</p>
+                                                    <FileDropzone
+                                                        file={attachedFile}
+                                                        onFileSelect={(f) => setAttachedFile(f)}
+                                                    />
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
                                 )}
                             </ScrollArea>
@@ -413,7 +492,7 @@ console.log('>>> canPreview:', canPreview, 'contentType:', contentType, 'fileUrl
                                 )}
 
                                 <div className="flex gap-2">
-                                    {displayStatus !== 'approved' && (
+                                    {role === 'admin' && displayStatus === 'rejected' && (
                                         <Button
                                             type="button"
                                             onClick={handleUpdate}

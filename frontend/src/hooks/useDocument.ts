@@ -58,6 +58,7 @@ export const usePublicDocuments = (query?: PaginationQuery) => {
     })
 }
 
+
 export const usePublicDocumentUrl = (id: string) => {
     return useQuery({
         queryKey: documentKeys.publicDetail(id),
