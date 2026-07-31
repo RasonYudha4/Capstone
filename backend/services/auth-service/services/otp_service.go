@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
 	"log"
 	"math/big"
@@ -39,12 +38,10 @@ func (s *OTPService) GenerateAndStore(email, purpose string) (string, error) {
 		return "", fmt.Errorf("failed to generate OTP: %w", err)
 	}
 
-	// Generate pre-auth token (32 bytes hex encoded = 64 chars)
-	preAuthBytes := make([]byte, 32)
-	if _, err := rand.Read(preAuthBytes); err != nil {
+	preAuthToken, err := generateSecureToken()
+	if err != nil {
 		return "", fmt.Errorf("failed to generate pre-auth token: %w", err)
 	}
-	preAuthToken := hex.EncodeToString(preAuthBytes)
 
 	expiresAt := time.Now().Add(config.OTPExpiration)
 

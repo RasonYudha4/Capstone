@@ -20,7 +20,7 @@ import (
 //  3. On success, stores the parsed claims in the Gin context under config.ContextKeyUser
 //     so downstream handlers can access the authenticated user's email and role.
 //  4. On failure, aborts the request with 401 Unauthorized.
-func JWTAuth(jwtService *services.JWTService, userService *services.UserService) gin.HandlerFunc {
+func JWTAuth(jwtService services.TokenValidator, userService services.UserLookup) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// --- Step 1: Extract the Authorization header ---
 		authHeader := c.GetHeader("Authorization")
@@ -65,7 +65,7 @@ func JWTAuth(jwtService *services.JWTService, userService *services.UserService)
 			})
 			return
 		}
-		if user == nil || user.AccountStatus != "active" {
+		if user == nil || user.AccountStatus != models.AccountStatusActive {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, models.APIResponse{
 				Success: false,
 				Message: "Account is no longer active.",

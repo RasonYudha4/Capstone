@@ -94,6 +94,20 @@ const (
 	// how long a self-service password reset link remains valid.
 	ResetTokenExpiry = 1 * time.Hour
 
+	// how long an invitation / invitation-resend token remains valid.
+	InvitationTokenExpiry = 24 * time.Hour
+
+	// byte length of cryptographically random tokens (invitation, reset, pre-auth).
+	// hex-encoded length is SecureTokenBytes * 2.
+	SecureTokenBytes = 32
+
+	// OTP purpose values passed to OTPService.GenerateAndStore.
+	OTPPurposeLogin = "login"
+
+	// Audit log source identifiers.
+	AuditSourceClient = "client"
+	AuditSourceSystem = "system"
+
 	// RBAC Roles
 	// must match the user_role ENUM defined in the database migration.
 	// Role hierarchy (least → most privileged): staff < admin < master-admin.

@@ -120,7 +120,6 @@ func (h *NotificationHandler) MarkRead(c *gin.Context) {
 		RespondError(c, 500, "failed to mark as read")
 		return
 	}
-
 	RespondSuccess(c, 200, "marked as read", nil)
 }
 
@@ -135,6 +134,5 @@ func (h *NotificationHandler) MarkAllRead(c *gin.Context) {
 		RespondError(c, 500, "failed to mark all as read")
 		return
 	}
-
 	RespondSuccess(c, 200, "all marked as read", nil)
 }

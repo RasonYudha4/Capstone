@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"time"
+
 	"auth-service/config"
 	"auth-service/models"
 	"auth-service/services"
@@ -12,31 +12,33 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// groups the HTTP handlers for authentication endpoints.
+const forgotPasswordGenericMessage = "If an account with that email exists, a password reset link has been sent."
+
+// AuthHandler groups the HTTP handlers for authentication endpoints.
 type AuthHandler struct {
-	userService    *services.UserService
-	groupService   *services.GroupService
-	otpService     *services.OTPService
-	emailService   *services.EmailService
-	jwtService     *services.JWTService
-	refreshService *services.RefreshService
-	auditService   *services.AuditService
+	auth           services.AuthFlow
+	userService    services.UserManager
+	groupService   services.GroupManager
+	emailService   services.Mailer
+	jwtService     services.TokenIssuer
+	refreshService services.RefreshManager
+	auditService   services.Auditor
 }
 
-// creates an AuthHandler with all required services.
+// NewAuthHandler creates an AuthHandler with all required services.
 func NewAuthHandler(
-	userService *services.UserService,
-	groupService *services.GroupService,
-	otpService *services.OTPService,
-	emailService *services.EmailService,
-	jwtService *services.JWTService,
-	refreshService *services.RefreshService,
-	auditService *services.AuditService,
+	auth services.AuthFlow,
+	userService services.UserManager,
+	groupService services.GroupManager,
+	emailService services.Mailer,
+	jwtService services.TokenIssuer,
+	refreshService services.RefreshManager,
+	auditService services.Auditor,
 ) *AuthHandler {
 	return &AuthHandler{
+		auth:           auth,
 		userService:    userService,
 		groupService:   groupService,
-		otpService:     otpService,
 		emailService:   emailService,
 		jwtService:     jwtService,
 		refreshService: refreshService,
@@ -44,330 +46,81 @@ func NewAuthHandler(
 	}
 }
 
-//  POST /auth/login
-
-// login handles email + password authentication
-// - account lockout after MaxLoginAttempts failed attempts
-// - audit logging for login success, failure, and lockout
-// - refresh token issued alongside access token (for staff)
+// Login handles POST /auth/login.
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req models.LoginRequest
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, models.APIResponse{
-			Success: false,
-			Message: "Invalid request: " + err.Error(),
-		})
+	if !bindJSON(c, &req) {
 		return
 	}
 
-	// look up the user first (to check lockout before bcrypt).
-	user, err := h.userService.GetByEmail(req.Email)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{
-			Success: false,
-			Message: "Internal server error.",
-		})
+	result := h.auth.Login(req.Email, req.Password)
+	if result.Status != services.StatusOK {
+		respondError(c, httpStatus(result.Status), result.Message)
 		return
 	}
 
-	if user == nil {
-		// audit: failed login (unknown email).
-		h.auditService.Log("error", "login_fail", nil, "client")
-		c.JSON(http.StatusUnauthorized, models.APIResponse{
-			Success: false,
-			Message: "Invalid email or password.",
-		})	
-		return
-	}
-
-	// phase 2: account lockout check
-	if user.IsLocked() {
-		remaining := time.Until(*user.LockedUntil).Round(time.Second)
-		h.auditService.Log("error", "login_locked", &user.UserID, "client")
-		c.JSON(http.StatusTooManyRequests, models.APIResponse{
-			Success: false,
-			Message: fmt.Sprintf("Account is locked. Try again in %s.", remaining),
-		})
-		return
-	}
-
-	if blockReason := user.LoginBlockReason(); blockReason != "" {
-		h.auditService.Log("error", "login_blocked_"+user.AccountStatus, &user.UserID, "client")
-		c.JSON(http.StatusForbidden, models.APIResponse{
-			Success: false,
-			Message: blockReason,
-		})
-		return
-	}
-
-	// if lock has expired, reset the counter.
-	if user.LockedUntil != nil && !user.IsLocked() {
-		if err := h.userService.ResetFailedAttempts(user.UserID); err != nil {
-			log.Printf("⚠️  Failed to reset failed attempts for user %s: %v", user.UserID, err)
-		}
-	}
-
-	// verify password.
-	authenticated, err := h.userService.Authenticate(req.Email, req.Password)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{
-			Success: false,
-			Message: "Internal server error.",
-		})
-		return
-	}
-
-	if authenticated == nil {
-		// wrong password, increment failed attempts.
-		count, _ := h.userService.IncrementFailedAttempts(user.UserID)
-		h.auditService.Log("login_fail","user login error" ,&user.UserID, "client")
-
-		if count >= config.MaxLoginAttempts {
-			if lockErr := h.userService.LockAccount(user.UserID); lockErr != nil {
-				log.Printf("⚠️  Failed to lock account for user %s: %v", user.UserID, lockErr)
-			}
-			if revokeErr := h.refreshService.RevokeAllUserTokens(user.UserID); revokeErr != nil {
-				log.Printf("⚠️  Failed to revoke tokens for user %s: %v", user.UserID, revokeErr)
-			}
-			h.auditService.Log("lockout", "Error lock out, user got lockout ", &user.UserID, "system")
-			c.JSON(http.StatusTooManyRequests, models.APIResponse{
-				Success: false,
-				Message: fmt.Sprintf("Account locked for %s due to too many failed attempts.", config.LockDuration),
-			})
-			return
-		}
-
-		remaining := config.MaxLoginAttempts - count
-		c.JSON(http.StatusUnauthorized, models.APIResponse{
-			Success: false,
-			Message: fmt.Sprintf("Invalid email or password. %d attempt(s) remaining.", remaining),
-		})
-		return
-	}
-
-	// password correct, reset failed attempts.
-	if err := h.userService.ResetFailedAttempts(user.UserID); err != nil {
-		log.Printf("⚠️  Failed to reset failed attempts for user %s: %v", user.UserID, err)
-	}
-
-	// role-based login branching
-	// Admin and Master Admin require OTP verification if they are not verified yet.
-	// Staff role bypasses OTP verification entirely (optional verification).
-	if (user.Role == config.RoleAdmin || user.Role == config.RoleMasterAdmin) && !user.Verified {
-		preAuthToken, err := h.otpService.GenerateAndStore(user.Email, "login")
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, models.APIResponse{
-				Success: false,
-				Message: "Failed to generate OTP.",
-			})
-			return
-		}
-
-		c.JSON(http.StatusOK, models.APIResponse{
-			Success: true,
-			Message: "OTP has been sent to your email. Please verify to complete login.",
-			Data: models.LoginResponse{
-				RequiresOTP:  true,
-				PreAuthToken: preAuthToken,
-			},
-		})
-		return
-	}
-
-	// For verified admins/master-admins and all staff members: log in immediately.
-	accessToken, refreshToken, err := h.issueTokens(user)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{
-			Success: false,
-			Message: "Failed to generate tokens.",
-		})
-		return
-	}
-
-	h.auditService.Log("login", "User has login", &user.UserID, "client")
-	c.JSON(http.StatusOK, models.APIResponse{
-		Success: true,
-		Message: "Login successful.",
-		Data: models.LoginResponse{
-			RequiresOTP:  false,
-			AccessToken:  accessToken,
-			RefreshToken: refreshToken,
-			ExpiresIn:    config.AccessTokenExpiry.String(),
-		},
+	respondSuccess(c, result.Message, models.LoginResponse{
+		RequiresOTP:  result.RequiresOTP,
+		PreAuthToken: result.PreAuthToken,
+		AccessToken:  result.AccessToken,
+		RefreshToken: result.RefreshToken,
+		ExpiresIn:    result.ExpiresIn,
 	})
 }
 
-// POST /auth/verify-otp
-
-// verifyotp handles the second step of admin/master-admin login.
-// issues both access and refresh tokens, with audit logging.
+// VerifyOTP handles POST /auth/verify-otp.
 func (h *AuthHandler) VerifyOTP(c *gin.Context) {
 	var req models.OTPVerifyRequest
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, models.APIResponse{
-			Success: false,
-			Message: "Invalid request: " + err.Error(),
-		})
+	if !bindJSON(c, &req) {
 		return
 	}
 
-	valid, errMsg, err := h.otpService.Verify(req.Email, req.OTP, req.PreAuthToken)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{
-			Success: false,
-			Message: "Internal error during OTP verification.",
-		})
+	result := h.auth.VerifyOTPLogin(req.Email, req.OTP, req.PreAuthToken)
+	if result.Status != services.StatusOK {
+		respondError(c, httpStatus(result.Status), result.Message)
 		return
 	}
 
-	if !valid {
-		c.JSON(http.StatusUnauthorized, models.APIResponse{
-			Success: false,
-			Message: errMsg,
-		})
-		return
-	}
-
-	// OTP is valid, look up user and issue tokens.
-	user, err := h.userService.GetByEmail(req.Email)
-	if err != nil || user == nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{
-			Success: false,
-			Message: "Failed to retrieve user information.",
-		})
-		return
-	}
-
-	if blockReason := user.LoginBlockReason(); blockReason != "" {
-		c.JSON(http.StatusForbidden, models.APIResponse{
-			Success: false,
-			Message: blockReason,
-		})
-		return
-	}
-
-	// If the user has not been marked as verified yet, mark them as verified now!
-	if !user.Verified {
-		if err := h.userService.MarkAsVerified(user.UserID); err != nil {
-			log.Printf("⚠️  Failed to mark user %s as verified: %v", user.Email, err)
-			c.JSON(http.StatusInternalServerError, models.APIResponse{
-				Success: false,
-				Message: "Failed to update verification status.",
-			})
-			return
-		}
-		user.Verified = true // update local state
-	}
-
-	accessToken, refreshToken, err := h.issueTokens(user)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{
-			Success: false,
-			Message: "Failed to generate tokens.",
-		})
-		return
-	}
-
-	h.auditService.Log("login", "user has otp and enter dashboard page", &user.UserID, "client")
-	c.JSON(http.StatusOK, models.APIResponse{
-		Success: true,
-		Message: "Login successful.",
-		Data: models.TokenResponse{
-			AccessToken:  accessToken,
-			RefreshToken: refreshToken,
-			ExpiresIn:    config.AccessTokenExpiry.String(),
-		},
+	respondSuccess(c, result.Message, models.TokenResponse{
+		AccessToken:  result.AccessToken,
+		RefreshToken: result.RefreshToken,
+		ExpiresIn:    result.ExpiresIn,
 	})
 }
 
-// POST /auth/resend-otp
-
-// resendotp generates a new OTP for users who already passed password verification.
-// users don't need to re-enter their password.
-// security:
-// - only works if an OTP was already requested via /auth/login (password was verified).
-// - overwrites the previous OTP (the old one becomes invalid).
-// - does NOT reveal whether the email exists (generic error on failure).
+// ResendOTP handles POST /auth/resend-otp.
 func (h *AuthHandler) ResendOTP(c *gin.Context) {
 	var req models.ResendOTPRequest
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, models.APIResponse{
-			Success: false,
-			Message: "Invalid request: " + err.Error(),
-		})
+	if !bindJSON(c, &req) {
 		return
 	}
 
-	// only allow resend if an OTP login was already initiated.
-	if !h.otpService.HasPending(req.Email) {
-		c.JSON(http.StatusBadRequest, models.APIResponse{
-			Success: false,
-			Message: "No pending OTP for this email. Please log in first.",
-		})
+	result := h.auth.ResendLoginOTP(req.Email)
+	if result.Status != services.StatusOK {
+		respondError(c, httpStatus(result.Status), result.Message)
 		return
 	}
 
-	// rate-limit: enforce cooldown between resend requests.
-	if !h.otpService.CanResend(req.Email) {
-		c.JSON(http.StatusTooManyRequests, models.APIResponse{
-			Success: false,
-			Message: "Please wait before requesting a new OTP.",
-		})
-		return
-	}
-
-	// generate a fresh OTP (overwrites the old one).
-	_, err := h.otpService.GenerateAndStore(req.Email, "login")
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{
-			Success: false,
-			Message: "Failed to generate OTP.",
-		})
-		return
-	}
-
-	h.auditService.Log("update", "otp_resend", nil, "client")
-	c.JSON(http.StatusOK, models.APIResponse{
-		Success: true,
-		Message: "A new OTP has been sent to your email.",
-	})
+	respondSuccess(c, result.Message, nil)
 }
 
-// POST /auth/refresh
-
-// refresh issues a new access token and rotates the refresh token.
+// Refresh handles POST /auth/refresh.
 func (h *AuthHandler) Refresh(c *gin.Context) {
 	var req models.RefreshRequest
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, models.APIResponse{
-			Success: false,
-			Message: "Invalid request: " + err.Error(),
-		})
+	if !bindJSON(c, &req) {
 		return
 	}
 
-	// rotate: revoke old token and issue a new one.
 	newRefreshToken, userID, err := h.refreshService.RotateToken(req.RefreshToken)
 	if err != nil {
 		log.Printf("⚠️  Refresh token rotation failed: %v", err)
-		c.JSON(http.StatusUnauthorized, models.APIResponse{
-			Success: false,
-			Message: "Invalid or expired refresh token.",
-		})
+		respondError(c, http.StatusUnauthorized, "Invalid or expired refresh token.")
 		return
 	}
 
-	// get user details for the new access token.
 	user, err := h.userService.GetByID(userID)
 	if err != nil || user == nil {
-		c.JSON(http.StatusUnauthorized, models.APIResponse{
-			Success: false,
-			Message: "User not found.",
-		})
+		respondError(c, http.StatusUnauthorized, "User not found.")
 		return
 	}
 
@@ -375,87 +128,52 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 		if revokeErr := h.refreshService.RevokeAllUserTokens(user.UserID); revokeErr != nil {
 			log.Printf("⚠️  Failed to revoke tokens for inactive user %s: %v", user.UserID, revokeErr)
 		}
-		c.JSON(http.StatusUnauthorized, models.APIResponse{
-			Success: false,
-			Message: blockReason,
-		})
+		respondError(c, http.StatusUnauthorized, blockReason)
 		return
 	}
 
-	// generate a new access token.
 	accessToken, err := h.jwtService.GenerateToken(user.UserID, user.Email, user.Role)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{
-			Success: false,
-			Message: "Failed to generate access token.",
-		})
+		respondError(c, http.StatusInternalServerError, "Failed to generate access token.")
 		return
 	}
 
-	h.auditService.Log("update", "token_refresh", &user.UserID, "client")
-	c.JSON(http.StatusOK, models.APIResponse{
-		Success: true,
-		Message: "Token refreshed.",
-		Data: models.TokenResponse{
-			AccessToken:  accessToken,
-			RefreshToken: newRefreshToken,
-			ExpiresIn:    config.AccessTokenExpiry.String(),
-		},
+	h.auditService.Log(services.AuditActionUpdate, "token refreshed", &user.UserID, config.AuditSourceClient)
+	respondSuccess(c, "Token refreshed.", models.TokenResponse{
+		AccessToken:  accessToken,
+		RefreshToken: newRefreshToken,
+		ExpiresIn:    config.AccessTokenExpiry.String(),
 	})
 }
 
-// POST /auth/logout
-
-// logout revokes a refresh token so it can no longer be used.
+// Logout handles POST /auth/logout.
 func (h *AuthHandler) Logout(c *gin.Context) {
 	var req models.LogoutRequest
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, models.APIResponse{
-			Success: false,
-			Message: "Invalid request: " + err.Error(),
-		})
+	if !bindJSON(c, &req) {
 		return
 	}
 
 	userID, err := h.refreshService.RevokeToken(req.RefreshToken)
 	if err != nil {
 		log.Printf("⚠️  Token revocation failed: %v", err)
-		c.JSON(http.StatusBadRequest, models.APIResponse{
-			Success: false,
-			Message: "Invalid or expired token.",
-		})
+		respondError(c, http.StatusBadRequest, "Invalid or expired token.")
 		return
 	}
 
-	h.auditService.Log("delete", "user logout", &userID, "client")
-	c.JSON(http.StatusOK, models.APIResponse{
-		Success: true,
-		Message: "Logged out successfully.",
-	})
+	h.auditService.Log(services.AuditActionDelete, "user logged out", &userID, config.AuditSourceClient)
+	respondSuccess(c, "Logged out successfully.", nil)
 }
 
-// GET /auth/me
-
-// me returns the authenticated user's profile information.
+// Me handles GET /auth/me.
 func (h *AuthHandler) Me(c *gin.Context) {
-	value, exists := c.Get(config.ContextKeyUser)
-	if !exists {
-		c.JSON(http.StatusUnauthorized, models.APIResponse{
-			Success: false,
-			Message: "Not authenticated.",
-		})
+	claims := requireClaims(c)
+	if claims == nil {
 		return
 	}
-
-	claims := value.(*services.Claims)
 
 	user, err := h.userService.GetByID(claims.UserID)
 	if err != nil || user == nil {
-		c.JSON(http.StatusNotFound, models.APIResponse{
-			Success: false,
-			Message: "User not found.",
-		})
+		respondError(c, http.StatusNotFound, "User not found.")
 		return
 	}
 
@@ -468,335 +186,133 @@ func (h *AuthHandler) Me(c *gin.Context) {
 		resp.GroupID = *user.GroupID
 	}
 
-	c.JSON(http.StatusOK, models.APIResponse{
-		Success: true,
-		Message: "User info retrieved.",
-		Data:    resp,
-	})
+	respondSuccess(c, "User info retrieved.", resp)
 }
 
-// GET /auth/users
-
-// ListUsers returns all non-master-admin users.
-// Accessible only by master-admin.
+// ListUsers handles GET /auth/users (master-admin only).
 func (h *AuthHandler) ListUsers(c *gin.Context) {
 	users, err := h.userService.GetAllUsers()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{
-			Success: false,
-			Message: "Failed to retrieve user list.",
-		})
+		respondError(c, http.StatusInternalServerError, "Failed to retrieve user list.")
 		return
 	}
 
-	// Return empty array instead of null when no users found.
 	if users == nil {
 		users = []models.UserListItem{}
 	}
 
-	c.JSON(http.StatusOK, models.APIResponse{
-		Success: true,
-		Message: "User list retrieved.",
-		Data: models.ListUsersResponse{
-			Users: users,
-			Total: len(users),
-		},
+	respondSuccess(c, "User list retrieved.", models.ListUsersResponse{
+		Users: users,
+		Total: len(users),
 	})
 }
 
-// PUT /auth/users/:id/role
-
-// UpdateRole changes the role of a target user to 'staff' or 'admin'.
-// Security rules:
-//   - Only master-admin can call this.
-//   - Cannot target another master-admin.
-//   - Cannot target themselves.
+// UpdateRole handles PUT /auth/users/:id/role.
 func (h *AuthHandler) UpdateRole(c *gin.Context) {
 	targetID := c.Param("id")
 
 	var req models.UpdateRoleRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, models.APIResponse{
-			Success: false,
-			Message: "Invalid request: " + err.Error(),
-		})
+	if !bindJSON(c, &req) {
 		return
 	}
 
-	// Get caller identity from JWT claims.
-	claims := h.callerClaims(c)
-	if claims == nil {
-		return // response already written by callerClaims
-	}
-
-	// Guard: cannot modify self.
-	if claims.UserID == targetID {
-		c.JSON(http.StatusForbidden, models.APIResponse{
-			Success: false,
-			Message: "Cannot modify your own role.",
-		})
+	targetUser, ok := h.requireManageableTarget(c, targetID,
+		"Cannot modify your own role.",
+		"Cannot modify a master-admin's role.",
+	)
+	if !ok {
 		return
 	}
 
-	// Verify target exists.
-	targetUser, err := h.userService.GetByID(targetID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{
-			Success: false,
-			Message: "Internal server error.",
-		})
-		return
-	}
-	if targetUser == nil {
-		c.JSON(http.StatusNotFound, models.APIResponse{
-			Success: false,
-			Message: "User not found.",
-		})
+	groupID, ok := h.resolveAdminGroupID(c, req.Role, req.GroupID)
+	if !ok {
 		return
 	}
 
-	// Guard: cannot target master-admin.
-	if targetUser.Role == config.RoleMasterAdmin {
-		c.JSON(http.StatusForbidden, models.APIResponse{
-			Success: false,
-			Message: "Cannot modify a master-admin's role.",
-		})
-		return
-	}
-
-	// Validate group assignment for admin role.
-	var groupID *string
-	if req.Role == config.RoleAdmin {
-		if req.GroupID == nil || *req.GroupID == "" {
-			c.JSON(http.StatusBadRequest, models.APIResponse{
-				Success: false,
-				Message: "group_id is required when role is 'admin'.",
-			})
-			return
-		}
-		exists, err := h.groupService.Exists(*req.GroupID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, models.APIResponse{
-				Success: false,
-				Message: "Failed to validate group.",
-			})
-			return
-		}
-		if !exists {
-			c.JSON(http.StatusBadRequest, models.APIResponse{
-				Success: false,
-				Message: "Invalid group_id.",
-			})
-			return
-		}
-		groupID = req.GroupID
-	}
-
-	// Perform role update.
 	if err := h.userService.UpdateRole(targetUser.UserID, req.Role, groupID); err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{
-			Success: false,
-			Message: "Failed to update role.",
-		})
+		respondError(c, http.StatusInternalServerError, "Failed to update role.")
 		return
 	}
 
-	h.auditService.Log("update", "role_changed_to_"+req.Role, &targetUser.UserID, "system")
-	c.JSON(http.StatusOK, models.APIResponse{
-		Success: true,
-		Message: "User role updated to '" + req.Role + "' successfully.",
-	})
+	h.auditService.Log(services.AuditActionUpdate, "role_changed_to_"+req.Role, &targetUser.UserID, config.AuditSourceSystem)
+	respondSuccess(c, "User role updated to '"+req.Role+"' successfully.", nil)
 }
 
-// PUT /auth/users/:id/status
-
-// UpdateStatus suspends or re-activates a target user.
-// Security rules:
-//   - Only master-admin can call this.
-//   - Cannot target another master-admin.
-//   - Cannot target themselves.
+// UpdateStatus handles PUT /auth/users/:id/status.
 func (h *AuthHandler) UpdateStatus(c *gin.Context) {
 	targetID := c.Param("id")
 
 	var req models.UpdateStatusRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, models.APIResponse{
-			Success: false,
-			Message: "Invalid request: " + err.Error(),
-		})
+	if !bindJSON(c, &req) {
 		return
 	}
 
-	// Get caller identity from JWT claims.
-	claims := h.callerClaims(c)
-	if claims == nil {
-		return
-	}
-
-	// Guard: cannot modify self.
-	if claims.UserID == targetID {
-		c.JSON(http.StatusForbidden, models.APIResponse{
-			Success: false,
-			Message: "Cannot modify your own account status.",
-		})
-		return
-	}
-
-	// Verify target exists.
-	targetUser, err := h.userService.GetByID(targetID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{
-			Success: false,
-			Message: "Internal server error.",
-		})
-		return
-	}
-	if targetUser == nil {
-		c.JSON(http.StatusNotFound, models.APIResponse{
-			Success: false,
-			Message: "User not found.",
-		})
-		return
-	}
-
-	// Guard: cannot target master-admin.
-	if targetUser.Role == config.RoleMasterAdmin {
-		c.JSON(http.StatusForbidden, models.APIResponse{
-			Success: false,
-			Message: "Cannot modify a master-admin's status.",
-		})
+	targetUser, ok := h.requireManageableTarget(c, targetID,
+		"Cannot modify your own account status.",
+		"Cannot modify a master-admin's status.",
+	)
+	if !ok {
 		return
 	}
 
 	if err := h.userService.UpdateStatus(targetUser.UserID, req.Status); err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{
-			Success: false,
-			Message: "Failed to update account status.",
-		})
+		respondError(c, http.StatusInternalServerError, "Failed to update account status.")
 		return
 	}
 
-	// If suspending, revoke all active refresh tokens immediately.
-	if req.Status == "suspended" {
+	if req.Status == models.AccountStatusSuspended {
 		if err := h.refreshService.RevokeAllUserTokens(targetUser.UserID); err != nil {
 			log.Printf("⚠️  Failed to revoke tokens for suspended user %s: %v", targetUser.UserID, err)
 		}
 	}
 
-	h.auditService.Log("update", "status_changed_to_"+req.Status, &targetUser.UserID, "system")
-	c.JSON(http.StatusOK, models.APIResponse{
-		Success: true,
-		Message: "User account status updated to '" + req.Status + "' successfully.",
-	})
+	h.auditService.Log(services.AuditActionUpdate, "status_changed_to_"+req.Status, &targetUser.UserID, config.AuditSourceSystem)
+	respondSuccess(c, "User account status updated to '"+req.Status+"' successfully.", nil)
 }
 
-// DELETE /auth/users/:id
-
-// DeleteUser permanently removes a user who has not yet accepted their invitation.
-// Only users with account_status = 'invited' may be deleted.
-// Active or suspended users must be managed via UpdateStatus.
+// DeleteUser handles DELETE /auth/users/:id.
 func (h *AuthHandler) DeleteUser(c *gin.Context) {
 	targetID := c.Param("id")
 
-	// Get caller identity from JWT claims.
-	claims := h.callerClaims(c)
-	if claims == nil {
+	targetUser, ok := h.requireManageableTarget(c, targetID,
+		"Cannot delete your own account.",
+		"Cannot delete a master-admin.",
+	)
+	if !ok {
 		return
 	}
 
-	// Guard: cannot delete self.
-	if claims.UserID == targetID {
-		c.JSON(http.StatusForbidden, models.APIResponse{
-			Success: false,
-			Message: "Cannot delete your own account.",
-		})
-		return
-	}
-
-	// Verify target exists.
-	targetUser, err := h.userService.GetByID(targetID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{
-			Success: false,
-			Message: "Internal server error.",
-		})
-		return
-	}
-	if targetUser == nil {
-		c.JSON(http.StatusNotFound, models.APIResponse{
-			Success: false,
-			Message: "User not found.",
-		})
-		return
-	}
-
-	// Guard: cannot target master-admin.
-	if targetUser.Role == config.RoleMasterAdmin {
-		c.JSON(http.StatusForbidden, models.APIResponse{
-			Success: false,
-			Message: "Cannot delete a master-admin.",
-		})
-		return
-	}
-
-	// Guard: only 'invited' users may be deleted.
-	if targetUser.AccountStatus != "invited" {
-		c.JSON(http.StatusConflict, models.APIResponse{
-			Success: false,
-			Message: "Only users with 'invited' status can be deleted. Use status update to suspend active users.",
-		})
+	if targetUser.AccountStatus != models.AccountStatusInvited {
+		respondError(c, http.StatusConflict,
+			"Only users with 'invited' status can be deleted. Use status update to suspend active users.")
 		return
 	}
 
 	if err := h.userService.DeleteUser(targetUser.UserID); err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{
-			Success: false,
-			Message: "Failed to delete user.",
-		})
+		respondError(c, http.StatusInternalServerError, "Failed to delete user.")
 		return
 	}
 
-	h.auditService.Log("delete", "invited_user_deleted", &targetUser.UserID, "system")
-	c.JSON(http.StatusOK, models.APIResponse{
-		Success: true,
-		Message: "Invited user deleted successfully.",
-	})
+	h.auditService.Log(services.AuditActionDelete, "invited_user_deleted", &targetUser.UserID, config.AuditSourceSystem)
+	respondSuccess(c, "Invited user deleted successfully.", nil)
 }
 
-// POST /auth/users/:id/resend-invitation
+// ResendInvitation handles POST /auth/users/:id/resend-invitation.
 func (h *AuthHandler) ResendInvitation(c *gin.Context) {
-	targetID := c.Param("id")
-
-	targetUser, err := h.userService.GetByID(targetID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{
-			Success: false,
-			Message: "Internal server error.",
-		})
-		return
-	}
-	if targetUser == nil {
-		c.JSON(http.StatusNotFound, models.APIResponse{
-			Success: false,
-			Message: "User not found.",
-		})
+	targetUser, ok := h.loadTargetUser(c, c.Param("id"))
+	if !ok {
 		return
 	}
 
-	if targetUser.AccountStatus != "invited" {
-		c.JSON(http.StatusConflict, models.APIResponse{
-			Success: false,
-			Message: "Only users with 'invited' status can have their invitation resent.",
-		})
+	if targetUser.AccountStatus != models.AccountStatusInvited {
+		respondError(c, http.StatusConflict,
+			"Only users with 'invited' status can have their invitation resent.")
 		return
 	}
 
 	token, err := h.userService.ResendInvitation(targetUser.UserID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{
-			Success: false,
-			Message: "Failed to resend invitation: " + err.Error(),
-		})
+		respondError(c, http.StatusInternalServerError, "Failed to resend invitation: "+err.Error())
 		return
 	}
 
@@ -804,189 +320,90 @@ func (h *AuthHandler) ResendInvitation(c *gin.Context) {
 		log.Printf("🔗 [DEV] Invitation link for %s: %s/setup-password?token=%s", targetUser.Email, config.FrontendURL, token)
 	}
 
-	go func(email, role, inviteToken string) {
-		if err := h.emailService.SendInvitation(email, role, inviteToken); err != nil {
-			log.Printf("⚠️  Failed to send invitation email to %s: %v", email, err)
-		}
-	}(targetUser.Email, targetUser.Role, token)
+	h.sendInvitationEmailAsync(targetUser.Email, targetUser.Role, token)
 
-	h.auditService.Log("update", "invitation_resent", &targetUser.UserID, "system")
-	c.JSON(http.StatusOK, models.APIResponse{
-		Success: true,
-		Message: "Invitation resent successfully.",
-	})
+	h.auditService.Log(services.AuditActionUpdate, "invitation_resent", &targetUser.UserID, config.AuditSourceSystem)
+	respondSuccess(c, "Invitation resent successfully.", nil)
 }
 
-// POST /auth/invite
+// Invite handles POST /auth/invite.
 func (h *AuthHandler) Invite(c *gin.Context) {
 	var req models.InviteRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, models.APIResponse{
-			Success: false,
-			Message: "Invalid request: " + err.Error(),
-		})
+	if !bindJSON(c, &req) {
 		return
 	}
 
-	// 1. Check if user already exists
 	existing, _ := h.userService.GetByEmail(req.Email)
 	if existing != nil {
-		c.JSON(http.StatusConflict, models.APIResponse{
-			Success: false,
-			Message: "User with this email already exists.",
-		})
+		respondError(c, http.StatusConflict, "User with this email already exists.")
 		return
 	}
 
-	// Validate group assignment for admin invites.
-	var groupID *string
-	if req.Role == config.RoleAdmin {
-		if req.GroupID == nil || *req.GroupID == "" {
-			c.JSON(http.StatusBadRequest, models.APIResponse{
-				Success: false,
-				Message: "group_id is required when role is 'admin'.",
-			})
-			return
-		}
-		exists, err := h.groupService.Exists(*req.GroupID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, models.APIResponse{
-				Success: false,
-				Message: "Failed to validate group.",
-			})
-			return
-		}
-		if !exists {
-			c.JSON(http.StatusBadRequest, models.APIResponse{
-				Success: false,
-				Message: "Invalid group_id.",
-			})
-			return
-		}
-		groupID = req.GroupID
+	groupID, ok := h.resolveAdminGroupID(c, req.Role, req.GroupID)
+	if !ok {
+		return
 	}
 
-	// 2. Create invitation in DB
 	token, err := h.userService.InviteUser(req.Email, req.Role, groupID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{
-			Success: false,
-			Message: "Failed to create invitation: " + err.Error(),
-		})
+		respondError(c, http.StatusInternalServerError, "Failed to create invitation: "+err.Error())
 		return
 	}
 
-	// 3. Send email asynchronously so the request is not blocked by SMTP.
-	go func(email, role, inviteToken string) {
-		if err := h.emailService.SendInvitation(email, role, inviteToken); err != nil {
-			log.Printf("⚠️  Failed to send invitation email to %s: %v", email, err)
-		}
-	}(req.Email, req.Role, token)
+	h.sendInvitationEmailAsync(req.Email, req.Role, token)
 
-	h.auditService.Log("insert", "user_invited", nil, "system")
-
-	c.JSON(http.StatusOK, models.APIResponse{
-		Success: true,
-		Message: "Invitation sent successfully.",
-	})
+	h.auditService.Log(services.AuditActionInsert, "user_invited", nil, config.AuditSourceSystem)
+	respondSuccess(c, "Invitation sent successfully.", nil)
 }
 
-// POST /auth/complete-invitation
+// CompleteInvitation handles POST /auth/complete-invitation.
 func (h *AuthHandler) CompleteInvitation(c *gin.Context) {
 	var req models.CompleteInvitationRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, models.APIResponse{
-			Success: false,
-			Message: "Invalid request: " + err.Error(),
-		})
+	if !bindJSON(c, &req) {
 		return
 	}
 
-	// 1. Find user by token
 	user, err := h.userService.GetByInvitationToken(req.Token)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, models.APIResponse{
-			Success: false,
-			Message: err.Error(),
-		})
+		respondError(c, http.StatusBadRequest, err.Error())
 		return
 	}
-	if user == nil {
-		c.JSON(http.StatusNotFound, models.APIResponse{
-			Success: false,
-			Message: "Invalid or already used invitation token.",
-		})
-		return
-	}
-	if user.AccountStatus != "invited" {
-		c.JSON(http.StatusNotFound, models.APIResponse{
-			Success: false,
-			Message: "Invalid or already used invitation token.",
-		})
+	if user == nil || user.AccountStatus != models.AccountStatusInvited {
+		respondError(c, http.StatusNotFound, "Invalid or already used invitation token.")
 		return
 	}
 
-	// 2. Complete setup
-	err = h.userService.CompleteInvitation(user.UserID, req.Password)
-	if err != nil {
-		// Check if the error is a password policy validation error
-		if err.Error() == "password must be at least 8 characters" || err.Error() == "password must contain at least one uppercase letter, one lowercase letter, and one digit" {
-			c.JSON(http.StatusBadRequest, models.APIResponse{
-				Success: false,
-				Message: err.Error(),
-			})
-			return
-		}
-
-		c.JSON(http.StatusInternalServerError, models.APIResponse{
-			Success: false,
-			Message: "Failed to complete invitation: " + err.Error(),
-		})
+	if err := h.userService.CompleteInvitation(user.UserID, req.Password); err != nil {
+		h.respondPasswordOrInternalError(c, err, "Failed to complete invitation: ")
 		return
 	}
 
-	h.auditService.Log("update", "invitation_completed", &user.UserID, "client")
-
-	c.JSON(http.StatusOK, models.APIResponse{
-		Success: true,
-		Message: "Account setup complete. You can now log in.",
-	})
+	h.auditService.Log(services.AuditActionUpdate, "invitation_completed", &user.UserID, config.AuditSourceClient)
+	respondSuccess(c, "Account setup complete. You can now log in.", nil)
 }
 
-// POST /auth/forgot-password
+// ForgotPassword handles POST /auth/forgot-password.
 func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 	var req models.ForgotPasswordRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, models.APIResponse{
-			Success: false,
-			Message: "Invalid request: " + err.Error(),
-		})
+	if !bindJSON(c, &req) {
 		return
 	}
 
-	const genericMessage = "If an account with that email exists, a password reset link has been sent."
-
-	token, err := h.userService.RequestPasswordReset(req.Email)
+	token, user, err := h.userService.RequestPasswordReset(req.Email)
 	if err != nil {
 		log.Printf("⚠️  Failed to create password reset token for %s: %v", req.Email, err)
-		c.JSON(http.StatusOK, models.APIResponse{
-			Success: true,
-			Message: genericMessage,
-		})
+		respondSuccess(c, forgotPasswordGenericMessage, nil)
 		return
 	}
 
-	if token != "" {
-		user, _ := h.userService.GetByEmail(req.Email)
-		if user != nil {
-			if err := h.refreshService.RevokeAllUserTokens(user.UserID); err != nil {
-				log.Printf("⚠️  Failed to revoke tokens during password reset request for %s: %v", req.Email, err)
-			}
-			h.auditService.Log("update", "password_reset_requested", &user.UserID, "client")
+	if token != "" && user != nil {
+		if err := h.refreshService.RevokeAllUserTokens(user.UserID); err != nil {
+			log.Printf("⚠️  Failed to revoke tokens during password reset request for %s: %v", req.Email, err)
 		}
+		h.auditService.Log(services.AuditActionUpdate, "password_reset_requested", &user.UserID, config.AuditSourceClient)
 
-		resetLink := fmt.Sprintf("%s/reset-password?token=%s", config.FrontendURL, token)
 		if config.IsDevMode {
+			resetLink := fmt.Sprintf("%s/reset-password?token=%s", config.FrontendURL, token)
 			log.Printf("🔗 [DEV] Password reset link for %s: %s", req.Email, resetLink)
 		}
 
@@ -997,53 +414,28 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 		}(req.Email, token)
 	}
 
-	c.JSON(http.StatusOK, models.APIResponse{
-		Success: true,
-		Message: genericMessage,
-	})
+	respondSuccess(c, forgotPasswordGenericMessage, nil)
 }
 
-// POST /auth/reset-password
+// ResetPassword handles POST /auth/reset-password.
 func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	var req models.ResetPasswordRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, models.APIResponse{
-			Success: false,
-			Message: "Invalid request: " + err.Error(),
-		})
+	if !bindJSON(c, &req) {
 		return
 	}
 
 	user, err := h.userService.GetByResetToken(req.Token)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, models.APIResponse{
-			Success: false,
-			Message: err.Error(),
-		})
+		respondError(c, http.StatusBadRequest, err.Error())
 		return
 	}
 	if user == nil {
-		c.JSON(http.StatusNotFound, models.APIResponse{
-			Success: false,
-			Message: "Invalid or expired reset link.",
-		})
+		respondError(c, http.StatusNotFound, "Invalid or expired reset link.")
 		return
 	}
 
-	err = h.userService.CompletePasswordReset(user.UserID, req.Password)
-	if err != nil {
-		if err.Error() == "password must be at least 8 characters" || err.Error() == "password must contain at least one uppercase letter, one lowercase letter, and one digit" {
-			c.JSON(http.StatusBadRequest, models.APIResponse{
-				Success: false,
-				Message: err.Error(),
-			})
-			return
-		}
-
-		c.JSON(http.StatusInternalServerError, models.APIResponse{
-			Success: false,
-			Message: "Failed to reset password: " + err.Error(),
-		})
+	if err := h.userService.CompletePasswordReset(user.UserID, req.Password); err != nil {
+		h.respondPasswordOrInternalError(c, err, "Failed to reset password: ")
 		return
 	}
 
@@ -1057,50 +449,87 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 		}
 	}(user.Email)
 
-	h.auditService.Log("update", "password_reset_completed", &user.UserID, "client")
-	c.JSON(http.StatusOK, models.APIResponse{
-		Success: true,
-		Message: "Password reset successful. You can now log in.",
-	})
+	h.auditService.Log(services.AuditActionUpdate, "password_reset_completed", &user.UserID, config.AuditSourceClient)
+	respondSuccess(c, "Password reset successful. You can now log in.", nil)
 }
 
+// --- helpers ---
 
-// helpers
-
-// generates both an access token (JWT) and a refresh token.
-func (h *AuthHandler) issueTokens(user *models.User) (accessToken, refreshToken string, err error) {
-	accessToken, err = h.jwtService.GenerateToken(user.UserID, user.Email, user.Role)
+func (h *AuthHandler) loadTargetUser(c *gin.Context, targetID string) (*models.User, bool) {
+	targetUser, err := h.userService.GetByID(targetID)
 	if err != nil {
-		return "", "", fmt.Errorf("generate access token: %w", err)
+		respondError(c, http.StatusInternalServerError, "Internal server error.")
+		return nil, false
 	}
-
-	refreshToken, err = h.refreshService.CreateToken(user.UserID)
-	if err != nil {
-		return "", "", fmt.Errorf("generate refresh token: %w", err)
+	if targetUser == nil {
+		respondError(c, http.StatusNotFound, "User not found.")
+		return nil, false
 	}
-
-	return accessToken, refreshToken, nil
+	return targetUser, true
 }
 
-// callerClaims retrieves the authenticated caller's JWT claims from the Gin context.
-// Returns nil and writes a 401 response if claims are not found (misconfiguration guard).
-func (h *AuthHandler) callerClaims(c *gin.Context) *services.Claims {
-	value, exists := c.Get(config.ContextKeyUser)
-	if !exists {
-		c.JSON(http.StatusUnauthorized, models.APIResponse{
-			Success: false,
-			Message: "Not authenticated.",
-		})
-		return nil
+func (h *AuthHandler) requireManageableTarget(
+	c *gin.Context,
+	targetID, selfForbiddenMsg, masterAdminForbiddenMsg string,
+) (*models.User, bool) {
+	claims := requireClaims(c)
+	if claims == nil {
+		return nil, false
 	}
-	claims, ok := value.(*services.Claims)
+
+	if claims.UserID == targetID {
+		respondError(c, http.StatusForbidden, selfForbiddenMsg)
+		return nil, false
+	}
+
+	targetUser, ok := h.loadTargetUser(c, targetID)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{
-			Success: false,
-			Message: "Failed to read user claims.",
-		})
-		return nil
+		return nil, false
 	}
-	return claims
+
+	if targetUser.Role == config.RoleMasterAdmin {
+		respondError(c, http.StatusForbidden, masterAdminForbiddenMsg)
+		return nil, false
+	}
+
+	return targetUser, true
 }
 
+func (h *AuthHandler) resolveAdminGroupID(c *gin.Context, role string, reqGroupID *string) (*string, bool) {
+	if role != config.RoleAdmin {
+		return nil, true
+	}
+
+	if reqGroupID == nil || *reqGroupID == "" {
+		respondError(c, http.StatusBadRequest, "group_id is required when role is 'admin'.")
+		return nil, false
+	}
+
+	exists, err := h.groupService.Exists(*reqGroupID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "Failed to validate group.")
+		return nil, false
+	}
+	if !exists {
+		respondError(c, http.StatusBadRequest, "Invalid group_id.")
+		return nil, false
+	}
+
+	return reqGroupID, true
+}
+
+func (h *AuthHandler) respondPasswordOrInternalError(c *gin.Context, err error, internalPrefix string) {
+	if services.IsPasswordPolicyError(err) {
+		respondError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	respondError(c, http.StatusInternalServerError, internalPrefix+err.Error())
+}
+
+func (h *AuthHandler) sendInvitationEmailAsync(email, role, inviteToken string) {
+	go func(email, role, inviteToken string) {
+		if err := h.emailService.SendInvitation(email, role, inviteToken); err != nil {
+			log.Printf("⚠️  Failed to send invitation email to %s: %v", email, err)
+		}
+	}(email, role, inviteToken)
+}
