@@ -26,6 +26,19 @@ func NewDocumentHandler(document *services.DocumentService, notification *servic
 	}
 }
 
+// listResponse builds the paginated envelope expected by the frontend.
+func listResponse(c *gin.Context, docs []schemas.DocumentResponse, page, limit int) {
+	if docs == nil {
+		docs = []schemas.DocumentResponse{}
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"status": true,
+		"data":   docs,
+		"page":   page,
+		"limit":  limit,
+	})
+}
+
 /*
 func (d *DocumentHandler)Get_all_documents_Handler(c *gin.Context) {
     page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
@@ -102,11 +115,7 @@ func (d *DocumentHandler) Get_document_by_status_handler(c *gin.Context) {
 		c.JSON(500, gin.H{"error": "Internal server error"})
 		return
 	}
-	c.JSON(200, gin.H{
-		"data":  status,
-		"page":  page,
-		"limit": limit,
-	})
+	listResponse(c, status, page, limit)
 }
 
 func (d *DocumentHandler) Get_document_by_type_handler(c *gin.Context) {
@@ -120,11 +129,7 @@ func (d *DocumentHandler) Get_document_by_type_handler(c *gin.Context) {
 		return
 	}
 
-	c.JSON(200, gin.H{
-		"data":  docs,
-		"page":  page,
-		"limit": limit,
-	})
+	listResponse(c, docs, page, limit)
 }
 
 func (d *DocumentHandler) Get_document_by_group_handler(c *gin.Context) {
@@ -142,11 +147,7 @@ func (d *DocumentHandler) Get_document_by_group_handler(c *gin.Context) {
 		c.JSON(500, gin.H{"error": "Internal Server Error"})
 		return
 	}
-	c.JSON(200, gin.H{
-		"data":  group,
-		"page":  page,
-		"limit": limit,
-	})
+	listResponse(c, group, page, limit)
 }
 
 func (d *DocumentHandler) Get_document_by_standard_handler(c *gin.Context) {
@@ -172,7 +173,7 @@ func (d *DocumentHandler) Get_document_by_standard_handler(c *gin.Context) {
 		c.JSON(500, gin.H{"error": "Internal server error"})
 		return
 	}
-	c.JSON(200, gin.H{"data": standard, "page": page, "limit": limit})
+	listResponse(c, standard, page, limit)
 }
 
 func (d *DocumentHandler) Get_document_by_service_handler(c *gin.Context) {
@@ -198,7 +199,7 @@ func (d *DocumentHandler) Get_document_by_service_handler(c *gin.Context) {
 		c.JSON(500, gin.H{"error": "Internal server error"})
 		return
 	}
-	c.JSON(200, gin.H{"data": service, "page": page, "limit": limit})
+	listResponse(c, service, page, limit)
 }
 
 func (d *DocumentHandler) Get_document_by_assessment_handler(c *gin.Context) {
@@ -225,7 +226,7 @@ func (d *DocumentHandler) Get_document_by_assessment_handler(c *gin.Context) {
 		c.JSON(500, gin.H{"error": "Internal server error"})
 		return
 	}
-	c.JSON(200, gin.H{"data": assessment, "page": page, "limit": limit})
+	listResponse(c, assessment, page, limit)
 }
 
 func (d *DocumentHandler) Get_document_by_createdBy_handler(c *gin.Context) {
@@ -245,20 +246,7 @@ func (d *DocumentHandler) Get_document_by_createdBy_handler(c *gin.Context) {
 		return
 	}
 
-	if docs == nil {
-		c.JSON(2000, gin.H{
-			"data":  []interface{}{},
-			"page":  page,
-			"limit": limit,
-		})
-		return
-	}
-
-	c.JSON(200, gin.H{
-		"data":  docs,
-		"page":  page,
-		"limit": limit,
-	})
+	listResponse(c, docs, page, limit)
 }
 
 func (d *DocumentHandler) Create_document_handler(c *gin.Context) {

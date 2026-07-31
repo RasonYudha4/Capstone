@@ -1,6 +1,7 @@
 package services
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -9,81 +10,82 @@ import (
 	"auth-service/config"
 	"auth-service/models"
 	"auth-service/repositories"
-	"crypto/rand"
-	"encoding/hex"
 
 	"golang.org/x/crypto/bcrypt"
 )
 
-// handles all user-related operations.
+// Password policy errors returned by ValidatePasswordPolicy.
+// Handlers should use IsPasswordPolicyError rather than comparing error strings.
+var (
+	ErrPasswordTooShort = fmt.Errorf(
+		"password must be at least %d characters",
+		config.PasswordMinLength,
+	)
+	ErrPasswordComplexity = errors.New(
+		"password must contain at least one uppercase letter, one lowercase letter, and one digit",
+	)
+)
+
+// IsPasswordPolicyError reports whether err is a password-policy validation failure.
+func IsPasswordPolicyError(err error) bool {
+	return errors.Is(err, ErrPasswordTooShort) || errors.Is(err, ErrPasswordComplexity)
+}
+
+// UserService handles all user-related operations.
 type UserService struct {
 	userRepo *repositories.UserRepository
 }
 
-// creates a UserService backed by the given UserRepository.
+// NewUserService creates a UserService backed by the given UserRepository.
 func NewUserService(userRepo *repositories.UserRepository) *UserService {
 	return &UserService{userRepo: userRepo}
 }
 
-// looks up a user by their email address.
-// returns (nil, nil) if not found.
+// GetByEmail looks up a user by email. Returns (nil, nil) if not found.
 func (s *UserService) GetByEmail(email string) (*models.User, error) {
 	return s.userRepo.GetByEmail(email)
 }
 
-// looks up a user by their UUID.
-// returns (nil, nil) if not found.
+// GetByID looks up a user by UUID. Returns (nil, nil) if not found.
 func (s *UserService) GetByID(id string) (*models.User, error) {
 	return s.userRepo.GetByID(id)
 }
 
-//  Authentication
-
-// verifies email + password against the database.
-// returns the user if credentials are valid, nil if invalid.
-// does NOT check lockout — the caller (handler) should check user.IsLocked() first.
+// Authenticate verifies email + password against the database.
+// Returns the user if credentials are valid, nil if invalid.
+// Does NOT check lockout — the caller should check user.IsLocked() first.
 func (s *UserService) Authenticate(email, password string) (*models.User, error) {
 	user, err := s.GetByEmail(email)
 	if err != nil {
 		return nil, err
 	}
-	if user == nil {
-		return nil, nil // email not found
+	if !s.CheckPassword(user, password) {
+		return nil, nil
 	}
-
-	// check that the user has a password set.
-	if user.PasswordHash == nil || *user.PasswordHash == "" {
-		return nil, nil // no password set for this user
-	}
-
-	// compare the plaintext password against the stored bcrypt hash.
-	if err := bcrypt.CompareHashAndPassword(
-		[]byte(*user.PasswordHash), []byte(password),
-	); err != nil {
-		return nil, nil // wrong password
-	}
-
 	return user, nil
 }
 
-//  account lockout
+// CheckPassword verifies a plaintext password against an already-loaded user.
+// Returns false when the user is nil, has no password, or the password does not match.
+func (s *UserService) CheckPassword(user *models.User, password string) bool {
+	if user == nil || user.PasswordHash == nil || *user.PasswordHash == "" {
+		return false
+	}
+	return bcrypt.CompareHashAndPassword([]byte(*user.PasswordHash), []byte(password)) == nil
+}
 
-// adds 1 to the failed login counter.
-// returns the new count.
+// IncrementFailedAttempts adds 1 to the failed login counter and returns the new count.
 func (s *UserService) IncrementFailedAttempts(userID string) (int, error) {
 	return s.userRepo.IncrementFailedAttempts(userID)
 }
 
-// sets the locked_until timestamp to NOW (UTC) + LockDuration.
-// uses UTC because the database column is TIMESTAMP (without time zone),
-// and lib/pq reads it back as UTC.
+// LockAccount sets locked_until to NOW (UTC) + LockDuration.
 func (s *UserService) LockAccount(userID string) error {
 	lockUntil := time.Now().UTC().Add(config.LockDuration)
 	return s.userRepo.UpdateLock(userID, lockUntil)
 }
 
-// clears the failed attempt counter and lock.
-// called after a successful login.
+// ResetFailedAttempts clears the failed attempt counter and lock after a successful login.
 func (s *UserService) ResetFailedAttempts(userID string) error {
 	return s.userRepo.ResetFailedAttempts(userID)
 }
@@ -114,9 +116,7 @@ func (s *UserService) DeleteUser(userID string) error {
 	return s.userRepo.DeleteUser(userID)
 }
 
-// password hashing & validation
-
-// produces a bcrypt hash of the given plaintext password.
+// HashPassword produces a bcrypt hash of the given plaintext password.
 func HashPassword(password string) (string, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), config.BcryptCost)
 	if err != nil {
@@ -125,15 +125,10 @@ func HashPassword(password string) (string, error) {
 	return string(hash), nil
 }
 
-// checks if a password meets the requirements:
-//   - minimum 8 characters
-//   - at least one uppercase letter
-//   - at least one lowercase letter
-//   - at least one digit
-// returns nil if valid, or a descriptive error.
+// ValidatePasswordPolicy checks minimum length and character-class requirements.
 func ValidatePasswordPolicy(password string) error {
 	if len(password) < config.PasswordMinLength {
-		return fmt.Errorf("password must be at least %d characters", config.PasswordMinLength)
+		return ErrPasswordTooShort
 	}
 
 	var hasUpper, hasLower, hasDigit bool
@@ -150,15 +145,12 @@ func ValidatePasswordPolicy(password string) error {
 	}
 
 	if !hasUpper || !hasLower || !hasDigit {
-		return fmt.Errorf("password must contain at least one uppercase letter, one lowercase letter, and one digit")
+		return ErrPasswordComplexity
 	}
 	return nil
 }
 
-//  seeding (for development / testing)
-
-// sets bcrypt-hashed passwords on the existing seed users
-// that were created by migration 0002_seed.up.sql.
+// SeedPasswords sets bcrypt-hashed passwords on seed users from migration 0002.
 func (s *UserService) SeedPasswords() error {
 	seeds := []struct {
 		Email, Password string
@@ -178,7 +170,6 @@ func (s *UserService) SeedPasswords() error {
 			continue
 		}
 
-		// Skip if password is already set.
 		if user.PasswordHash != nil && *user.PasswordHash != "" {
 			continue
 		}
@@ -188,8 +179,7 @@ func (s *UserService) SeedPasswords() error {
 			return err
 		}
 
-		err = s.userRepo.UpdatePasswordHash(user.UserID, hash)
-		if err != nil {
+		if err := s.userRepo.UpdatePasswordHash(user.UserID, hash); err != nil {
 			return fmt.Errorf("set password for %s: %w", seed.Email, err)
 		}
 		log.Printf("🔑 Set password for: %s (role: %s)", seed.Email, user.Role)
@@ -200,19 +190,13 @@ func (s *UserService) SeedPasswords() error {
 
 // InviteUser creates a new user in 'invited' status and returns a secure token.
 func (s *UserService) InviteUser(email, role string, groupID *string) (string, error) {
-	// 1. Generate secure random token
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
+	token, err := generateSecureToken()
+	if err != nil {
 		return "", err
 	}
-	token := hex.EncodeToString(b)
 
-	// 2. Set expiration (24 hours)
-	expiresAt := time.Now().Add(24 * time.Hour)
-
-	// 3. Create user in DB
-	err := s.userRepo.CreateInvitedUser(email, role, groupID, token, expiresAt)
-	if err != nil {
+	expiresAt := time.Now().Add(config.InvitationTokenExpiry)
+	if err := s.userRepo.CreateInvitedUser(email, role, groupID, token, expiresAt); err != nil {
 		return "", err
 	}
 
@@ -228,16 +212,15 @@ func (s *UserService) ResendInvitation(userID string) (string, error) {
 	if user == nil {
 		return "", fmt.Errorf("user not found")
 	}
-	if user.AccountStatus != "invited" {
+	if user.AccountStatus != models.AccountStatusInvited {
 		return "", fmt.Errorf("only invited users can have their invitation resent")
 	}
 
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
+	token, err := generateSecureToken()
+	if err != nil {
 		return "", fmt.Errorf("generate invitation token: %w", err)
 	}
-	token := hex.EncodeToString(b)
-	expiresAt := time.Now().Add(24 * time.Hour)
+	expiresAt := time.Now().Add(config.InvitationTokenExpiry)
 
 	if err := s.userRepo.UpdateInvitationToken(userID, token, expiresAt); err != nil {
 		return "", err
@@ -256,7 +239,6 @@ func (s *UserService) GetByInvitationToken(token string) (*models.User, error) {
 		return nil, nil
 	}
 
-	// Check expiration
 	if user.TokenExpiresAt != nil && time.Now().After(*user.TokenExpiresAt) {
 		return nil, fmt.Errorf("invitation token expired")
 	}
@@ -266,50 +248,47 @@ func (s *UserService) GetByInvitationToken(token string) (*models.User, error) {
 
 // CompleteInvitation sets the password and activates the user.
 func (s *UserService) CompleteInvitation(userID, password string) error {
-	// 1. Validate password policy
 	if err := ValidatePasswordPolicy(password); err != nil {
 		return err
 	}
 
-	// 2. Hash password
 	hash, err := HashPassword(password)
 	if err != nil {
 		return err
 	}
 
-	// 3. Update DB
 	return s.userRepo.CompleteInvitation(userID, hash)
 }
 
 // RequestPasswordReset generates a reset token for an active user with a password set.
-// Returns the raw token when a reset email should be sent, or empty string when no action is taken.
-func (s *UserService) RequestPasswordReset(email string) (string, error) {
-	user, err := s.GetByEmail(email)
+// Returns the raw token and user when a reset email should be sent.
+// Returns ("", nil, nil) when no action is taken (unknown/inactive/no-password user).
+func (s *UserService) RequestPasswordReset(email string) (token string, user *models.User, err error) {
+	user, err = s.GetByEmail(email)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	if user == nil {
-		return "", nil
+		return "", nil, nil
 	}
-	if user.AccountStatus != "active" {
-		return "", nil
+	if user.AccountStatus != models.AccountStatusActive {
+		return "", nil, nil
 	}
 	if user.PasswordHash == nil || *user.PasswordHash == "" {
-		return "", nil
+		return "", nil, nil
 	}
 
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", fmt.Errorf("generate reset token: %w", err)
+	token, err = generateSecureToken()
+	if err != nil {
+		return "", nil, fmt.Errorf("generate reset token: %w", err)
 	}
-	token := hex.EncodeToString(b)
 	expiresAt := time.Now().Add(config.ResetTokenExpiry)
 
 	if err := s.userRepo.SetResetToken(user.UserID, token, expiresAt); err != nil {
-		return "", err
+		return "", nil, err
 	}
 
-	return token, nil
+	return token, user, nil
 }
 
 // GetByResetToken finds an active user by reset token and checks expiration.
@@ -321,7 +300,7 @@ func (s *UserService) GetByResetToken(token string) (*models.User, error) {
 	if user == nil {
 		return nil, nil
 	}
-	if user.AccountStatus != "active" {
+	if user.AccountStatus != models.AccountStatusActive {
 		return nil, nil
 	}
 	if user.TokenExpiresAt != nil && time.Now().After(*user.TokenExpiresAt) {

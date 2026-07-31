@@ -10,15 +10,17 @@ type Response struct {
 }
 
 type DocumentResponse struct {
-    DocumentId    uuid.UUID `json:"document_id"`
-    Filename      string    `json:"filename"`
-    DocumentType  string    `json:"document_type"`
-    CreatedBy     string    `json:"created_by"`
-    UpdatedAt     time.Time `json:"updated_at"`
-    Status        string    `json:"status"`
-    ServiceCode   string    `json:"service_code"`
-    StandardCode  string    `json:"standard_code"`
-    AssessmentCode string   `json:"assessment_code"`
+    DocumentId     uuid.UUID `json:"document_id"`
+    Filename       string    `json:"filename"`
+    Filepath       string    `json:"filepath"`
+    DocumentType   string    `json:"document_type"`
+    CreatedBy      string    `json:"created_by"`
+    UpdatedAt      time.Time `json:"updated_at"`
+    Assessment     string    `json:"assessment"`
+    Status         string    `json:"status"`
+    ServiceCode    string    `json:"service_code"`
+    StandardCode   string    `json:"standard_code"`
+    AssessmentCode string    `json:"assessment_code"`
 }
 
 type DocumentRequest struct {

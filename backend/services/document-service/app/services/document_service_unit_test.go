@@ -298,7 +298,7 @@ func TestGet_document_by_status_Success(t *testing.T) {
 	auditMock := new(MockAuditRepo)
 	storageMock := new(MockStorageRepo)
 
-	expected := []schemas.DocumentResponse{{FileName: "doc.pdf"}}
+	expected := []schemas.DocumentResponse{{Filename: "doc.pdf"}}
 	repoMock.On("Get_document_by_status", "pending", 10, 0).Return(expected, nil)
 
 	svc := NewDocumentService(repoMock, auditMock, storageMock, nil)

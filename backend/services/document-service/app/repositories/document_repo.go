@@ -40,13 +40,15 @@ const baseQuery = `
 	  SELECT 
         d.document_id,
         d.filename,
+        COALESCE(d.filepath, ''),
         dt.name AS document_type,
         u.email AS created_by,
         d.updated_at,
+        COALESCE(a.assessment_id::text, ''),
         d.status,
-        s.service_code,
-        st.standard_code,
-        a.assessment_code
+        COALESCE(s.service_code, ''),
+        COALESCE(st.standard_code, ''),
+        COALESCE(a.assessment_code, '')
     FROM documents d
     JOIN document_types dt ON d.document_type_id = dt.document_type_id
     JOIN users u ON d.created_by = u.user_id
@@ -69,9 +71,11 @@ func(s *DocumentRepo) fetchingData(query string, args ...any)([]schemas.Document
 		err := rows.Scan(
 			&doc.DocumentId,
 			&doc.Filename,
+			&doc.Filepath,
 			&doc.DocumentType,
 			&doc.CreatedBy,
 			&doc.UpdatedAt,
+			&doc.Assessment,
 			&doc.Status,
 			&doc.ServiceCode,
 			&doc.StandardCode,

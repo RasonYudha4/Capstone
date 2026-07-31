@@ -1,9 +1,10 @@
 package handlers
 
 import (
+	"net/http"
+
 	"auth-service/models"
 	"auth-service/services"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
@@ -16,14 +17,11 @@ func NewGroupHandler(groupService *services.GroupService) *GroupHandler {
 	return &GroupHandler{groupService: groupService}
 }
 
-// GET /groups
+// ListGroups handles GET /groups.
 func (h *GroupHandler) ListGroups(c *gin.Context) {
 	groups, err := h.groupService.GetAll()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{
-			Success: false,
-			Message: "Failed to fetch groups.",
-		})
+		respondError(c, http.StatusInternalServerError, "Failed to fetch groups.")
 		return
 	}
 
@@ -31,9 +29,5 @@ func (h *GroupHandler) ListGroups(c *gin.Context) {
 		groups = []models.Group{}
 	}
 
-	c.JSON(http.StatusOK, models.APIResponse{
-		Success: true,
-		Message: "Groups retrieved.",
-		Data:    groups,
-	})
+	respondSuccess(c, "Groups retrieved.", groups)
 }

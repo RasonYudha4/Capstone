@@ -114,7 +114,7 @@ func (h *NotificationHandler) MarkRead(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to mark as read"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "marked as read"})
+	c.JSON(http.StatusOK, gin.H{"status": true, "message": "marked as read"})
 }
 
 func (h *NotificationHandler) MarkAllRead(c *gin.Context) {
@@ -127,5 +127,5 @@ func (h *NotificationHandler) MarkAllRead(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to mark all as read"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "all marked as read"})
+	c.JSON(http.StatusOK, gin.H{"status": true, "message": "all marked as read"})
 }

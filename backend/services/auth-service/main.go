@@ -36,20 +36,21 @@ func main() {
 	emailService := services.NewEmailService()
 	otpService := services.NewOTPService(otpRepo, emailService)
 	jwtService := services.NewJWTService()
-	refreshService := services.NewRefreshService(refreshRepo) // Phase 2
-	auditService := services.NewAuditService(auditRepo)       // Phase 2
+	refreshService := services.NewRefreshService(refreshRepo)
+	auditService := services.NewAuditService(auditRepo)
+	authService := services.NewAuthService(userService, otpService, jwtService, refreshService, auditService)
 
 	// Start OTP cleanup goroutine
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	otpService.StartCleanup(ctx)
 
-	// set passwords on existing seed users 
+	// set passwords on existing seed users
 	if err := userService.SeedPasswords(); err != nil {
 		log.Printf("⚠️  Failed to seed passwords: %v", err)
 	}
 	authHandler := handlers.NewAuthHandler(
-		userService, groupService, otpService, emailService, jwtService, refreshService, auditService,
+		authService, userService, groupService, emailService, jwtService, refreshService, auditService,
 	)
 	documentHandler := handlers.NewDocumentHandler()
 	groupHandler := handlers.NewGroupHandler(groupService)
