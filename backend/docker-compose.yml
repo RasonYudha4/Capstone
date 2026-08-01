@@ -31,7 +31,6 @@ services:
       - "5433:5432"
     volumes:
       - data_db:/var/lib/postgresql
-      - ./init-db:/docker-entrypoint-initdb.d
       - ./migration/0001_init_schema.up.sql:/docker-entrypoint-initdb.d/01_init_schema.sql
       - ./migration/0002_seed.up.sql:/docker-entrypoint-initdb.d/02_seed.sql
       - ./migration/0003_user_invitation.up.sql:/docker-entrypoint-initdb.d/03_user_invitation.sql
