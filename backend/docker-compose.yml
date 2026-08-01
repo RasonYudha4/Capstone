@@ -35,6 +35,7 @@ services:
       - ./migration/0001_init_schema.up.sql:/docker-entrypoint-initdb.d/01_init_schema.sql
       - ./migration/0002_seed.up.sql:/docker-entrypoint-initdb.d/02_seed.sql
       - ./migration/0003_user_invitation.up.sql:/docker-entrypoint-initdb.d/03_user_invitation.sql
+      - ./migration/0004_auth_hardening.up.sql:/docker-entrypoint-initdb.d/04_auth_hardening.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U capstone -d capstone_db"]
       interval: 10s

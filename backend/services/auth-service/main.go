@@ -74,7 +74,7 @@ func main() {
 		auth.POST("/resend-otp", authRateLimiter, authHandler.ResendOTP)
 
 		// get a new access token using a refresh token.
-		auth.POST("/refresh", authHandler.Refresh)
+		auth.POST("/refresh", authRateLimiter, authHandler.Refresh)
 
 		// revoke a refresh token (logout).
 		auth.POST("/logout", authHandler.Logout)
@@ -85,7 +85,7 @@ func main() {
 		})
 
 		// complete invitation (setup password) - PUBLIC
-		auth.POST("/complete-invitation", authHandler.CompleteInvitation)
+		auth.POST("/complete-invitation", authRateLimiter, authHandler.CompleteInvitation)
 
 		// self-service password reset - PUBLIC
 		auth.POST("/forgot-password", authRateLimiter, authHandler.ForgotPassword)

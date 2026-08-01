@@ -17,12 +17,11 @@ import (
 // How it works:
 //  1. Reads the "Authorization" header and expects the format "Bearer <token>".
 //  2. Passes the raw token to JWTService.ValidateToken for signature + expiry checks.
-//  3. On success, stores the parsed claims in the Gin context under config.ContextKeyUser
-//     so downstream handlers can access the authenticated user's email and role.
-//  4. On failure, aborts the request with 401 Unauthorized.
+//  3. Reloads the user from the database and rejects inactive/locked accounts.
+//  4. Overwrites claims.Role/Email from the database so RBAC reflects demotions immediately.
+//  5. Stores the claims in the Gin context under config.ContextKeyUser.
 func JWTAuth(jwtService services.TokenValidator, userService services.UserLookup) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// --- Step 1: Extract the Authorization header ---
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, models.APIResponse{
@@ -32,7 +31,6 @@ func JWTAuth(jwtService services.TokenValidator, userService services.UserLookup
 			return
 		}
 
-		// --- Step 2: Validate "Bearer <token>" format ---
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, models.APIResponse{
@@ -44,7 +42,6 @@ func JWTAuth(jwtService services.TokenValidator, userService services.UserLookup
 
 		tokenString := parts[1]
 
-		// --- Step 3: Validate the JWT ---
 		claims, err := jwtService.ValidateToken(tokenString)
 		if err != nil {
 			log.Printf("⚠️  JWT validation failed: %v", err)
@@ -55,7 +52,6 @@ func JWTAuth(jwtService services.TokenValidator, userService services.UserLookup
 			return
 		}
 
-		// --- Step 4: Verify account is still active in the database ---
 		user, err := userService.GetByID(claims.UserID)
 		if err != nil {
 			log.Printf("⚠️  Failed to load user %s during JWT auth: %v", claims.UserID, err)
@@ -72,8 +68,17 @@ func JWTAuth(jwtService services.TokenValidator, userService services.UserLookup
 			})
 			return
 		}
+		if user.IsLocked() {
+			c.AbortWithStatusJSON(http.StatusTooManyRequests, models.APIResponse{
+				Success: false,
+				Message: "Account is locked. Try again later.",
+			})
+			return
+		}
 
-		// --- Step 5: Store user info in context for downstream handlers ---
+		// Prefer authoritative DB values so role demotion takes effect immediately.
+		claims.Role = user.Role
+		claims.Email = user.Email
 		c.Set(config.ContextKeyUser, claims)
 
 		c.Next()

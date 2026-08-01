@@ -79,7 +79,7 @@ func (s *EmailService) SendInvitation(to string, role string, token string) erro
 
 func (s *EmailService) SendPasswordReset(to string, token string) error {
 	resetLink := fmt.Sprintf("%s/reset-password?token=%s", config.FrontendURL, token)
-	subject := "Reset Password - Smart Accreditation"
+	subject := "Reset Password"
 	body := fmt.Sprintf(`
 		<html>
 		<body style="font-family: Arial, sans-serif; background-color: #f9f9f9; padding: 20px;">
@@ -105,7 +105,7 @@ func (s *EmailService) SendPasswordReset(to string, token string) error {
 }
 
 func (s *EmailService) SendPasswordChangedNotice(to string) error {
-	subject := "Password Changed - Smart Accreditation"
+	subject := "Password Changed"
 	body := `
 		<html>
 		<body style="font-family: Arial, sans-serif; background-color: #f9f9f9; padding: 20px;">
@@ -124,8 +124,11 @@ func (s *EmailService) SendPasswordChangedNotice(to string) error {
 
 func (s *EmailService) sendRawEmail(to string, subject string, body string) error {
 	if s.from == "" || s.password == "" || s.smtpHost == "" || s.smtpPort == "" {
-		log.Printf("[email] Skiping email send: SMTP credentials not fully configured")
-		return nil // In dev mode, we might not have SMTP configured
+		log.Printf("[email] Skipping email send: SMTP credentials not fully configured")
+		if config.IsDevMode {
+			return nil
+		}
+		return fmt.Errorf("SMTP is not configured")
 	}
 
 	auth := smtp.PlainAuth("", s.from, s.password, s.smtpHost)
