@@ -134,9 +134,14 @@ func (d *DocumentHandler) Get_document_by_status_handler(c *gin.Context) {
 
 	data, page, limit, err := d.documentService.Get_document_by_status(statusParam, page, limit)
 	if err != nil {
+		log.Printf("Get_document_by_status error status=%q: %v", statusParam, err)
 		RespondError(c, 500, "Internal Server Error")
 		return
 	}
+	if data == nil {
+		data = []schemas.DocumentResponse{}
+	}
+	log.Printf("Get_document_by_status status=%q count=%d page=%d", statusParam, len(data), page)
 	RespondSuccess(c, 200, "Success", schemas.DocumentDataResponse{
 		Data:  data,
 		Page:  page,
@@ -613,9 +618,12 @@ func (h *DocumentHandler) GetStats(c *gin.Context) {
 	role := c.GetString("role")
 	result, err := h.documentService.GetStats(userId, role)
 	if err != nil {
+		log.Printf("GetStats error role=%q user=%s: %v", role, userId, err)
 		RespondError(c, 500, "Internal Server Error")
 		return
 	}
 
+	log.Printf("GetStats role=%q user=%s total=%d pending=%d approved=%d rejected=%d",
+		role, userId, result.Total, result.Stats.Pending, result.Stats.Approved, result.Stats.Rejected)
 	RespondSuccess(c, 200, "Getting Current Stats", result)
 }

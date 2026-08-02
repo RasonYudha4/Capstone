@@ -99,12 +99,12 @@ func (s *DocumentRepo) filterFetch(field filter, fieldId, createdById uuid.UUID,
 }
 
 func (s *DocumentRepo) GetDocuments(limit, offset int) ([]schemas.DocumentResponse, error) {
-	query := baseQuery + "WHERE is_deleted = false AND status = 'approved' ORDER BY d.updated_at DESC LIMIT $1 OFFSET $2"
+	query := baseQuery + "WHERE d.is_deleted = false AND d.status = 'approved' ORDER BY d.updated_at DESC LIMIT $1 OFFSET $2"
 	return s.fetchingData(query, limit, offset)
 }
 
 func (s *DocumentRepo) Get_document_by_status(status string, limit, offset int) ([]schemas.DocumentResponse, error) {
-	query := baseQuery + "WHERE d.status = $1 AND is_deleted = false ORDER BY d.updated_at DESC LIMIT $2 OFFSET $3"
+	query := baseQuery + "WHERE d.status = $1 AND d.is_deleted = false ORDER BY d.updated_at DESC LIMIT $2 OFFSET $3"
 	return s.fetchingData(query, status, limit, offset)
 }
 
@@ -361,15 +361,7 @@ func (s *DocumentRepo) Get_stats(userId uuid.UUID, role string) ([]schemas.Group
 	}
 
 	var stats schemas.StatusStat
-	switch role {
-	case "master-admin":
-		err = s.db.QueryRow(context.Background(), `
-			SELECT
-				COUNT(*) FILTER (WHERE status = 'approved' AND is_deleted = false),
-				COUNT(*) FILTER (WHERE status = 'pending'  AND is_deleted = false),
-				COUNT(*) FILTER (WHERE status = 'rejected' AND is_deleted = false)
-			FROM documents
-		`).Scan(&stats.Approved, &stats.Pending, &stats.Rejected)
+	switch strings.TrimSpace(role) {
 	case "admin":
 		err = s.db.QueryRow(context.Background(), `
 			SELECT
@@ -379,6 +371,15 @@ func (s *DocumentRepo) Get_stats(userId uuid.UUID, role string) ([]schemas.Group
 			FROM documents
 			WHERE created_by = $1
 		`, userId).Scan(&stats.Approved, &stats.Pending, &stats.Rejected)
+	default:
+		// master-admin (and any elevated role): count all non-deleted documents
+		err = s.db.QueryRow(context.Background(), `
+			SELECT
+				COUNT(*) FILTER (WHERE status = 'approved' AND is_deleted = false),
+				COUNT(*) FILTER (WHERE status = 'pending'  AND is_deleted = false),
+				COUNT(*) FILTER (WHERE status = 'rejected' AND is_deleted = false)
+			FROM documents
+		`).Scan(&stats.Approved, &stats.Pending, &stats.Rejected)
 	}
 	if err != nil {
 		return nil, schemas.StatusStat{}, err

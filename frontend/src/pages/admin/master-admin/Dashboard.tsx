@@ -3,6 +3,7 @@ import DashboardHeader from "@/components/organism/DashboardHeader"
 import QueueList from "@/components/organism/QueueList"
 import StatRow from "@/components/organism/StatRow"
 import { useAuth } from "@/cores/AuthContext"
+import { useStats } from "@/hooks/useDocument"
 import { useIngestKmk } from "@/hooks/useIngest"
 import { AlertCircle, CheckCircle, Database, Loader2 } from "lucide-react"
 
@@ -32,7 +33,8 @@ function IngestKmkButton() {
 
 export default function DashboardPage() {
     const { user } = useAuth()
-    const pendingCount = 4
+    const { data: stats } = useStats()
+    const pendingCount = stats?.stats?.pending ?? 0
 
     return (
         <div className="p-6 max-w-7xl mx-auto">

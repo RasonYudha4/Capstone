@@ -119,8 +119,11 @@ export default function QueueList() {
         setLoading(true)
         try {
             const res = await documentService.getByStatus('pending', { page, limit: LIMIT })
-            setDocs(res.data ?? [])
-        } catch {
+            const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : []
+            setDocs(list)
+        } catch (err) {
+            console.error('[QueueList] failed to load pending documents', err)
+            toast.error('Gagal memuat antrian dokumen.')
             setDocs([])
         } finally {
             setLoading(false)

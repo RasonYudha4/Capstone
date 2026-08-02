@@ -151,7 +151,15 @@ export const documentService = {
     getByStatus: async (status: string, query?: PaginationQuery): Promise<DocumentListResponse> => {
         try {
             const { data } = await axioHandler.get(`/documents/masterAdmin/status/${status}`, { params: query })
-            return data.data
+            const payload = data?.data ?? data
+            if (Array.isArray(payload)) {
+                return { data: payload, page: query?.page ?? 1, limit: query?.limit ?? 10 }
+            }
+            return {
+                data: Array.isArray(payload?.data) ? payload.data : [],
+                page: payload?.page ?? query?.page ?? 1,
+                limit: payload?.limit ?? query?.limit ?? 10,
+            }
         } catch (error) {
             throw new Error('Failed to fetch documents by status.')
         }
@@ -226,7 +234,24 @@ export const statsService = {
     getStats: async (): Promise<StatsResponse> => {
         try {
             const { data } = await axioHandler.get('/documents/stats')
-            return data.data
+            const payload = data?.data ?? data
+            if (!payload || typeof payload !== 'object') {
+                throw new Error('Invalid statistics payload.')
+            }
+            const stats = payload.stats ?? { approved: 0, pending: 0, rejected: 0 }
+            const total =
+                typeof payload.total === 'number'
+                    ? payload.total
+                    : (stats.approved ?? 0) + (stats.pending ?? 0) + (stats.rejected ?? 0)
+            return {
+                total,
+                groups: payload.groups ?? [],
+                stats: {
+                    approved: stats.approved ?? 0,
+                    pending: stats.pending ?? 0,
+                    rejected: stats.rejected ?? 0,
+                },
+            }
         } catch (error) {
             throw new Error('Failed to fetch statistics.')
         }

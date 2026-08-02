@@ -158,7 +158,10 @@ func (d *DocumentService) Get_document_by_status(status string, page, limit int)
 	page, limit, offset := pageLimit(page, limit)
 	docs, err := d.repo.Get_document_by_status(status, limit, offset)
 	if err != nil {
-		return []schemas.DocumentResponse{}, 0, 0, err
+		return []schemas.DocumentResponse{}, page, limit, err
+	}
+	if docs == nil {
+		docs = []schemas.DocumentResponse{}
 	}
 	return docs, page, limit, nil
 }
