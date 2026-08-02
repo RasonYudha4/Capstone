@@ -11,6 +11,10 @@ Extraction priority:
 - Signature detection on last page (cheap heuristic pass)
 - Failed files recorded in result, never silently swallowed
 - Returns ParsedDocument dataclasses, not raw dicts
+
+Also exposes parse_for_upload(), a thin wrapper around the same PDF
+extraction chain for ad-hoc single-file uploads that just need plain
+text (truncated, no page structure, no signature detection).
 """
 from __future__ import annotations
 
@@ -20,6 +24,7 @@ from pathlib import Path
 import pymupdf4llm
 import pdfplumber
 from pypdf import PdfReader
+from docx import Document as DocxDocument
 
 from app.models import ParsedDocument, SignatureStatus
 from app.core.logger import get_logger
@@ -30,7 +35,7 @@ log = get_logger("parser")
 # Constants
 # ---------------------------------------------------------------------------
 
-_SUPPORTED_EXTENSIONS = {".txt", ".md", ".pdf"}
+_SUPPORTED_EXTENSIONS = {".txt", ".md", ".pdf", ".docx"}
 
 # Watermark tokens injected by the SARS PDF generator — strip before chunking.
 # These are single uppercase tokens that appear on their own lines.
@@ -44,15 +49,18 @@ _SIGNATURE_HINTS = [
     "tanda tangan", "menyetujui", "penandatangan",
 ]
 
+# Default cap for parse_for_upload() — uploads feed straight into a prompt,
+# so unlike ingestion we never want unbounded text.
+_UPLOAD_MAX_CHARS = 8000
 
 # ---------------------------------------------------------------------------
-# Public interface
+# Public interface — full ingestion pipeline
 # ---------------------------------------------------------------------------
 
 def parse_single(file_path: str, is_kmk: bool = False) -> ParsedDocument | None:
     """Parse a single file. Used by ingest_pipeline for individual uploads."""
     path = Path(file_path)
-    if path.suffix not in _SUPPORTED_EXTENSIONS:
+    if path.suffix.lower() not in _SUPPORTED_EXTENSIONS:
         log.warning("unsupported file type: %s", path.suffix)
         return None
     try:
@@ -72,7 +80,7 @@ def load_documents(folder: str) -> tuple[list[ParsedDocument], list[str]]:
     docs, errors = [], []
 
     for path in sorted(Path(folder).rglob("*")):
-        if path.suffix not in _SUPPORTED_EXTENSIONS:
+        if path.suffix.lower() not in _SUPPORTED_EXTENSIONS:
             continue
         try:
             doc = _parse_file(path)
@@ -89,12 +97,58 @@ def load_documents(folder: str) -> tuple[list[ParsedDocument], list[str]]:
 
 
 # ---------------------------------------------------------------------------
+# Public interface — single-file upload extraction
+# ---------------------------------------------------------------------------
+
+def parse_for_upload(
+    file_path: str | Path,
+    content_type: str,
+    max_chars: int = _UPLOAD_MAX_CHARS,
+) -> str | None:
+    """
+    Extract plain text from a single uploaded file (.pdf, .docx, .txt, .md).
+
+    Reuses _parse_file() — same extension check, same extraction logic
+    and watermark stripping as the bulk ingestion path — but returns
+    truncated plain text instead of a ParsedDocument: no page structure,
+    no signature status. Same "give up, no OCR fallback" behavior as
+    ingestion: a scanned PDF (or any file no extractor can read) returns
+    None, and the caller can't currently tell those two failure modes
+    apart from the return value alone.
+    """
+    path = Path(file_path)
+
+    if path.suffix.lower() not in _SUPPORTED_EXTENSIONS:
+        log.warning("unsupported upload type: %s (%s)", path.suffix, content_type)
+        return None
+
+    try:
+        doc = _parse_file(path)
+    except Exception as exc:
+        log.warning("failed to parse upload %s: %s", path.name, exc)
+        return None
+
+    if doc is None or not doc.raw_text.strip():
+        return None
+
+    text = doc.raw_text
+    if len(text) > max_chars:
+        text = text[:max_chars] + "\n...[dipotong karena terlalu panjang]"
+    return text.strip()
+
+
+# ---------------------------------------------------------------------------
 # Dispatch
 # ---------------------------------------------------------------------------
 
 def _parse_file(path: Path, is_kmk: bool = False) -> ParsedDocument | None:
-    if path.suffix == ".pdf":
+    suffix = path.suffix.lower()
+
+    if suffix == ".pdf":
         return _parse_pdf(path, is_kmk=is_kmk)
+
+    if suffix == ".docx":
+        return _parse_docx(path)
 
     text = path.read_text(encoding="utf-8", errors="ignore").strip()
     if not text:
@@ -107,7 +161,6 @@ def _parse_file(path: Path, is_kmk: bool = False) -> ParsedDocument | None:
         pages=[text],
         total_pages=1,
     )
-
 
 # ---------------------------------------------------------------------------
 # PDF extraction — three-tier fallback chain
@@ -147,7 +200,6 @@ def _parse_pdf(path: Path, is_kmk: bool = False) -> ParsedDocument | None:
     log.warning("all extractors failed for %s — may be a scanned PDF", path)
     return None
 
-
 def _extract_pymupdf4llm(path: Path) -> tuple[list[str], str]:
     """
     Primary extractor.
@@ -158,13 +210,12 @@ def _extract_pymupdf4llm(path: Path) -> tuple[list[str], str]:
     """
     page_chunks: list[dict] = pymupdf4llm.to_markdown(
         str(path),
-        page_chunks=True,   
+        page_chunks=True,
         show_progress=False,
     )
     pages_text = [_strip_watermarks(chunk["text"]) for chunk in page_chunks]
     full_text  = "\n\n".join(pages_text).strip()
     return pages_text, full_text
-
 
 def _extract_pdfplumber(path: Path) -> tuple[list[str], str]:
     """
@@ -179,7 +230,6 @@ def _extract_pdfplumber(path: Path) -> tuple[list[str], str]:
     full_text = "\n".join(pages_text).strip()
     return pages_text, full_text
 
-
 def _extract_pypdf(path: Path) -> tuple[list[str], str]:
     """
     Last resort. Loses most layout information but handles edge cases
@@ -190,6 +240,48 @@ def _extract_pypdf(path: Path) -> tuple[list[str], str]:
     full_text  = "\n".join(pages_text).strip()
     return pages_text, full_text
 
+# ---------------------------------------------------------------------------
+# DOCX extraction
+# ---------------------------------------------------------------------------
+
+def _parse_docx(path: Path) -> ParsedDocument | None:
+    """
+    Extract text from a .docx file via python-docx.
+
+    Unlike PDF there's no "page" concept available from the file itself
+    (page breaks are a rendering-time artifact, not stored per-paragraph),
+    so the whole document is treated as a single page. Paragraphs and
+    table cells are extracted in document order; watermark stripping is
+    reused since KMK source docs can arrive as .docx too. No fallback
+    chain — python-docx is the standard library for this and either
+    opens a valid .docx or it doesn't (a case handled by the caller's
+    try/except, same as any other extractor failure).
+    """
+    document = DocxDocument(str(path))
+
+    parts: list[str] = []
+    for paragraph in document.paragraphs:
+        if paragraph.text.strip():
+            parts.append(paragraph.text)
+
+    for table in document.tables:
+        for row in table.rows:
+            cells = [cell.text.strip() for cell in row.cells]
+            if any(cells):
+                parts.append(" | ".join(cells))
+
+    full_text = _strip_watermarks("\n".join(parts))
+    if not full_text.strip():
+        return None
+
+    return ParsedDocument(
+        source=str(path),
+        file_type="docx",
+        raw_text=full_text,
+        pages=[full_text],
+        total_pages=1,
+        signature_status=_detect_signature_heuristic(full_text),
+    )
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -6,21 +6,11 @@ import tempfile
 from fastapi import APIRouter, File, Form, UploadFile
 from fastapi.responses import StreamingResponse
 
-from app.schemas.query import AppContext, QueryRequest
-from app.schemas.response import ApiResponse
-from app.services.rag_service import run_query, run_query_stream
+from app.schemas.query import AppContext
+from app.services.rag_service import run_query_stream
 from app.core.conversation_store import conversation_store
 
 router = APIRouter(prefix="/query", tags=["query"])
-
-
-@router.post("/", response_model=ApiResponse)
-def query(req: QueryRequest):
-    answer = run_query(req.question)
-    return ApiResponse.ok(
-        data={"answer": answer},
-        message="Query completed successfully",
-    )
 
 
 @router.post("/stream")

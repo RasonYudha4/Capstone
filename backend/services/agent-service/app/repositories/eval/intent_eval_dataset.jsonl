@@ -1,0 +1,40 @@
+{"query": "isi lengkap standar SKP 2 apa ya", "intent": "requirement_lookup"}
+{"query": "elemen penilaian 3 di TKRS itu mengatur soal apa", "intent": "requirement_lookup"}
+{"query": "boleh minta teks standar PAP 1.1 secara utuh", "intent": "requirement_lookup"}
+{"query": "menurut KARS definisi asesmen ulang itu apa", "intent": "requirement_lookup"}
+{"query": "aturan normatif untuk bab MFK itu isinya seperti apa", "intent": "requirement_lookup"}
+{"query": "udah ada belum bukti buat EP 2 standar AP", "intent": "evidence_check", "note": "negation boundary vs gap_analysis - watch this"}
+{"query": "dokumen pelatihan staf untuk SKP itu sudah keupload belum", "intent": "evidence_check", "note": "negation boundary vs gap_analysis - watch this"}
+{"query": "cek dong apakah laporan audit internal sudah ada di sistem", "intent": "evidence_check"}
+{"query": "untuk elemen penilaian ini bukti apa saja yang sudah tersedia", "intent": "evidence_check"}
+{"query": "apakah panduan pelayanan pasien sudah kami unggah", "intent": "evidence_check"}
+{"query": "standar apa aja yang belum ada buktinya sama sekali", "intent": "gap_analysis", "note": "negation boundary vs evidence_check - watch this"}
+{"query": "kita masih kurang dokumen apa buat standar PAP 1.1", "intent": "gap_analysis", "note": "negation boundary vs evidence_check - watch this"}
+{"query": "elemen penilaian mana yang kosong melompong dokumennya", "intent": "gap_analysis"}
+{"query": "sebelum visitasi kita masih perlu lengkapi apa", "intent": "gap_analysis"}
+{"query": "bab mana yang paling parah kekurangan buktinya", "intent": "gap_analysis"}
+{"query": "kasih liat semua dokumen yang udah ada di sistem dong", "intent": "inventory"}
+{"query": "berapa total file akreditasi yang sudah tersimpan", "intent": "inventory"}
+{"query": "list semua berkas yang sudah diupload tim", "intent": "inventory"}
+{"query": "rekap seluruh dokumen kami tanpa filter apapun", "intent": "inventory"}
+{"query": "tampilkan semua file yang ada di database", "intent": "inventory"}
+{"query": "halo Claude apa kabar", "intent": "general"}
+{"query": "makasih banyak bantuannya", "intent": "general"}
+{"query": "akreditasi rumah sakit itu sebenarnya apa sih", "intent": "general"}
+{"query": "kapan biasanya jadwal visitasi KARS dilakukan", "intent": "general"}
+{"query": "resep nasi goreng enak gimana ya", "intent": "general", "note": "off-topic / out-of-scope, tests low-confidence fallback behavior"}
+{"query": "tolong bukain filter buat layanan MFK aja", "intent": "ui_navigation", "nav_depth": "service"}
+{"query": "saya cuma butuh filter sampai standar AP 1.1 nggak usah buka filenya", "intent": "ui_navigation", "nav_depth": "standard"}
+{"query": "arahkan ke elemen penilaian 5 punya standar TKRS", "intent": "ui_navigation", "nav_depth": "assessment"}
+{"query": "buka aja langsung SPO yang dimaksud, jangan filter dulu", "intent": "ui_navigation", "nav_depth": "document"}
+{"query": "pilihin layanan PMKP di dropdown filter", "intent": "ui_navigation", "nav_depth": "service"}
+{"query": "set filter ke standar MFK 11 aja", "intent": "ui_navigation", "nav_depth": "standard"}
+{"query": "saring halaman sampai elemen penilaian SKP 1.a", "intent": "ui_navigation", "nav_depth": "assessment"}
+{"query": "akses langsung berkas SK direktur, jangan pakai filter", "intent": "ui_navigation", "nav_depth": "document"}
+{"query": "tampilkan semua dokumen untuk layanan MFK ini", "intent": "ui_navigation", "nav_depth": "service", "note": "mirrors the contaminated nav_to_service examples - check if this now confuses nav_to_document/inventory"}
+{"query": "buka semua berkas kelompok TKRS", "intent": "ui_navigation", "nav_depth": "service", "note": "mirrors the contaminated nav_to_service examples - check if this now confuses nav_to_document/inventory"}
+{"query": "halo, tolong buka elemen penilaian 5 untuk standar TKRS", "intent": "ui_navigation", "nav_depth": "assessment", "note": "greeting+request combo - tests whether _GREETING_RE prefix match wrongly short-circuits a real request to general"}
+{"query": "halo, apakah bukti untuk EP 2 sudah ada di sistem", "intent": "evidence_check", "note": "greeting+request combo - same short-circuit risk with a different downstream intent"}
+{"query": "sertifikat pelatihan udah masuk belum ya ke sistem", "intent": "evidence_check", "note": "informal tag-question with 'udah' not 'sudah' - tests whether _TAG_QUESTION_RE catches colloquial phrasing or wrongly falls through to _LACK_MARKERS"}
+{"query": "pilih layanan MFK terus filter ke standar MFK 11", "intent": "ui_navigation", "nav_depth": "standard", "note": "service+standard anchor conflict - standard is the deeper/more specific ask, tests the service/standard order swap in _DEPTH_ANCHORS"}
+{"query": "standar ini penjelasannya kurang jelas menurut saya", "intent": "general", "note": "bare 'kurang' used as a quality complaint, not a lack-of-evidence statement - tests whether _LACK_MARKERS false-positives into gap_analysis"}

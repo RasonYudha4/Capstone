@@ -4,15 +4,13 @@ import re
 
 from app.repositories.generation.generator import generator, generate
 from app.core.logger import get_logger
+from app.core.config import settings
 
 log = get_logger("query_rewriter")
 
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-
-_CYCLES_TO_KEEP = 3         
-_TURNS_TO_KEEP  = _CYCLES_TO_KEEP * 2
 
 _DEPENDENCY_PATTERN = re.compile(
     r"\b(tersebut|itu|ini|tadi|tersisa|yang (lain|sebelumnya|kedua|pertama))\b"
@@ -62,9 +60,7 @@ def rewrite_query_with_history(
         log.info("no dependency signal — skipping rewrite: '%s'", question[:60])
         return question
 
-    recent_turns = chat_history[-_TURNS_TO_KEEP:]
-    history_block = _format_history(recent_turns)
-
+    history_block = _format_history(chat_history)
     if not history_block:
         return question
 
@@ -75,7 +71,6 @@ def rewrite_query_with_history(
 
     log.info("rewrote '%s' → '%s'", question[:60], rewritten[:60])
     return rewritten
-
 
 # ---------------------------------------------------------------------------
 # Helpers

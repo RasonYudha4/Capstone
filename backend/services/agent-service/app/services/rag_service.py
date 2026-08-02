@@ -1,62 +1,27 @@
 """
-pipeline/rag_service.py — orchestrates retrieval and generation at query time.
+services/rag_service.py — orchestrates retrieval and generation at query time.
 """
 from __future__ import annotations
 
-from collections import defaultdict
-import time
 from typing import Generator
 
 from app.core.config import settings
-from app.repositories.generation.generator import generator, generate, generate_stream
-from app.repositories.generation.intent_extractor import IntentClassifier, extract_intent
-from app.repositories.generation.prompt_builder import build_prompt, build_gap_prompt
+from app.repositories.generation.generator import generator, generate_stream
+from app.repositories.generation.intent_extractor import classifier, extract_intent
+from app.repositories.generation.prompt_builder import build_prompt
 from app.repositories.generation.query_rewriter import rewrite_query_with_history
 from app.repositories.ingestion.embedder import embedder, embed_query
-from app.repositories.ingestion.upload_extractor import extract_text_from_upload
+from app.repositories.ingestion.parser import parse_for_upload
 from app.core.logger import get_logger
 from app.repositories.retrieval.retriever import retrieve
-from app.core.store.chromadb import ChromaStore, _build_chroma_where
+from app.repositories.generation.gap_inventory_analysis import run_gap_analysis, run_inventory
+from app.repositories.generation.navigation_builder import (
+    NAV_DEPTH_PRIORITY,
+    build_navigation_block,
+    should_navigate,
+)
 
 log = get_logger("rag_pipeline")
-_classifier = IntentClassifier(embedder)
-_NAV_DEPTH_PRIORITY = ["nav_to_document", "nav_to_assessment", "nav_to_standard", "nav_to_service"]
-
-
-def run_query(question: str) -> str:
-    log.info("=== query start: '%s' ===", question[:80])
-    t_start = time.perf_counter()
-
-    intent = extract_intent(question, _classifier)
-    log.info(
-        "intent: query_type=%s standar=%s fungsi_pelayanan=%s",
-        intent["query_type"],
-        intent.get("standar"),
-        intent.get("fungsi_pelayanan"),
-    )
-
-    # ── Routed handlers (no retrieval needed) ────────────────────────────────
-    if intent["query_type"] == "gap_analysis":
-        answer = _run_gap_analysis(intent)
-        log.info("=== gap analysis done in %.1fms ===", (time.perf_counter() - t_start) * 1000)
-        return answer
-
-    if intent["query_type"] == "inventory":
-        answer = _run_inventory(intent)
-        log.info("=== inventory done in %.1fms ===", (time.perf_counter() - t_start) * 1000)
-        return answer
-
-    # ── RAG path ─────────────────────────────────────────────────────────────
-    filters = _build_filters(intent)
-    q_vec   = embed_query(question, embedder)
-    results = retrieve(q_vec, top_k=settings.top_k, filters=filters)
-    prompt  = build_prompt(question, results, intent)
-
-    log.info("prompt built — %d chunks, %d chars", len(results), len(prompt))
-
-    answer = generate(prompt, generator)
-    log.info("=== query done in %.1fms ===", (time.perf_counter() - t_start) * 1000)
-    return answer
 
 
 def run_query_stream(
@@ -70,7 +35,7 @@ def run_query_stream(
 
     doc_context = None
     if file_path:
-        doc_context = extract_text_from_upload(file_path, content_type)
+        doc_context = parse_for_upload(file_path, content_type)
         if doc_context is None:
             log.warning("file extraction failed or returned empty: %s", file_path)
             yield "Dokumen ini tidak dapat dibaca (kemungkinan hasil scan tanpa teks)."
@@ -81,9 +46,10 @@ def run_query_stream(
     if resolved_question != question:
         log.info("query rewritten: '%s' → '%s'", question[:60], resolved_question[:60])
 
-    intent = extract_intent(resolved_question, _classifier)
+    intent = extract_intent(resolved_question, classifier)
 
-    any_nav_depth = any(i in intent.get("all_intents", []) for i in _NAV_DEPTH_PRIORITY)
+    any_nav_depth = any(i in intent.get("all_intents", []) for i in NAV_DEPTH_PRIORITY)
+
     if (
         intent["query_type"] == "ui_navigation"
         and not intent.get("standar")
@@ -94,6 +60,16 @@ def run_query_stream(
         intent["all_intents"] = [
             i for i in intent.get("all_intents", []) if i != "ui_navigation"
         ]
+
+    if (
+        intent["query_type"] not in ("ui_navigation", "gap_analysis", "inventory")
+        and any_nav_depth
+    ):
+        log.info(
+            "promoting query_type=%s → ui_navigation (nav_depth intents active: %s)",
+            intent["query_type"], intent["all_intents"],
+        )
+        intent["query_type"] = "ui_navigation"
 
     log.info(
         "intent: query_type=%s standar=%s fungsi_pelayanan=%s",
@@ -106,11 +82,11 @@ def run_query_stream(
     needs_rag = any(i in all_intents for i in ("requirement_lookup", "evidence_check")) or doc_context is not None
 
     if intent["query_type"] == "gap_analysis":
-        yield _run_gap_analysis(intent)
+        yield run_gap_analysis(intent)
         return
 
     if intent["query_type"] == "inventory":
-        yield _run_inventory(intent)
+        yield run_inventory(intent)
         return
 
     if not needs_rag and any(i in all_intents for i in ("nav_to_document", "nav_to_assessment", "nav_to_standard")):
@@ -119,7 +95,7 @@ def run_query_stream(
     if needs_rag:
         filters = _build_filters(intent)
         if doc_context is not None and not filters:
-            filters = {"is_kmk": True}  
+            filters = {"is_kmk": True}
 
         q_vec   = embed_query(resolved_question, embedder)
         results = retrieve(q_vec, top_k=settings.top_k, filters=filters)
@@ -129,19 +105,19 @@ def run_query_stream(
 
         should_nav = (
             "ui_navigation" in all_intents
-            or any(i in all_intents for i in _NAV_DEPTH_PRIORITY)
-            or _should_navigate(all_intents, results)
+            or any(i in all_intents for i in NAV_DEPTH_PRIORITY)
+            or should_navigate(all_intents, results)
         )
         if should_nav:
-            nav_block = _build_navigation_block(intent, results, app_context)
+            nav_block = build_navigation_block(intent, results, app_context)
             if nav_block:
                 yield "\n\n" + nav_block
 
     elif (
         "ui_navigation" in all_intents
-        or any(i in all_intents for i in _NAV_DEPTH_PRIORITY)
+        or any(i in all_intents for i in NAV_DEPTH_PRIORITY)
     ):
-        nav_block = _build_navigation_block(intent, [], app_context)
+        nav_block = build_navigation_block(intent, [], app_context)
         if nav_block:
             yield nav_block
 
@@ -149,17 +125,8 @@ def run_query_stream(
         yield from generate_stream(resolved_question, generator)
 
 
-def _should_navigate(all_intents: list[str], results: list, min_score: float = 0.85) -> bool:
-    """Only navigate if evidence_check is active AND results are genuinely relevant."""
-    if "evidence_check" not in all_intents:
-        return False
-    if not results:
-        return False
-    return results[0].score >= min_score
-
-
 # ---------------------------------------------------------------------------
-# Helpers
+# Helpers (orchestration-specific, kept local to this service)
 # ---------------------------------------------------------------------------
 
 def _build_filters(intent: dict) -> dict | None:
@@ -170,6 +137,8 @@ def _build_filters(intent: dict) -> dict | None:
         filters["is_kmk"] = True
     elif intent["query_type"] == "evidence_check":
         filters["is_kmk"] = False
+    elif "requirement_lookup" in all_intents and "evidence_check" not in all_intents:
+        filters["is_kmk"] = True
     elif "evidence_check" in all_intents and "requirement_lookup" not in all_intents:
         filters["is_kmk"] = False
     elif any(i in all_intents for i in ("nav_to_document", "nav_to_assessment", "nav_to_standard")):
@@ -181,132 +150,3 @@ def _build_filters(intent: dict) -> dict | None:
         filters["fungsi_pelayanan"] = intent["fungsi_pelayanan"]
 
     return filters or None
-
-def _run_gap_analysis(intent: dict) -> str:
-    store = ChromaStore()
-
-    extra = {"fungsi_pelayanan": intent["fungsi_pelayanan"]} if intent.get("fungsi_pelayanan") else {}
-
-    all_ep     = set(store.get_all_unique_values("standar_code", {"is_kmk": True,  **extra}))
-    covered_ep = set(store.get_all_unique_values("standar_code", {"is_kmk": False, **extra}))
-    missing    = sorted(all_ep - covered_ep)
-
-    prompt = build_gap_prompt(missing, covered_ep, intent)
-    return generate(prompt, generator)
-
-def _run_inventory(intent: dict) -> str:
-    store   = ChromaStore()
-    filters = {}
-    if intent.get("fungsi_pelayanan"):
-        filters["fungsi_pelayanan"] = intent["fungsi_pelayanan"]
-    if intent.get("standar"):
-        filters["standar"] = intent["standar"]
-
-    results = store._col.get(
-        where=_build_chroma_where(filters) if filters else None,
-        include=["metadatas"],
-    )
-
-    # Deduplicate by file name first
-    seen  = set()
-    files = []
-    for meta in results["metadatas"]:
-        name = meta.get("nama_berkas") or meta.get("source")
-        if name and name not in seen:
-            seen.add(name)
-            files.append(meta)
-
-    if not files:
-        return "Belum ada dokumen yang tersimpan dalam sistem."
-
-    grouped: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-    for m in files:
-        fp  = m.get("fungsi_pelayanan") or "Tidak Diketahui"
-        std = m.get("standar") or "-"
-        grouped[fp][std] += 1
-
-    lines = []
-    total = 0
-    for fp, standards in sorted(grouped.items()):
-        lines.append(f"\n**{fp}**")
-        for std, count in sorted(standards.items()):
-            lines.append(f"  - {std}: {count} dokumen")
-            total += count
-
-    return f"Dokumen yang tersedia ({total} berkas):\n" + "\n".join(lines)
-
-def _build_navigation_block(intent: dict, results: list, ctx=None) -> str:
-    lines = []
-    nav_depth = intent.get("nav_depth", "standard")
-
-    if not ctx or ctx.current_path != "/storage":
-        lines.append('<command>{"type":"NAVIGATE","path":"/storage"}</command>')
-
-    evidence_results = [r for r in results if not r.is_kmk]
-    top = evidence_results[0] if evidence_results else None
-
-    # ── Service ──────────────────────────────────────────────────────────────
-    service_id = (top.service_id if top else None)
-    if not service_id and intent.get("fungsi_pelayanan") and ctx:  # ← was bab_code
-        matched = _match_service(intent, ctx)
-        if matched:
-            service_id = matched.id
-
-    if service_id:
-        lines.append(f'<command>{{"type":"SET_SERVICE_FILTER","serviceId":"{service_id}"}}</command>')
-
-    if nav_depth == "service":
-        lines.append("\n📂 Menampilkan layanan yang relevan...")
-        return "\n".join(lines)
-
-    # ── Standard ─────────────────────────────────────────────────────────────
-    if top and top.standard_id:
-        lines.append(f'<command>{{"type":"SET_STANDARD_FILTER","standardId":"{top.standard_id}"}}</command>')
-
-    if nav_depth == "standard":
-        label = (top.standar if top else None) or intent.get("standar") or "ini"
-        lines.append(f"\n📂 Menampilkan dokumen untuk standar **{label}**...")
-        return "\n".join(lines)
-
-    # ── Assessment ───────────────────────────────────────────────────────────
-    if top and top.assessment_id:
-        lines.append(f'<command>{{"type":"SET_ASSESSMENT_FILTER","assessmentId":"{top.assessment_id}"}}</command>')
-
-    if nav_depth == "assessment":
-        lines.append("\n📂 Menampilkan assessment yang relevan...")
-        return "\n".join(lines)
-
-    # ── Document ─────────────────────────────────────────────────────────────
-    if top and top.document_id:
-        lines.append(f'<command>{{"type":"OPEN_DOCUMENT","documentId":"{top.document_id}"}}</command>')
-        lines.append(f"\n📄 Membuka **{top.nama_berkas or 'dokumen'}** yang relevan...")
-    elif top:
-        lines.append(
-            "\n⚠️ Dokumen ditemukan dalam indeks tetapi belum memiliki ID — "
-            "pastikan metadata `document_id` disimpan saat ingestion."
-        )
-    else:
-        if "evidence_check" in intent.get("all_intents", []):
-            lines.append(
-                "\n📭 Tidak ditemukan berkas bukti untuk standar ini. "
-                "Silakan upload dokumen yang relevan."
-            )
-
-    return "\n".join(lines)
-
-def _match_service(intent: dict, ctx) -> object | None:
-    if not ctx or not ctx.available_services:
-        return None
-
-    search_terms = []
-    if intent.get("fungsi_pelayanan"):
-        search_terms.append(intent["fungsi_pelayanan"].upper())
-    if intent.get("standar"):
-        search_terms.append(intent["standar"].split()[0].upper())
-
-    for term in search_terms:
-        for svc in ctx.available_services:
-            if term in svc.label.upper():
-                return svc
-
-    return None

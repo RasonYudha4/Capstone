@@ -18,11 +18,10 @@ from collections import deque
 from threading import Lock
 
 from app.core.logger import get_logger
+from app.core.config import settings
 
 log = get_logger("conversation_store")
 
-_CYCLES_TO_KEEP = 3                  # must match query_rewriter._CYCLES_TO_KEEP
-_TURNS_TO_KEEP  = _CYCLES_TO_KEEP * 2
 _SESSION_TTL_S  = 60 * 60 * 4        # 4h idle expiry — adjust to real usage patterns
 
 
@@ -30,7 +29,7 @@ class _Session:
     __slots__ = ("turns", "last_seen")
 
     def __init__(self) -> None:
-        self.turns: deque[dict] = deque(maxlen=_TURNS_TO_KEEP)
+        self.turns: deque[dict] = deque(maxlen=settings.rewrite_turns_to_keep)
         self.last_seen: float = time.time()
 
 

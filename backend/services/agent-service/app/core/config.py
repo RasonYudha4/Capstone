@@ -69,5 +69,11 @@ class Settings(BaseSettings):
     vector_path: str = "./data/vector_db"
     collection:  str = "rag_docs"
 
+    rewrite_cycles_to_keep: int = 3
+
+    @property
+    def rewrite_turns_to_keep(self) -> int:
+        return self.rewrite_cycles_to_keep * 2
+
 
 settings = Settings()
