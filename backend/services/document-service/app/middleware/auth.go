@@ -61,15 +61,14 @@ func Extract_JWT_data(secretKey string) gin.HandlerFunc {
 func AllowedRole(allowedRoles ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userRole := c.GetString("role")
-		
+
 		for _, role := range allowedRoles {
 			if userRole == role {
-				c.Next()	
+				c.Next()
 				return
 			}
 		}
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-			"message": "Unauthorized",})
+			"message": "Unauthorized"})
 	}
-}	
-
+}

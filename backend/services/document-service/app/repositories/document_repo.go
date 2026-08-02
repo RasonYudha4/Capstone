@@ -88,20 +88,11 @@ func (s *DocumentRepo) fetchingData(query string, args ...any) ([]schemas.Docume
 	return documents, rows.Err()
 }
 
-func (s *DocumentRepo) filterFetch(field filter, fieldId, createdById uuid.UUID, limit, offset int, role string) ([]schemas.DocumentResponse, error) {
-	if role == "master-admin" {
-		query := fmt.Sprintf("%s WHERE %s = $1 AND is_deleted = false ORDER BY d.updated_at DESC LIMIT $2 OFFSET $3", baseQuery, field)
-		return s.fetchingData(query, fieldId, limit, offset)
-	}
-
-	query := fmt.Sprintf("%s WHERE %s = $1 AND d.created_by = $2 AND is_deleted = false ORDER BY d.updated_at DESC LIMIT $3 OFFSET $4", baseQuery, field)
-	return s.fetchingData(query, fieldId, createdById, limit, offset)
+func (s *DocumentRepo) filterFetch(field filter, fieldId uuid.UUID, limit, offset int) ([]schemas.DocumentResponse, error) {
+	query := fmt.Sprintf("%s WHERE %s = $1  AND is_deleted = false ORDER BY d.updated_at DESC LIMIT $2 OFFSET $3", baseQuery, field)
+	return s.fetchingData(query, fieldId, limit, offset)
 }
 
-func (s *DocumentRepo) GetDocuments(limit, offset int) ([]schemas.DocumentResponse, error) {
-	query := baseQuery + "WHERE d.is_deleted = false AND d.status = 'approved' ORDER BY d.updated_at DESC LIMIT $1 OFFSET $2"
-	return s.fetchingData(query, limit, offset)
-}
 
 func (s *DocumentRepo) Get_document_by_status(status string, limit, offset int) ([]schemas.DocumentResponse, error) {
 	query := baseQuery + "WHERE d.status = $1 AND d.is_deleted = false ORDER BY d.updated_at DESC LIMIT $2 OFFSET $3"
@@ -117,21 +108,16 @@ func (s *DocumentRepo) Get_documents_by_type(limit, offset int) ([]schemas.Docum
 	return s.fetchingData(query, limit, offset)
 }
 
-func (s *DocumentRepo) Get_document_by_group(groupId uuid.UUID, limit, offset int) ([]schemas.DocumentResponse, error) {
-	query := baseQuery + "WHERE d.group_id = $1 AND is_deleted = false ORDER BY d.updated_at DESC LIMIT $2 OFFSET $3"
-	return s.fetchingData(query, groupId, limit, offset)
+func (s *DocumentRepo) Get_document_by_service(serviceId, createdById uuid.UUID, limit, offset int) ([]schemas.DocumentResponse, error) {
+	return s.filterFetch(filterByService, serviceId,  limit, offset)
 }
 
-func (s *DocumentRepo) Get_document_by_service(serviceId, createdById uuid.UUID, limit, offset int, role string) ([]schemas.DocumentResponse, error) {
-	return s.filterFetch(filterByService, serviceId, createdById, limit, offset, role)
+func (s *DocumentRepo) Get_document_by_standard(standardId, createdById uuid.UUID, limit, offset int) ([]schemas.DocumentResponse, error) {
+	return s.filterFetch(filterByStandard, standardId, limit, offset)
 }
 
-func (s *DocumentRepo) Get_document_by_standard(standardId, createdById uuid.UUID, limit, offset int, role string) ([]schemas.DocumentResponse, error) {
-	return s.filterFetch(filterByStandard, standardId, createdById, limit, offset, role)
-}
-
-func (s *DocumentRepo) Get_document_by_assessment(assessmentId, createdById uuid.UUID, limit, offset int, role string) ([]schemas.DocumentResponse, error) {
-	return s.filterFetch(filterByAssessment, assessmentId, createdById, limit, offset, role)
+func (s *DocumentRepo) Get_document_by_assessment(assessmentId, createdById uuid.UUID, limit, offset int) ([]schemas.DocumentResponse, error) {
+	return s.filterFetch(filterByAssessment, assessmentId, limit, offset)
 }
 
 func (s *DocumentRepo) Get_document_by_createdBy(createdById uuid.UUID, limit, offset int) ([]schemas.DocumentResponse, error) {
@@ -156,13 +142,8 @@ func (s *DocumentRepo) Get_document_by_id(documentId, createdById uuid.UUID, rol
 		err      error
 	)
 
-	if role == "admin" {
-		err = s.db.QueryRow(context.Background(), query+" AND d.created_by = $2", documentId, createdById).
+	err = s.db.QueryRow(context.Background(), query, documentId).
 			Scan(&objectId, &isPublic)
-	} else {
-		err = s.db.QueryRow(context.Background(), query, documentId).
-			Scan(&objectId, &isPublic)
-	}
 
 	if err != nil {
 		return "", false, err

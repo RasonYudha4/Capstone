@@ -28,7 +28,6 @@ func InitMinio() (*minio.Client, error) {
 	return minioClient, nil
 }
 
-
 func CreateBuckets(client *minio.Client) error {
 	ctx := context.Background()
 
