@@ -11,7 +11,7 @@ type OTPEntry struct {
 	// Email is the user's email address.
 	Email string `db:"email"`
 
-	// Code is the 6-digit OTP string (e.g. "048312").
+	// Code holds the SHA-256 hex digest of the OTP (plaintext is never stored).
 	Code string `db:"otp_code"`
 
 	// PreAuthToken is a random token proving the user passed password verification.

@@ -188,19 +188,20 @@ func (s *UserService) SeedPasswords() error {
 	return nil
 }
 
-// InviteUser creates a new user in 'invited' status and returns a secure token.
-func (s *UserService) InviteUser(email, role string, groupID *string) (string, error) {
-	token, err := generateSecureToken()
+// InviteUser creates a new user in 'invited' status and returns the raw token (for email) and user ID.
+func (s *UserService) InviteUser(email, role string, groupID *string) (rawToken, userID string, err error) {
+	rawToken, err = generateSecureToken()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	expiresAt := time.Now().Add(config.InvitationTokenExpiry)
-	if err := s.userRepo.CreateInvitedUser(email, role, groupID, token, expiresAt); err != nil {
-		return "", err
+	userID, err = s.userRepo.CreateInvitedUser(email, role, groupID, hashToken(rawToken), expiresAt)
+	if err != nil {
+		return "", "", err
 	}
 
-	return token, nil
+	return rawToken, userID, nil
 }
 
 // ResendInvitation refreshes the invitation token for an invited user.
@@ -216,24 +217,31 @@ func (s *UserService) ResendInvitation(userID string) (string, error) {
 		return "", fmt.Errorf("only invited users can have their invitation resent")
 	}
 
-	token, err := generateSecureToken()
+	rawToken, err := generateSecureToken()
 	if err != nil {
 		return "", fmt.Errorf("generate invitation token: %w", err)
 	}
 	expiresAt := time.Now().Add(config.InvitationTokenExpiry)
 
-	if err := s.userRepo.UpdateInvitationToken(userID, token, expiresAt); err != nil {
+	if err := s.userRepo.UpdateInvitationToken(userID, hashToken(rawToken), expiresAt); err != nil {
 		return "", err
 	}
 
-	return token, nil
+	return rawToken, nil
 }
 
-// GetByInvitationToken finds a user by token and checks expiration.
-func (s *UserService) GetByInvitationToken(token string) (*models.User, error) {
-	user, err := s.userRepo.GetByInvitationToken(token)
+// GetByInvitationToken finds a user by raw token (hashed before lookup) and checks expiration.
+// Falls back to plaintext lookup for tokens issued before auth hardening.
+func (s *UserService) GetByInvitationToken(rawToken string) (*models.User, error) {
+	user, err := s.userRepo.GetByInvitationToken(hashToken(rawToken))
 	if err != nil {
 		return nil, err
+	}
+	if user == nil {
+		user, err = s.userRepo.GetByInvitationToken(rawToken)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if user == nil {
 		return nil, nil
@@ -284,18 +292,25 @@ func (s *UserService) RequestPasswordReset(email string) (token string, user *mo
 	}
 	expiresAt := time.Now().Add(config.ResetTokenExpiry)
 
-	if err := s.userRepo.SetResetToken(user.UserID, token, expiresAt); err != nil {
+	if err := s.userRepo.SetResetToken(user.UserID, hashToken(token), expiresAt); err != nil {
 		return "", nil, err
 	}
 
 	return token, user, nil
 }
 
-// GetByResetToken finds an active user by reset token and checks expiration.
-func (s *UserService) GetByResetToken(token string) (*models.User, error) {
-	user, err := s.userRepo.GetByInvitationToken(token)
+// GetByResetToken finds an active user by raw reset token (hashed before lookup).
+// Falls back to plaintext lookup for tokens issued before auth hardening.
+func (s *UserService) GetByResetToken(rawToken string) (*models.User, error) {
+	user, err := s.userRepo.GetByInvitationToken(hashToken(rawToken))
 	if err != nil {
 		return nil, err
+	}
+	if user == nil {
+		user, err = s.userRepo.GetByInvitationToken(rawToken)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if user == nil {
 		return nil, nil

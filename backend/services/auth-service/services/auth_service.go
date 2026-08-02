@@ -65,8 +65,9 @@ type VerifyOTPResult struct {
 
 // ResendOTPResult is the outcome of AuthService.ResendLoginOTP.
 type ResendOTPResult struct {
-	Status  ResultStatus
-	Message string
+	Status       ResultStatus
+	Message      string
+	PreAuthToken string
 }
 
 // AuthService owns authentication use-cases (login, lockout, OTP branching).
@@ -162,10 +163,9 @@ func (s *AuthService) handleFailedLogin(user *models.User) LoginResult {
 		}
 	}
 
-	remaining := config.MaxLoginAttempts - count
 	return LoginResult{
 		Status:  StatusUnauthorized,
-		Message: fmt.Sprintf("Invalid email or password. %d attempt(s) remaining.", remaining),
+		Message: "Invalid email or password.",
 	}
 }
 
@@ -222,6 +222,13 @@ func (s *AuthService) VerifyOTPLogin(email, otp, preAuthToken string) VerifyOTPR
 	if blockReason := user.LoginBlockReason(); blockReason != "" {
 		return VerifyOTPResult{Status: StatusForbidden, Message: blockReason}
 	}
+	if user.IsLocked() {
+		remaining := time.Until(*user.LockedUntil).Round(time.Second)
+		return VerifyOTPResult{
+			Status:  StatusTooManyRequests,
+			Message: fmt.Sprintf("Account is locked. Try again in %s.", remaining),
+		}
+	}
 
 	if !user.Verified {
 		if err := s.users.MarkAsVerified(user.UserID); err != nil {
@@ -262,14 +269,16 @@ func (s *AuthService) ResendLoginOTP(email string) ResendOTPResult {
 		}
 	}
 
-	if _, err := s.otp.GenerateAndStore(email, config.OTPPurposeLogin); err != nil {
+	preAuthToken, err := s.otp.GenerateAndStore(email, config.OTPPurposeLogin)
+	if err != nil {
 		return ResendOTPResult{Status: StatusInternalError, Message: "Failed to generate OTP."}
 	}
 
 	s.audit.Log(AuditActionUpdate, AuditDescOTPResend, nil, config.AuditSourceClient)
 	return ResendOTPResult{
-		Status:  StatusOK,
-		Message: "A new OTP has been sent to your email.",
+		Status:       StatusOK,
+		Message:      "A new OTP has been sent to your email.",
+		PreAuthToken: preAuthToken,
 	}
 }
 

@@ -101,7 +101,10 @@ func (h *AuthHandler) ResendOTP(c *gin.Context) {
 		return
 	}
 
-	respondSuccess(c, result.Message, nil)
+	respondSuccess(c, result.Message, models.LoginResponse{
+		RequiresOTP:  true,
+		PreAuthToken: result.PreAuthToken,
+	})
 }
 
 // Refresh handles POST /auth/refresh.
@@ -129,6 +132,13 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 			log.Printf("⚠️  Failed to revoke tokens for inactive user %s: %v", user.UserID, revokeErr)
 		}
 		respondError(c, http.StatusUnauthorized, blockReason)
+		return
+	}
+	if user.IsLocked() {
+		if revokeErr := h.refreshService.RevokeAllUserTokens(user.UserID); revokeErr != nil {
+			log.Printf("⚠️  Failed to revoke tokens for locked user %s: %v", user.UserID, revokeErr)
+		}
+		respondError(c, http.StatusTooManyRequests, "Account is locked. Try again later.")
 		return
 	}
 
@@ -234,6 +244,11 @@ func (h *AuthHandler) UpdateRole(c *gin.Context) {
 		return
 	}
 
+	// Invalidate existing sessions so clients must re-authenticate with the new role.
+	if err := h.refreshService.RevokeAllUserTokens(targetUser.UserID); err != nil {
+		log.Printf("⚠️  Failed to revoke tokens after role change for user %s: %v", targetUser.UserID, err)
+	}
+
 	h.auditService.Log(services.AuditActionUpdate, "role_changed_to_"+req.Role, &targetUser.UserID, config.AuditSourceSystem)
 	respondSuccess(c, "User role updated to '"+req.Role+"' successfully.", nil)
 }
@@ -299,7 +314,10 @@ func (h *AuthHandler) DeleteUser(c *gin.Context) {
 
 // ResendInvitation handles POST /auth/users/:id/resend-invitation.
 func (h *AuthHandler) ResendInvitation(c *gin.Context) {
-	targetUser, ok := h.loadTargetUser(c, c.Param("id"))
+	targetUser, ok := h.requireManageableTarget(c, c.Param("id"),
+		"Cannot resend invitation to your own account.",
+		"Cannot resend invitation for a master-admin.",
+	)
 	if !ok {
 		return
 	}
@@ -312,7 +330,7 @@ func (h *AuthHandler) ResendInvitation(c *gin.Context) {
 
 	token, err := h.userService.ResendInvitation(targetUser.UserID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, "Failed to resend invitation: "+err.Error())
+		respondError(c, http.StatusInternalServerError, "Failed to resend invitation.")
 		return
 	}
 
@@ -344,15 +362,19 @@ func (h *AuthHandler) Invite(c *gin.Context) {
 		return
 	}
 
-	token, err := h.userService.InviteUser(req.Email, req.Role, groupID)
+	token, userID, err := h.userService.InviteUser(req.Email, req.Role, groupID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, "Failed to create invitation: "+err.Error())
+		if services.IsUniqueViolation(err) {
+			respondError(c, http.StatusConflict, "User with this email already exists.")
+			return
+		}
+		respondError(c, http.StatusInternalServerError, "Failed to create invitation.")
 		return
 	}
 
 	h.sendInvitationEmailAsync(req.Email, req.Role, token)
 
-	h.auditService.Log(services.AuditActionInsert, "user_invited", nil, config.AuditSourceSystem)
+	h.auditService.Log(services.AuditActionInsert, "user_invited", &userID, config.AuditSourceSystem)
 	respondSuccess(c, "Invitation sent successfully.", nil)
 }
 

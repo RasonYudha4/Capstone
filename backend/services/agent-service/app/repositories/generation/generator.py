@@ -63,7 +63,7 @@ class GeneratorModel:
     def from_pretrained(
         cls,
         model_name_or_path: str | Path,
-        device: str = "CPU",
+        device: str = "GPU",
     ) -> "GeneratorModel":
         return cls(model_name_or_path=str(model_name_or_path), device=device)
     

@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"database/sql"
 	"fmt"
 	"log"
@@ -13,13 +14,13 @@ import (
 	"auth-service/repositories"
 )
 
-// manages OTP generation, storage, and verification.
+// OTPService manages OTP generation, storage, and verification.
 type OTPService struct {
 	otpRepo      *repositories.OTPRepository
 	emailService *EmailService
 }
 
-// creates a ready-to-use OTPService instance.
+// NewOTPService creates a ready-to-use OTPService instance.
 func NewOTPService(otpRepo *repositories.OTPRepository, emailService *EmailService) *OTPService {
 	return &OTPService{
 		otpRepo:      otpRepo,
@@ -27,12 +28,9 @@ func NewOTPService(otpRepo *repositories.OTPRepository, emailService *EmailServi
 	}
 }
 
-// creates a cryptographically random OTP for the given email,
-// stores it with an expiration timestamp, and logs it to the console.
-//   - email:   the user's email (used as the storage key)
-//   - purpose: why this OTP is being generated ("login" or "action_confirm")
+// GenerateAndStore creates a cryptographically random OTP for the given email,
+// stores a SHA-256 hash of the code (never the plaintext), and returns a pre-auth token.
 func (s *OTPService) GenerateAndStore(email, purpose string) (string, error) {
-	// secure random 6-digit code using crypto/rand.
 	code, err := generateSecureOTP(config.OTPLength)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate OTP: %w", err)
@@ -45,21 +43,22 @@ func (s *OTPService) GenerateAndStore(email, purpose string) (string, error) {
 
 	expiresAt := time.Now().Add(config.OTPExpiration)
 
-	// Delete any existing OTP for this email first
 	if err := s.otpRepo.DeleteByEmail(email); err != nil {
 		return "", fmt.Errorf("failed to clear existing OTP: %w", err)
 	}
 
-	// INSERT the new OTP entry into the database
-	err = s.otpRepo.Save(email, code, preAuthToken, expiresAt)
-	if err != nil {
+	codeHash := hashToken(code)
+	if err := s.otpRepo.Save(email, codeHash, preAuthToken, expiresAt); err != nil {
 		return "", fmt.Errorf("failed to store OTP: %w", err)
 	}
 
-	// In production, send OTP via email service (SendGrid/SES/etc.).
-	// DO NOT log the actual code in production.
-	log.Printf("📧 [OTP] Code generated for %s (purpose: %s, expires: %s) -> CODE: %s",
-		email, purpose, expiresAt.Format(time.RFC3339), code)
+	if config.IsDevMode {
+		log.Printf("📧 [OTP][DEV] Code generated for %s (purpose: %s, expires: %s) -> CODE: %s",
+			email, purpose, expiresAt.Format(time.RFC3339), code)
+	} else {
+		log.Printf("📧 [OTP] Code generated for %s (purpose: %s, expires: %s)",
+			email, purpose, expiresAt.Format(time.RFC3339))
+	}
 
 	if s.emailService != nil {
 		go func() {
@@ -69,10 +68,10 @@ func (s *OTPService) GenerateAndStore(email, purpose string) (string, error) {
 		}()
 	}
 
-	return preAuthToken, nil // Return pre-auth token, BUKAN OTP code
+	return preAuthToken, nil
 }
 
-// checks the submitted OTP against the stored entry.
+// Verify checks the submitted OTP against the stored hash.
 func (s *OTPService) Verify(email, code, preAuthToken string) (valid bool, errMsg string, err error) {
 	entry, err := s.otpRepo.Get(email, preAuthToken)
 	if err != nil {
@@ -82,7 +81,6 @@ func (s *OTPService) Verify(email, code, preAuthToken string) (valid bool, errMs
 		return false, "No OTP requested for this email.", nil
 	}
 
-	// OTP has expired
 	if entry.IsExpired() {
 		if delErr := s.otpRepo.DeleteByID(entry.ID); delErr != nil {
 			log.Printf("⚠️  Failed to delete expired OTP for %s: %v", email, delErr)
@@ -90,7 +88,6 @@ func (s *OTPService) Verify(email, code, preAuthToken string) (valid bool, errMs
 		return false, "OTP has expired. Please request a new one.", nil
 	}
 
-	// Too many failed attempts
 	if entry.FailedAttempts >= config.OTPMaxAttempts {
 		if delErr := s.otpRepo.DeleteByID(entry.ID); delErr != nil {
 			log.Printf("⚠️  Failed to delete OTP after max attempts for %s: %v", email, delErr)
@@ -98,8 +95,8 @@ func (s *OTPService) Verify(email, code, preAuthToken string) (valid bool, errMs
 		return false, "Too many failed attempts. Please request a new OTP.", nil
 	}
 
-	// Code mismatch, increment attempt counter.
-	if entry.Code != code {
+	codeHash := hashToken(code)
+	if subtle.ConstantTimeCompare([]byte(entry.Code), []byte(codeHash)) != 1 {
 		if updErr := s.otpRepo.IncrementFailedAttempts(entry.ID); updErr != nil {
 			log.Printf("⚠️  Failed to update failed_attempts for %s: %v", email, updErr)
 		}
@@ -107,14 +104,13 @@ func (s *OTPService) Verify(email, code, preAuthToken string) (valid bool, errMs
 		return false, fmt.Sprintf("Invalid OTP. %d attempt(s) remaining.", remaining), nil
 	}
 
-	// delete valid OTP so it can't be reused (single-use).
 	if delErr := s.otpRepo.DeleteByID(entry.ID); delErr != nil {
 		log.Printf("⚠️  Failed to delete verified OTP for %s: %v", email, delErr)
 	}
 	return true, "", nil
 }
 
-// checks whether an OTP entry exists for the given email.
+// HasPending checks whether an OTP entry exists for the given email.
 func (s *OTPService) HasPending(email string) bool {
 	exists, err := s.otpRepo.HasPending(email)
 	if err != nil {
@@ -125,7 +121,6 @@ func (s *OTPService) HasPending(email string) bool {
 }
 
 // CanResend checks if enough time has passed since the last OTP was generated.
-// Returns true if at least 60 seconds have elapsed (prevents email flooding).
 func (s *OTPService) CanResend(email string) bool {
 	const resendCooldown = 60 * time.Second
 	createdAt, err := s.otpRepo.GetLastCreatedAt(email)
@@ -163,9 +158,7 @@ func (s *OTPService) StartCleanup(ctx context.Context) {
 	}()
 }
 
-// produces a random numeric string of the given length
 func generateSecureOTP(length int) (string, error) {
-	// upper bound is 10^length (e.g. 1_000_000 for 6 digits).
 	max := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(length)), nil)
 
 	n, err := rand.Int(rand.Reader, max)
@@ -173,7 +166,6 @@ func generateSecureOTP(length int) (string, error) {
 		return "", err
 	}
 
-	// zero-pad to the required length (e.g. 42 → "000042").
 	format := fmt.Sprintf("%%0%dd", length)
 	return fmt.Sprintf(format, n), nil
 }

@@ -112,46 +112,52 @@ func (r *UserRepository) UpdateRole(userID string, role string, groupID *string)
 	return err
 }
 
-func (r *UserRepository) CreateInvitedUser(email, role string, groupID *string, token string, expiresAt time.Time) error {
-	_, err := r.db.Exec(
+func (r *UserRepository) CreateInvitedUser(email, role string, groupID *string, tokenHash string, expiresAt time.Time) (string, error) {
+	var userID string
+	err := r.db.QueryRow(
 		`INSERT INTO users (email, role, group_id, account_status, invitation_token, token_expires_at, verified, created_at, updated_at)
-		 VALUES ($1, $2, $3, 'invited', $4, $5, false, NOW(), NOW())`,
-		email, role, groupID, token, expiresAt,
-	)
-	return err
+		 VALUES ($1, $2, $3, 'invited', $4, $5, false, NOW(), NOW())
+		 RETURNING user_id`,
+		email, role, groupID, tokenHash, expiresAt,
+	).Scan(&userID)
+	return userID, err
 }
 
-func (r *UserRepository) GetByInvitationToken(token string) (*models.User, error) {
+func (r *UserRepository) GetByInvitationToken(tokenHash string) (*models.User, error) {
 	row := r.db.QueryRow(
-		`SELECT `+userColumns+` FROM users WHERE invitation_token = $1`, token,
+		`SELECT `+userColumns+` FROM users WHERE invitation_token = $1`, tokenHash,
 	)
 	return scanUser(row)
 }
 
 func (r *UserRepository) CompleteInvitation(userID, passwordHash string) error {
+	// Keep verified=false for admin/master-admin so first login still requires OTP.
+	// Staff do not use the OTP branch, so mark them verified immediately.
 	_, err := r.db.Exec(
-		`UPDATE users SET password_hash = $1, account_status = 'active', 
-		 invitation_token = NULL, token_expires_at = NULL, verified = true, updated_at = NOW() 
+		`UPDATE users SET password_hash = $1, account_status = 'active',
+		 invitation_token = NULL, token_expires_at = NULL,
+		 verified = CASE WHEN role IN ('admin', 'master-admin') THEN false ELSE true END,
+		 updated_at = NOW()
 		 WHERE user_id = $2`,
 		passwordHash, userID,
 	)
 	return err
 }
 
-func (r *UserRepository) SetResetToken(userID, token string, expiresAt time.Time) error {
+func (r *UserRepository) SetResetToken(userID, tokenHash string, expiresAt time.Time) error {
 	_, err := r.db.Exec(
 		`UPDATE users SET invitation_token = $1, token_expires_at = $2, updated_at = NOW()
 		 WHERE user_id = $3`,
-		token, expiresAt, userID,
+		tokenHash, expiresAt, userID,
 	)
 	return err
 }
 
-func (r *UserRepository) UpdateInvitationToken(userID, token string, expiresAt time.Time) error {
+func (r *UserRepository) UpdateInvitationToken(userID, tokenHash string, expiresAt time.Time) error {
 	_, err := r.db.Exec(
 		`UPDATE users SET invitation_token = $1, token_expires_at = $2, updated_at = NOW()
 		 WHERE user_id = $3 AND account_status = 'invited'`,
-		token, expiresAt, userID,
+		tokenHash, expiresAt, userID,
 	)
 	return err
 }
@@ -204,9 +210,22 @@ func (r *UserRepository) UpdateStatus(userID, status string) error {
 	return err
 }
 
-// DeleteUser permanently removes a user record.
-// Should only be called for users with account_status = 'invited'.
+// DeleteUser permanently removes an invited user record.
+// The account_status guard is enforced in SQL to close TOCTOU races.
 func (r *UserRepository) DeleteUser(userID string) error {
-	_, err := r.db.Exec(`DELETE FROM users WHERE user_id = $1`, userID)
-	return err
+	result, err := r.db.Exec(
+		`DELETE FROM users WHERE user_id = $1 AND account_status = 'invited'`,
+		userID,
+	)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("user not found or not in invited status")
+	}
+	return nil
 }

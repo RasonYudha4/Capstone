@@ -2,10 +2,8 @@ package services
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
-	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -113,10 +111,4 @@ func (s *RefreshService) RotateToken(rawToken string) (newRawToken string, userI
 	}
 
 	return newRawToken, userID, nil
-}
-
-// produces a hex-encoded SHA-256 hash of the raw token.
-func hashToken(raw string) string {
-	h := sha256.Sum256([]byte(raw))
-	return hex.EncodeToString(h[:])
 }

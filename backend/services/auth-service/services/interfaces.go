@@ -28,7 +28,7 @@ type UserManager interface {
 	GetAllUsers() ([]models.UserListItem, error)
 	UpdateStatus(userID, status string) error
 	DeleteUser(userID string) error
-	InviteUser(email, role string, groupID *string) (string, error)
+	InviteUser(email, role string, groupID *string) (rawToken, userID string, err error)
 	ResendInvitation(userID string) (string, error)
 	GetByInvitationToken(token string) (*models.User, error)
 	CompleteInvitation(userID, password string) error
