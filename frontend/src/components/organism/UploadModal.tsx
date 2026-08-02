@@ -58,7 +58,7 @@ function getErrorMessage(error: unknown): string {
       case 403:
         return "Anda tidak memiliki akses untuk mengunggah ke grup ini.";
       case 400:
-        return "Data yang dikirim tidak valid. Periksa kembali isian formulir.";
+        return "Format berkas tidak valid. Silahkan periksa kembali isian formulir.";
       case 500:
         return "Terjadi kesalahan pada server. Silakan coba beberapa saat lagi.";
       default: {
