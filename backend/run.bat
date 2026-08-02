@@ -7,7 +7,7 @@ setlocal EnableDelayedExpansion
 ::  - Opens a second window tailing docker compose logs
 ::  - Creates/reuses local venv for agent-service
 ::  - Runs agent-service in foreground (uvicorn)
-::  - On Ctrl+C: tears down compose
+::  - On Ctrl+C: asks whether to tear down compose or just stop
 :: ============================================================
 
 set ROOT=%~dp0
@@ -83,9 +83,21 @@ python main.py
 
 :teardown
 echo.
-echo [INFO] Stopping Docker services...
+choice /C YN /N /M "Tear down Docker services (docker compose down)? [Y/N]: "
+if errorlevel 2 goto :skip_teardown
+if errorlevel 1 goto :do_teardown
+
+:do_teardown
+echo [INFO] Stopping and removing Docker services...
 docker compose -f "%ROOT%docker-compose.yml" down
-echo [OK] All services stopped.
+echo [OK] Docker services torn down.
+goto :end
+
+:skip_teardown
+echo [INFO] Leaving Docker services running.
+echo        Run "docker compose down" manually when you're ready to tear them down.
+
+:end
 echo.
 pause
 exit /b 0

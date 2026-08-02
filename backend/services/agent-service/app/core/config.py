@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     #     ./models/qwen3-0.6b-ov-int8
     embed_model_path:  str = "./data/models/qwen3-0.6b-ov-int8"
     # Intel GPU: "GPU" | AMD / no Intel GPU: set to "CPU"
-    embed_device:      str = "CPU"
+    embed_device:      str = "GPU"
     embed_batch_size:  int = 128
 
     # ── Chat / generation model (OpenVINO) ────────────────────────────────
@@ -52,7 +52,7 @@ class Settings(BaseSettings):
 
     # OpenVINO device: "CPU" | "GPU" | "NPU" | "AUTO"
     # Intel keep "GPU"; on AMD change this to "CPU".
-    chat_device:       str = "CPU"
+    chat_device:       str = "GPU"
 
     # Generation parameters
     chat_max_new_tokens:      int   = 512
