@@ -15,4 +15,3 @@ func GenerateHMAC(filebytes []byte) string {
 
 	return hex.EncodeToString(mac.Sum(nil))
 }
-
