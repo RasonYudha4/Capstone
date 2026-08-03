@@ -644,244 +644,246 @@ export default function Admins() {
 
                 {/* Table */}
                 <div className="mt-6 rounded-xl overflow-hidden border border-gray-100">
-                    <table className="w-full text-sm">
-                        <thead>
-                            <tr className="bg-[#6B5FAE] text-white text-left">
-                                <th className="px-6 py-4 font-semibold w-14">No.</th>
-                                <th className="px-6 py-4 font-semibold">Email</th>
-                                <th className="px-6 py-4 font-semibold">Role Saat Ini</th>
-                                <th className="px-6 py-4 font-semibold">Status</th>
-                                <th className="px-6 py-4 font-semibold">Ubah Role</th>
-                                <th className="px-6 py-4 font-semibold">Aksi</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {isLoading ? (
-                                <tr>
-                                    <td colSpan={6} className="px-6 py-14 text-center">
-                                        <div className="flex flex-col items-center gap-3 text-gray-400">
-                                            <svg className="animate-spin w-7 h-7 text-[#6B5FAE]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                                            </svg>
-                                            <span>Memuat data pengguna...</span>
-                                        </div>
-                                    </td>
+                    <div className="overflow-x-auto">
+                        <table className="w-full min-w-225 text-sm">
+                            <thead>
+                                <tr className="bg-[#6B5FAE] text-white text-left">
+                                    <th className="px-6 py-4 font-semibold w-14">No.</th>
+                                    <th className="px-6 py-4 font-semibold">Email</th>
+                                    <th className="px-6 py-4 font-semibold">Role Saat Ini</th>
+                                    <th className="px-6 py-4 font-semibold">Status</th>
+                                    <th className="px-6 py-4 font-semibold">Ubah Role</th>
+                                    <th className="px-6 py-4 font-semibold">Aksi</th>
                                 </tr>
-                            ) : loadError ? (
-                                <tr>
-                                    <td colSpan={6} className="px-6 py-14 text-center">
-                                        <div className="flex flex-col items-center gap-3 text-rose-500">
-                                            <AlertCircle className="w-7 h-7" />
-                                            <span>{loadError}</span>
-                                            <Button
-                                                variant="outline"
-                                                className="rounded-xl border-rose-200 text-rose-500 hover:bg-rose-50 text-xs"
-                                                onClick={fetchUsers}
+                            </thead>
+                            <tbody>
+                                {isLoading ? (
+                                    <tr>
+                                        <td colSpan={6} className="px-6 py-14 text-center">
+                                            <div className="flex flex-col items-center gap-3 text-gray-400">
+                                                <svg className="animate-spin w-7 h-7 text-[#6B5FAE]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                                                </svg>
+                                                <span>Memuat data pengguna...</span>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ) : loadError ? (
+                                    <tr>
+                                        <td colSpan={6} className="px-6 py-14 text-center">
+                                            <div className="flex flex-col items-center gap-3 text-rose-500">
+                                                <AlertCircle className="w-7 h-7" />
+                                                <span>{loadError}</span>
+                                                <Button
+                                                    variant="outline"
+                                                    className="rounded-xl border-rose-200 text-rose-500 hover:bg-rose-50 text-xs"
+                                                    onClick={fetchUsers}
+                                                >
+                                                    Coba lagi
+                                                </Button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ) : pagedUsers.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={6} className="px-6 py-14 text-center text-gray-400">
+                                            {search || roleFilter.length > 0
+                                                ? "Tidak ada pengguna yang cocok dengan filter ini."
+                                                : "Belum ada pengguna yang terdaftar."}
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    pagedUsers.map((user, idx) => {
+                                        const avatar = getAvatarColor(user.email)
+                                        const initials = getInitials(user.email)
+                                        const isInvited = user.account_status === "invited"
+                                        const isSuspended = user.account_status === "suspended"
+                                        const isSaving = savingId === user.user_id
+                                        const isDeleting = isDeletingId === user.user_id
+                                        const isResending = isResendingId === user.user_id
+                                        const isSuspending = isSuspendingId === user.user_id
+                                        const currentAssignment = getUserAssignment(user, groups)
+                                        const pendingAssignment = pendingAssignments[user.user_id] ?? currentAssignment
+                                        const hasRoleChange = !!pendingAssignment && pendingAssignment !== currentAssignment && !isInvited
+
+                                        return (
+                                            <tr
+                                                key={user.user_id}
+                                                className={`border-t border-gray-100 transition-colors ${isSuspended ? "bg-gray-50 opacity-70" : ""}`}
                                             >
-                                                Coba lagi
-                                            </Button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ) : pagedUsers.length === 0 ? (
-                                <tr>
-                                    <td colSpan={6} className="px-6 py-14 text-center text-gray-400">
-                                        {search || roleFilter.length > 0
-                                            ? "Tidak ada pengguna yang cocok dengan filter ini."
-                                            : "Belum ada pengguna yang terdaftar."}
-                                    </td>
-                                </tr>
-                            ) : (
-                                pagedUsers.map((user, idx) => {
-                                    const avatar = getAvatarColor(user.email)
-                                    const initials = getInitials(user.email)
-                                    const isInvited = user.account_status === "invited"
-                                    const isSuspended = user.account_status === "suspended"
-                                    const isSaving = savingId === user.user_id
-                                    const isDeleting = isDeletingId === user.user_id
-                                    const isResending = isResendingId === user.user_id
-                                    const isSuspending = isSuspendingId === user.user_id
-                                    const currentAssignment = getUserAssignment(user, groups)
-                                    const pendingAssignment = pendingAssignments[user.user_id] ?? currentAssignment
-                                    const hasRoleChange = !!pendingAssignment && pendingAssignment !== currentAssignment && !isInvited
+                                                {/* No */}
+                                                <td className="px-6 py-4 text-gray-500">
+                                                    {(page - 1) * PAGE_SIZE + idx + 1}
+                                                </td>
 
-                                    return (
-                                        <tr
-                                            key={user.user_id}
-                                            className={`border-t border-gray-100 transition-colors ${isSuspended ? "bg-gray-50 opacity-70" : ""}`}
-                                        >
-                                            {/* No */}
-                                            <td className="px-6 py-4 text-gray-500">
-                                                {(page - 1) * PAGE_SIZE + idx + 1}
-                                            </td>
-
-                                            {/* Email */}
-                                            <td className="px-6 py-4">
-                                                <div className="flex items-center gap-3">
-                                                    <div
-                                                        className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 ${avatar.bg} ${avatar.text}`}
-                                                    >
-                                                        {initials}
-                                                    </div>
-                                                    <div>
-                                                        <p className="font-medium text-gray-900">{user.email}</p>
-                                                        {isInvited && (
-                                                            <span className="inline-flex items-center text-[10px] bg-amber-50 text-amber-600 px-2 py-0.5 rounded-full font-medium mt-0.5">
-                                                                Menunggu aktivasi
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </td>
-
-                                            {/* Current role */}
-                                            <td className="px-6 py-4">
-                                                <RoleBadge
-                                                    label={getRoleDisplayLabel(user)}
-                                                    variant={user.role === "admin" ? "admin" : "staff"}
-                                                />
-                                            </td>
-
-                                            {/* Status */}
-                                            <td className="px-6 py-4">
-                                                {isInvited ? (
-                                                    <span className="inline-flex items-center text-xs bg-amber-50 text-amber-600 px-2.5 py-1 rounded-full font-medium">
-                                                        Invited
-                                                    </span>
-                                                ) : isSuspended ? (
-                                                    <span className="inline-flex items-center text-xs bg-rose-50 text-rose-500 px-2.5 py-1 rounded-full font-medium">
-                                                        Suspended
-                                                    </span>
-                                                ) : (
-                                                    <span className="inline-flex items-center text-xs bg-emerald-50 text-emerald-600 px-2.5 py-1 rounded-full font-medium">
-                                                        Aktif
-                                                    </span>
-                                                )}
-                                            </td>
-
-                                            {/* Role selector */}
-                                            <td className="px-6 py-4">
-                                                {isInvited ? (
-                                                    <span className="text-xs text-gray-400 italic">—</span>
-                                                ) : (
-                                                    <Select
-                                                        value={pendingAssignment || undefined}
-                                                        onValueChange={(v) =>
-                                                            setPendingAssignments((prev) => ({
-                                                                ...prev,
-                                                                [user.user_id]: v,
-                                                            }))
-                                                        }
-                                                        disabled={isSuspended || isSaving}
-                                                    >
-                                                        <SelectTrigger className="rounded-xl bg-white w-52 text-sm">
-                                                            <SelectValue placeholder="Pilih role" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            {roleOptions.map((option) => (
-                                                                <SelectItem key={option.value} value={option.value}>
-                                                                    {option.label}
-                                                                </SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
-                                                )}
-                                            </td>
-
-                                            {/* Actions */}
-                                            <td className="px-6 py-4">
-                                                <div className="flex items-center gap-2">
-                                                    {isInvited ? (
-                                                        <>
-                                                            <Button
-                                                                size="sm"
-                                                                variant="outline"
-                                                                className="rounded-xl border-[#6B5FAE]/30 text-[#6B5FAE] hover:bg-[#6B5FAE]/5 gap-1.5"
-                                                                disabled={isResending || isDeleting}
-                                                                onClick={() => handleResendInvitation(user)}
-                                                            >
-                                                                {isResending ? (
-                                                                    <svg className="animate-spin w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                                                                    </svg>
-                                                                ) : (
-                                                                    <Send className="w-3.5 h-3.5" />
-                                                                )}
-                                                                Kirim Ulang
-                                                            </Button>
-                                                            <Button
-                                                                size="sm"
-                                                                variant="outline"
-                                                                className="rounded-xl border-rose-200 text-rose-500 hover:bg-rose-50 gap-1.5"
-                                                                disabled={isDeleting || isResending}
-                                                                onClick={() => setDeleteTarget(user)}
-                                                            >
-                                                            {isDeleting ? (
-                                                                <svg className="animate-spin w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                                                                </svg>
-                                                            ) : (
-                                                                <Trash2 className="w-3.5 h-3.5" />
+                                                {/* Email */}
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center gap-3">
+                                                        <div
+                                                            className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 ${avatar.bg} ${avatar.text}`}
+                                                        >
+                                                            {initials}
+                                                        </div>
+                                                        <div>
+                                                            <p className="font-medium text-gray-900">{user.email}</p>
+                                                            {isInvited && (
+                                                                <span className="inline-flex items-center text-[10px] bg-amber-50 text-amber-600 px-2 py-0.5 rounded-full font-medium mt-0.5">
+                                                                    Menunggu aktivasi
+                                                                </span>
                                                             )}
-                                                            Hapus
-                                                        </Button>
-                                                        </>
+                                                        </div>
+                                                    </div>
+                                                </td>
+
+                                                {/* Current role */}
+                                                <td className="px-6 py-4">
+                                                    <RoleBadge
+                                                        label={getRoleDisplayLabel(user)}
+                                                        variant={user.role === "admin" ? "admin" : "staff"}
+                                                    />
+                                                </td>
+
+                                                {/* Status */}
+                                                <td className="px-6 py-4">
+                                                    {isInvited ? (
+                                                        <span className="inline-flex items-center text-xs bg-amber-50 text-amber-600 px-2.5 py-1 rounded-full font-medium">
+                                                            Invited
+                                                        </span>
+                                                    ) : isSuspended ? (
+                                                        <span className="inline-flex items-center text-xs bg-rose-50 text-rose-500 px-2.5 py-1 rounded-full font-medium">
+                                                            Suspended
+                                                        </span>
                                                     ) : (
-                                                        <>
-                                                            {/* Save role button — only visible when role changed */}
-                                                            {hasRoleChange && (
+                                                        <span className="inline-flex items-center text-xs bg-emerald-50 text-emerald-600 px-2.5 py-1 rounded-full font-medium">
+                                                            Aktif
+                                                        </span>
+                                                    )}
+                                                </td>
+
+                                                {/* Role selector */}
+                                                <td className="px-6 py-4">
+                                                    {isInvited ? (
+                                                        <span className="text-xs text-gray-400 italic">—</span>
+                                                    ) : (
+                                                        <Select
+                                                            value={pendingAssignment || undefined}
+                                                            onValueChange={(v) =>
+                                                                setPendingAssignments((prev) => ({
+                                                                    ...prev,
+                                                                    [user.user_id]: v,
+                                                                }))
+                                                            }
+                                                            disabled={isSuspended || isSaving}
+                                                        >
+                                                            <SelectTrigger className="rounded-xl bg-white w-52 text-sm">
+                                                                <SelectValue placeholder="Pilih role" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                {roleOptions.map((option) => (
+                                                                    <SelectItem key={option.value} value={option.value}>
+                                                                        {option.label}
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    )}
+                                                </td>
+
+                                                {/* Actions */}
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center gap-2">
+                                                        {isInvited ? (
+                                                            <>
                                                                 <Button
                                                                     size="sm"
-                                                                    className="bg-[#6B5FAE] hover:bg-[#5b4f97] text-white rounded-xl px-4 gap-1"
-                                                                    disabled={isSaving}
-                                                                    onClick={() => handleSaveRole(user)}
+                                                                    variant="outline"
+                                                                    className="rounded-xl border-[#6B5FAE]/30 text-[#6B5FAE] hover:bg-[#6B5FAE]/5 gap-1.5"
+                                                                    disabled={isResending || isDeleting}
+                                                                    onClick={() => handleResendInvitation(user)}
                                                                 >
-                                                                    {isSaving ? (
+                                                                    {isResending ? (
                                                                         <svg className="animate-spin w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                                                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                                                                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
                                                                         </svg>
-                                                                    ) : null}
-                                                                    Simpan
+                                                                    ) : (
+                                                                        <Send className="w-3.5 h-3.5" />
+                                                                    )}
+                                                                    Kirim Ulang
                                                                 </Button>
-                                                            )}
-
-                                                            {/* Suspend / Activate */}
-                                                            <Button
-                                                                size="sm"
-                                                                variant="outline"
-                                                                className={`rounded-xl gap-1.5 ${isSuspended
-                                                                    ? "border-emerald-200 text-emerald-600 hover:bg-emerald-50"
-                                                                    : "border-rose-200 text-rose-500 hover:bg-rose-50"
-                                                                    }`}
-                                                                disabled={isSuspending}
-                                                                onClick={() => handleToggleStatus(user)}
-                                                            >
-                                                                {isSuspending ? (
-                                                                    <svg className="animate-spin w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                                                                    </svg>
-                                                                ) : isSuspended ? (
-                                                                    <ShieldCheck className="w-3.5 h-3.5" />
-                                                                ) : (
-                                                                    <ShieldOff className="w-3.5 h-3.5" />
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    className="rounded-xl border-rose-200 text-rose-500 hover:bg-rose-50 gap-1.5"
+                                                                    disabled={isDeleting || isResending}
+                                                                    onClick={() => setDeleteTarget(user)}
+                                                                >
+                                                                    {isDeleting ? (
+                                                                        <svg className="animate-spin w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                                                                        </svg>
+                                                                    ) : (
+                                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                                    )}
+                                                                    Hapus
+                                                                </Button>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                {/* Save role button — only visible when role changed */}
+                                                                {hasRoleChange && (
+                                                                    <Button
+                                                                        size="sm"
+                                                                        className="bg-[#6B5FAE] hover:bg-[#5b4f97] text-white rounded-xl px-4 gap-1"
+                                                                        disabled={isSaving}
+                                                                        onClick={() => handleSaveRole(user)}
+                                                                    >
+                                                                        {isSaving ? (
+                                                                            <svg className="animate-spin w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                                                                            </svg>
+                                                                        ) : null}
+                                                                        Simpan
+                                                                    </Button>
                                                                 )}
-                                                                {isSuspended ? "Aktifkan" : "Tangguhkan"}
-                                                            </Button>
-                                                        </>
-                                                    )}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    )
-                                })
-                            )}
-                        </tbody>
-                    </table>
+
+                                                                {/* Suspend / Activate */}
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    className={`rounded-xl gap-1.5 ${isSuspended
+                                                                        ? "border-emerald-200 text-emerald-600 hover:bg-emerald-50"
+                                                                        : "border-rose-200 text-rose-500 hover:bg-rose-50"
+                                                                        }`}
+                                                                    disabled={isSuspending}
+                                                                    onClick={() => handleToggleStatus(user)}
+                                                                >
+                                                                    {isSuspending ? (
+                                                                        <svg className="animate-spin w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                                                                        </svg>
+                                                                    ) : isSuspended ? (
+                                                                        <ShieldCheck className="w-3.5 h-3.5" />
+                                                                    ) : (
+                                                                        <ShieldOff className="w-3.5 h-3.5" />
+                                                                    )}
+                                                                    {isSuspended ? "Aktifkan" : "Tangguhkan"}
+                                                                </Button>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )
+                                    })
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
 
                 {/* Pagination */}
