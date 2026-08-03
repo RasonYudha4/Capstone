@@ -97,8 +97,7 @@ func (d *DocumentHandler) Get_document_by_id_handler(c *gin.Context) {
 		RespondError(c, http.StatusInternalServerError, "Failed to stream document")
 		return
 	}
-	defer object.Close()
-
+	
 	
 	if !status.Status{
 		switch status.Message{
@@ -110,6 +109,14 @@ func (d *DocumentHandler) Get_document_by_id_handler(c *gin.Context) {
 			return
 		}
 	}
+
+	if object == nil || stat == nil {
+    log.Printf("service returned nil object or stat on success")
+    RespondError(c, http.StatusInternalServerError, "Failed to retrieve document")
+    return
+	}
+
+	defer object.Close()
 
 	contentType := stat.ContentType
 	if contentType == "" {

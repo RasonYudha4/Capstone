@@ -33,6 +33,10 @@ func main() {
 	if err != nil {
 		log.Fatal("Error init objectStorage: ", err)
 	}
+	presignConn, err := objectStorage.InitPresignMinio()
+	if err != nil {
+		log.Fatal("Error init presign con", err)
+	}
 
 	if err := objectStorage.CreateBuckets(objectStorageConn); err != nil {
 		log.Fatal("Error creating buckets: ", err)
@@ -40,7 +44,7 @@ func main() {
 
 	repo := repositories.NewDocumentRepo(dbConn)
 	audit := repositories.NewAuditRepo(dbConn)
-	storage := repositories.NewStorageRepo(objectStorageConn)
+	storage := repositories.NewStorageRepo(objectStorageConn, presignConn)
 	notificationRepo := repositories.NewNotificationRepository(dbConn)
 	formOptionRepo := repositories.NewFormOptionsRepository(dbConn)
 

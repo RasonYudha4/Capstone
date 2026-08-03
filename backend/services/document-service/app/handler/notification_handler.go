@@ -59,9 +59,6 @@ func (h *NotificationHandler) SSEHandler(c *gin.Context) {
 		log.Printf("[SSE] failed to fetch unread for user=%s: %v", userID, err)
 	}
 	if len(missed) > 0 {
-		// NOTE: this "sync" payload has a different shape than services.SSEEvent
-		// (no document_id/status, has "count" instead). See dto fix below —
-		// sseEventSchema on the frontend must be a union to accept this.
 		type syncPayload struct {
 			Type  string `json:"type"`
 			Count int    `json:"count"`

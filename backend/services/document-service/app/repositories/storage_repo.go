@@ -15,11 +15,13 @@ import (
 
 type StorageRepo struct {
 	minio *minio.Client
+	presign *minio.Client
 }
 
-func NewStorageRepo(minio *minio.Client) *StorageRepo {
+func NewStorageRepo(minio *minio.Client, presign *minio.Client) *StorageRepo {
 	return &StorageRepo{
 		minio: minio,
+		presign: presign,
 	}
 }
 
@@ -176,7 +178,7 @@ func (s *StorageRepo) resolveBucket(filepath string) (string, string) {
 func (s *StorageRepo) Get_document_presign(objectId string, isPublic bool) (string, string, error) {
 	bucket := s.bucket(isPublic)
 	expiry := 5 * time.Hour
-	url, err := s.minio.PresignedGetObject(
+	url, err := s.presign.PresignedGetObject(
 		context.Background(),
 		bucket,
 		objectId,

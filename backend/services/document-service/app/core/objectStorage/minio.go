@@ -28,6 +28,24 @@ func InitMinio() (*minio.Client, error) {
 	return minioClient, nil
 }
 
+func InitPresignMinio() (*minio.Client, error) {
+	endpoint := os.Getenv("PUBLIC_ENDPOINT")
+	accessKey := os.Getenv("ACCESS_KEY")
+	secretKey := os.Getenv("SECRET_KEY")
+	useSSL := false
+
+	minioClient, err := minio.New(endpoint, &minio.Options{
+		Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
+		Secure: useSSL,
+	})
+	if err != nil {
+		log.Fatal("error: ", err)
+	}
+
+	log.Println("Minio client Init")
+	return minioClient, nil
+}
+
 func CreateBuckets(client *minio.Client) error {
 	ctx := context.Background()
 
