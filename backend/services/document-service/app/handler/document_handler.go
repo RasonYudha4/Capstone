@@ -236,9 +236,14 @@ func (d *DocumentHandler) Get_document_by_service_handler(c *gin.Context) {
 	role := c.GetString("role")
 	data, page, limit, err := d.documentService.Get_document_by_service(serviceId, userId, page, limit, role)
 	if err != nil {
+		log.Printf("Get_document_by_service error role=%q user=%s service=%s: %v", role, userId, serviceId, err)
 		RespondError(c, 500, "Internal Server Error")
 		return
 	}
+	if data == nil {
+		data = []schemas.DocumentResponse{}
+	}
+	log.Printf("Get_document_by_service role=%q user=%s service=%s count=%d", role, userId, serviceId, len(data))
 	RespondSuccess(c, 200, "Success", schemas.DocumentDataResponse{
 		Data:  data,
 		Page:  page,
@@ -265,9 +270,14 @@ func (d *DocumentHandler) Get_document_by_assessment_handler(c *gin.Context) {
 	role := c.GetString("role")
 	data, page, limit, err := d.documentService.Get_document_by_assessment(assessmentId, userId, page, limit, role)
 	if err != nil {
+		log.Printf("Get_document_by_assessment error role=%q user=%s assessment=%s: %v", role, userId, assessmentId, err)
 		RespondError(c, 500, "Internal Server Error")
 		return
 	}
+	if data == nil {
+		data = []schemas.DocumentResponse{}
+	}
+	log.Printf("Get_document_by_assessment role=%q user=%s assessment=%s count=%d", role, userId, assessmentId, len(data))
 	RespondSuccess(c, 200, "Success", schemas.DocumentDataResponse{
 		Data:  data,
 		Page:  page,

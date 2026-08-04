@@ -32,7 +32,7 @@ export default function AppSidebar() {
                         <img src='/logo.png' height={35} width={35} />
                     </div>
                     <span className="font-bold text-[#6B5FAE] text-base leading-tight">
-                        Smart<br />Acreditation
+                        Document<br />Approval
                     </span>
                 </div>
             </SidebarHeader>

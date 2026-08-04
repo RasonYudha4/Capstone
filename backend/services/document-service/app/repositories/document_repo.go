@@ -40,17 +40,17 @@ const baseQuery = `
 		d.document_id,
 		d.filename,
 		COALESCE(d.filepath, ''),
-		dt.name AS document_type,
-		u.email AS created_by,
+		COALESCE(dt.name, '') AS document_type,
+		COALESCE(u.email, '') AS created_by,
 		d.updated_at,
 		COALESCE(a.assessment_id::text, ''),
-		d.status,
+		COALESCE(d.status, ''),
 		COALESCE(s.service_code, ''),
 		COALESCE(st.standard_code, ''),
 		COALESCE(a.assessment_code, '')
 	FROM documents d
-	JOIN document_types dt ON d.document_type_id = dt.document_type_id
-	JOIN users u ON d.created_by = u.user_id
+	LEFT JOIN document_types dt ON d.document_type_id = dt.document_type_id
+	LEFT JOIN users u ON d.created_by = u.user_id
 	LEFT JOIN services s ON d.service_id = s.service_id
 	LEFT JOIN standard st ON d.standard_id = st.standard_id
 	LEFT JOIN assessment a ON d.assessment_id = a.assessment_id
@@ -89,12 +89,28 @@ func (s *DocumentRepo) fetchingData(query string, args ...any) ([]schemas.Docume
 }
 
 func (s *DocumentRepo) filterFetch(field filter, fieldId, createdById uuid.UUID, limit, offset int, role string) ([]schemas.DocumentResponse, error) {
+	role = strings.TrimSpace(role)
+	// always qualify is_deleted: rows with NULL were previously excluded by "is_deleted = false"
+	notDeleted := "COALESCE(d.is_deleted, false) = false"
+
 	if role == "master-admin" {
-		query := fmt.Sprintf("%s WHERE %s = $1 AND is_deleted = false ORDER BY d.updated_at DESC LIMIT $2 OFFSET $3", baseQuery, field)
+		query := fmt.Sprintf(
+			"%s WHERE %s = $1 AND %s ORDER BY d.updated_at DESC LIMIT $2 OFFSET $3",
+			baseQuery, field, notDeleted,
+		)
 		return s.fetchingData(query, fieldId, limit, offset)
 	}
 
-	query := fmt.Sprintf("%s WHERE %s = $1 AND d.created_by = $2 AND is_deleted = false ORDER BY d.updated_at DESC LIMIT $3 OFFSET $4", baseQuery, field)
+	// admin (and other non–master-admin): any document in the caller's group under this filter
+	// (not only self-uploads). Upload authorization already confines admins to their group.
+	query := fmt.Sprintf(`
+		%s
+		WHERE %s = $1
+		  AND %s
+		  AND d.group_id = (SELECT group_id FROM users WHERE user_id = $2)
+		ORDER BY d.updated_at DESC
+		LIMIT $3 OFFSET $4
+	`, baseQuery, field, notDeleted)
 	return s.fetchingData(query, fieldId, createdById, limit, offset)
 }
 

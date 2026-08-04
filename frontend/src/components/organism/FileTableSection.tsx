@@ -135,11 +135,11 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
   const standardQuery = useDocumentsByStandard(selectedStandardId, paginationQuery)
   const assessmentQuery = useDocumentsByAssessment(selectedAssessmentId, paginationQuery)
 
-  const { data: docData, isLoading: docsLoading } = useMemo(() => {
+  const { data: docData, isLoading: docsLoading, isError: docsError } = useMemo(() => {
     if (selectedAssessmentId) return assessmentQuery
     if (selectedStandardId) return standardQuery
     if (selectedServiceId) return serviceQuery
-    return { data: undefined, isLoading: false }
+    return { data: undefined, isLoading: false, isError: false }
   }, [
     selectedServiceId, selectedStandardId, selectedAssessmentId,
     serviceQuery, standardQuery, assessmentQuery,
@@ -381,6 +381,10 @@ export default function FileTableSection({ onUploadClick }: FileTableSectionProp
                 {docsLoading ? (
                   <tr>
                     <td colSpan={5} className="text-center text-sm text-gray-400 py-10">Memuat berkas...</td>
+                  </tr>
+                ) : docsError ? (
+                  <tr>
+                    <td colSpan={5} className="text-center text-sm text-red-500 py-10">Gagal memuat berkas. Coba refresh atau cek login Anda.</td>
                   </tr>
                 ) : !selectedServiceId ? (
                   <tr>

@@ -41,6 +41,31 @@ function inferContentTypeFromUrl(url: string): string {
     }
 }
 
+/** Unwrap ApiResponse { data: DocumentDataResponse } with a few fallback shapes. */
+function unwrapDocumentList(body: unknown, query?: PaginationQuery): DocumentListResponse {
+    const root = body as { data?: unknown } | unknown
+    const payload =
+        root && typeof root === 'object' && root !== null && 'data' in root
+            ? (root as { data: unknown }).data
+            : root
+
+    if (Array.isArray(payload)) {
+        return { data: payload as DocumentListResponse['data'], page: query?.page ?? 1, limit: query?.limit ?? 10 }
+    }
+
+    if (payload && typeof payload === 'object') {
+        const p = payload as { data?: unknown; page?: number; limit?: number }
+        const list = Array.isArray(p.data) ? p.data : []
+        return {
+            data: list as DocumentListResponse['data'],
+            page: p.page ?? query?.page ?? 1,
+            limit: p.limit ?? query?.limit ?? 10,
+        }
+    }
+
+    return { data: [], page: query?.page ?? 1, limit: query?.limit ?? 10 }
+}
+
 export const documentService = {
 
     getAll: async (query?: PaginationQuery): Promise<DocumentListResponse> => {
@@ -115,7 +140,7 @@ export const documentService = {
     getByService: async (service: string, query?: PaginationQuery): Promise<DocumentListResponse> => {
         try {
             const { data } = await axioHandler.get(`/documents/services/${service}`, { params: query })
-            return data.data
+            return unwrapDocumentList(data, query)
         } catch (error) {
             throw new Error('Failed to fetch documents by service.')
         }
@@ -124,7 +149,7 @@ export const documentService = {
     getByStandard: async (standard: string, query?: PaginationQuery): Promise<DocumentListResponse> => {
         try {
             const { data } = await axioHandler.get(`/documents/standards/${standard}`, { params: query })
-            return data.data
+            return unwrapDocumentList(data, query)
         } catch (error) {
             throw new Error('Failed to fetch documents by standard.')
         }
@@ -133,7 +158,7 @@ export const documentService = {
     getByAssessment: async (assessment: string, query?: PaginationQuery): Promise<DocumentListResponse> => {
         try {
             const { data } = await axioHandler.get(`/documents/assessments/${assessment}`, { params: query })
-            return data.data
+            return unwrapDocumentList(data, query)
         } catch (error) {
             throw new Error('Failed to fetch documents by assessment.')
         }
@@ -142,7 +167,7 @@ export const documentService = {
     getMyDocuments: async (query?: PaginationQuery): Promise<DocumentListResponse> => {
         try {
             const { data } = await axioHandler.get('/documents/createdBy/my-document', { params: query })
-            return data.data
+            return unwrapDocumentList(data, query)
         } catch (error) {
             throw new Error('Failed to fetch your documents.')
         }
@@ -151,15 +176,7 @@ export const documentService = {
     getByStatus: async (status: string, query?: PaginationQuery): Promise<DocumentListResponse> => {
         try {
             const { data } = await axioHandler.get(`/documents/masterAdmin/status/${status}`, { params: query })
-            const payload = data?.data ?? data
-            if (Array.isArray(payload)) {
-                return { data: payload, page: query?.page ?? 1, limit: query?.limit ?? 10 }
-            }
-            return {
-                data: Array.isArray(payload?.data) ? payload.data : [],
-                page: payload?.page ?? query?.page ?? 1,
-                limit: payload?.limit ?? query?.limit ?? 10,
-            }
+            return unwrapDocumentList(data, query)
         } catch (error) {
             throw new Error('Failed to fetch documents by status.')
         }

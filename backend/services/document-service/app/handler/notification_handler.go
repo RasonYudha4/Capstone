@@ -105,6 +105,9 @@ func (h *NotificationHandler) GetAll(c *gin.Context) {
 		RespondError(c, 500, "failed to fetch notifications")
 		return
 	}
+	if notifications == nil {
+		notifications = []repositories.Notification{}
+	}
 
 	RespondSuccess(c, 200, "Success Getting Notifications", notifications)
 }
