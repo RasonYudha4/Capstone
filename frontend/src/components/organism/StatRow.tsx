@@ -221,7 +221,8 @@ export default function StatRow() {
                     weeklyLabel="Minggu ini"
                     icon={DownloadIcon}
                     showDot={hasUnread}
-                    onDotClick={() => void openUnreadDocument()}
+                    clickable={hasUnread}
+                    onClick={() => void openUnreadDocument()}
                 />
                 <StatCard
                     label="Terakhir Dilihat"
