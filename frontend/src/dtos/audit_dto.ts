@@ -7,6 +7,7 @@ export const auditResponseSchema = z.object({
     action:        z.string(),
     description:   z.string(),
     username:      z.string(),
+    document_id:   z.string().uuid().nullable().optional(),
     document_name: z.string().nullable(),   
     source:        z.string().optional(),
     created_at:    z.string().datetime({ offset: true }),

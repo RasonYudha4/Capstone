@@ -27,6 +27,7 @@ func (a *AuditRepo) GetAudit() ([]schemas.AuditResponse, error) {
 		a.action,
 		a.description,
 		u.email AS userName,
+		a.document_id AS documentId,
 		d.filename AS documentName,
 		a.created_at,
 		a.updated_at
@@ -51,6 +52,7 @@ func (a *AuditRepo) GetAudit() ([]schemas.AuditResponse, error) {
 			&audit.Action,
 			&audit.Description,
 			&audit.UserName,
+			&audit.DocumentId,
 			&audit.DocumentName,
 			&audit.CreatedAt,
 			&audit.UpdatedAt,
