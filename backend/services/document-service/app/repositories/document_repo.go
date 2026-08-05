@@ -90,7 +90,7 @@ func (s *DocumentRepo) fetchingData(query string, args ...any) ([]schemas.Docume
 
 func (s *DocumentRepo) filterFetch(field filter, fieldId, createdById uuid.UUID, limit, offset int, role string) ([]schemas.DocumentResponse, error) {
 	role = strings.TrimSpace(role)
-	// always qualify is_deleted: rows with NULL were previously excluded by "is_deleted = false"
+	// COALESCE so rows with NULL is_deleted are not silently dropped
 	notDeleted := "COALESCE(d.is_deleted, false) = false"
 
 	if role == "master-admin" {
@@ -101,8 +101,7 @@ func (s *DocumentRepo) filterFetch(field filter, fieldId, createdById uuid.UUID,
 		return s.fetchingData(query, fieldId, limit, offset)
 	}
 
-	// admin (and other non–master-admin): any document in the caller's group under this filter
-	// (not only self-uploads). Upload authorization already confines admins to their group.
+	// admin/staff: documents in the caller's group under this filter
 	query := fmt.Sprintf(`
 		%s
 		WHERE %s = $1
@@ -114,10 +113,6 @@ func (s *DocumentRepo) filterFetch(field filter, fieldId, createdById uuid.UUID,
 	return s.fetchingData(query, fieldId, createdById, limit, offset)
 }
 
-func (s *DocumentRepo) GetDocuments(limit, offset int) ([]schemas.DocumentResponse, error) {
-	query := baseQuery + "WHERE d.is_deleted = false AND d.status = 'approved' ORDER BY d.updated_at DESC LIMIT $1 OFFSET $2"
-	return s.fetchingData(query, limit, offset)
-}
 
 func (s *DocumentRepo) Get_document_by_status(status string, limit, offset int) ([]schemas.DocumentResponse, error) {
 	query := baseQuery + "WHERE d.status = $1 AND d.is_deleted = false ORDER BY d.updated_at DESC LIMIT $2 OFFSET $3"
@@ -131,11 +126,6 @@ func (s *DocumentRepo) Get_documents_by_type(limit, offset int) ([]schemas.Docum
 		ORDER BY d.updated_at DESC
 		LIMIT $1 OFFSET $2`
 	return s.fetchingData(query, limit, offset)
-}
-
-func (s *DocumentRepo) Get_document_by_group(groupId uuid.UUID, limit, offset int) ([]schemas.DocumentResponse, error) {
-	query := baseQuery + "WHERE d.group_id = $1 AND is_deleted = false ORDER BY d.updated_at DESC LIMIT $2 OFFSET $3"
-	return s.fetchingData(query, groupId, limit, offset)
 }
 
 func (s *DocumentRepo) Get_document_by_service(serviceId, createdById uuid.UUID, limit, offset int, role string) ([]schemas.DocumentResponse, error) {
@@ -172,13 +162,8 @@ func (s *DocumentRepo) Get_document_by_id(documentId, createdById uuid.UUID, rol
 		err      error
 	)
 
-	if role == "admin" {
-		err = s.db.QueryRow(context.Background(), query+" AND d.created_by = $2", documentId, createdById).
+	err = s.db.QueryRow(context.Background(), query, documentId).
 			Scan(&objectId, &isPublic)
-	} else {
-		err = s.db.QueryRow(context.Background(), query, documentId).
-			Scan(&objectId, &isPublic)
-	}
 
 	if err != nil {
 		return "", false, err

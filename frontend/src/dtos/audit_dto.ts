@@ -46,12 +46,33 @@ export interface ActivityGroup {
 const ACTION_LABEL_MAP: Record<string, string> = {
     insert:   'mengupload file',
     edit:     'mengedit file',
-    update:   'mengubah Status file',
+    update:   'mengubah status file',
     delete:   'menghapus file',
+    open:     'membuka file',
     download: 'mengunduh file',
+    login:    'login',
+    login_fail: 'gagal login',
+    lockout:  'akun terkunci',
+    error:    'error',
 }
 
-export function mapActionLabel(action: string): string {
+const FILE_ACTIONS = new Set(['insert', 'edit', 'update', 'delete', 'open', 'download'])
+
+/** Auth reuses action_type "delete" for logout — detect via description. */
+function isLogoutAudit(action: string, description?: string | null): boolean {
+    if (action.toLowerCase() !== 'delete') return false
+    const d = (description ?? '').toLowerCase()
+    return d.includes('logout') || d.includes('logged out')
+}
+
+function isTokenRefreshAudit(action: string, description?: string | null): boolean {
+    if (action.toLowerCase() !== 'update') return false
+    return (description ?? '').toLowerCase().includes('token refreshed')
+}
+
+export function mapActionLabel(action: string, description?: string | null): string {
+    if (isLogoutAudit(action, description)) return 'logout'
+    if (isTokenRefreshAudit(action, description)) return 'memperbarui sesi'
     return ACTION_LABEL_MAP[action.toLowerCase()] ?? action
 }
 
@@ -64,6 +85,12 @@ export function parseTimestamp(iso: string): { date: string; timeLabel: string; 
 
 export function mapAuditToActivity(dto: AuditResponse): Activity {
     const { date, timeLabel, timestamp } = parseTimestamp(dto.created_at)
+    const action = mapActionLabel(dto.action, dto.description)
+    const isFileOp =
+        FILE_ACTIONS.has(dto.action.toLowerCase()) &&
+        !isLogoutAudit(dto.action, dto.description) &&
+        !isTokenRefreshAudit(dto.action, dto.description)
+
     return {
         id:        dto.audit_id,
         timestamp,
@@ -72,8 +99,10 @@ export function mapAuditToActivity(dto: AuditResponse): Activity {
         isoTimestamp: dto.created_at,
         timeLabel,
         actor:     dto.username,
-        action:    mapActionLabel(dto.action),
-        file:      dto.document_name ?? '-',   // ✅ null-safe fallback for deleted/missing docs
+        action,
+        // Non–file audits (logout, token refresh, …) have no document_name —
+        // avoid the misleading fallback "-"
+        file:      isFileOp ? (dto.document_name ?? '—') : '',
         rawAction: dto.action,
     }
 }

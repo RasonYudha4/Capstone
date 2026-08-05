@@ -51,10 +51,6 @@ func return_Internal_error() (schemas.Response, error) {
 	}, nil
 }
 
-func (d *DocumentService) Get_Document(page, limit int) ([]schemas.DocumentResponse, error) {
-	page, limit, offset := pageLimit(page, limit)
-	return d.repo.GetDocuments(limit, offset)
-}
 
 func (d *DocumentService) Get_public_document_by_id(documentId uuid.UUID, role string) (schemas.Response,string, string, error) {
 	storedHash, err := d.repo.Check_document_hash(documentId)
@@ -76,10 +72,6 @@ func (d *DocumentService) Get_public_document_by_id(documentId uuid.UUID, role s
 	if err != nil {
 		return schemas.Response{},"","", err
 	}
-	log.Print(storedHash)
-	log.Print(objectId)
-	log.Print(filepath)
-	log.Print(objectHash)
 
 	if !hmac.Equal([]byte(storedHash), []byte(objectHash)) {
 		return schemas.Response{
@@ -175,14 +167,6 @@ func (d *DocumentService) Get_documents_by_type(page, limit int) ([]schemas.Docu
 	return docs, page, limit, nil
 }
 
-func (d *DocumentService) Get_document_by_group(groupId uuid.UUID, page, limit int) ([]schemas.DocumentResponse, int, int, error) {
-	page, limit, offset := pageLimit(page, limit)
-	docs, err := d.repo.Get_document_by_group(groupId, limit, offset)
-	if err != nil {
-		return []schemas.DocumentResponse{}, 0, 0, err
-	}
-	return docs, page, limit, nil
-}
 
 func (d *DocumentService) Get_document_by_standard(standardId, createdById uuid.UUID, page, limit int, role string) ([]schemas.DocumentResponse, int, int, error) {
 	page, limit, offset := pageLimit(page, limit)

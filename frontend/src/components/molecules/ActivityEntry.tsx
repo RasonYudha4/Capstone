@@ -22,7 +22,9 @@ export default function ActivityEntry({
                 <span className="font-bold">{actor}</span>
                 {action && <span> {action}</span>}
             </p>
-            <p className="text-xs text-white/70 mt-0.5">"{file}"</p>
+            {file ? (
+                <p className="text-xs text-white/70 mt-0.5">"{file}"</p>
+            ) : null}
         </TimelineItem>
     )
 }

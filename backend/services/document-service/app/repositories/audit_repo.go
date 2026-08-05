@@ -14,13 +14,13 @@ type AuditRepo struct {
 	db *pgxpool.Pool
 }
 
-func NewAuditRepo(db *pgxpool.Pool) *AuditRepo{
+func NewAuditRepo(db *pgxpool.Pool) *AuditRepo {
 	return &AuditRepo{
-		db : db,
+		db: db,
 	}
 }
 
-func(a *AuditRepo) GetAudit()([]schemas.AuditResponse, error){
+func (a *AuditRepo) GetAudit() ([]schemas.AuditResponse, error) {
 	rows, err := a.db.Query(context.Background(), `
 	SELECT 
 		a.audit_id, 
@@ -35,7 +35,7 @@ func(a *AuditRepo) GetAudit()([]schemas.AuditResponse, error){
 	LEFT JOIN documents d ON d.document_id = a.document_id
 	WHERE a.source = 'client'
 	`)
-	if err != nil{
+	if err != nil {
 		log.Print("Error fetching data from db :", err)
 		return nil, err
 	}
@@ -43,7 +43,7 @@ func(a *AuditRepo) GetAudit()([]schemas.AuditResponse, error){
 
 	var audits []schemas.AuditResponse
 
-	for rows.Next(){
+	for rows.Next() {
 		var audit schemas.AuditResponse
 
 		err := rows.Scan(
@@ -56,17 +56,17 @@ func(a *AuditRepo) GetAudit()([]schemas.AuditResponse, error){
 			&audit.UpdatedAt,
 		)
 		if err != nil {
-			log.Print("error scanning row :",err)
+			log.Print("error scanning row :", err)
 			return nil, err
 		}
-	
+
 		audits = append(audits, audit)
 	}
 
 	return audits, err
 }
 
-func (a *AuditRepo)SaveAudit(action,description string, userId, documentId uuid.UUID, source string, createdAt, updatedAt time.Time)(string,error){
+func (a *AuditRepo) SaveAudit(action, description string, userId, documentId uuid.UUID, source string, createdAt, updatedAt time.Time) (string, error) {
 	var filename string
 
 	insertQuery := `
@@ -76,11 +76,11 @@ func (a *AuditRepo)SaveAudit(action,description string, userId, documentId uuid.
 	returning
 		(SELECT filename FROM documents WHERE document_id = $4)
 	`
-	
-	err := a.db.QueryRow(context.Background(),insertQuery,action,description,userId,documentId,source,createdAt,updatedAt).Scan(&filename)
+
+	err := a.db.QueryRow(context.Background(), insertQuery, action, description, userId, documentId, source, createdAt, updatedAt).Scan(&filename)
 	if err != nil {
 		log.Print("Error Insert Audit log: ", err)
-		return "",err
+		return "", err
 	}
 
 	return filename, nil

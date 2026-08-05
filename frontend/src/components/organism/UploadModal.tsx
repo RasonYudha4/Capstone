@@ -25,7 +25,7 @@ import { Separator } from "@/components/ui/separator";
 import FileDropzone from "../molecules/FileDropzone";
 import { useState, useEffect } from "react";
 import ConfirmDialog from "../molecules/ConfirmDialog";
-import { useFormOptions } from "@/hooks/useFormOption";
+import { useGroupFormOptions } from "@/hooks/useFormOption";
 import { useUploadDocument } from "@/hooks/useDocument";
 
 const uploadSchema = z.object({
@@ -58,7 +58,7 @@ function getErrorMessage(error: unknown): string {
       case 403:
         return "Anda tidak memiliki akses untuk mengunggah ke grup ini.";
       case 400:
-        return "Data yang dikirim tidak valid. Periksa kembali isian formulir.";
+        return "Format berkas tidak valid. Silahkan periksa kembali isian formulir.";
       case 500:
         return "Terjadi kesalahan pada server. Silakan coba beberapa saat lagi.";
       default: {
@@ -77,7 +77,7 @@ function getErrorMessage(error: unknown): string {
 
 export default function UploadModal({ open, onOpenChange }: UploadModalProps) {
   const { services, documentTypes, getStandards, getAssessments, isLoading } =
-    useFormOptions();
+    useGroupFormOptions();
 
   const {
     register,

@@ -18,17 +18,22 @@ export const notificationItemSchema = z.object({
     UserID:         z.string().uuid(),
     CreatedAt:      z.string().datetime({ offset: true }),
     UpdatedAt:      z.string().datetime({ offset: true }),
-    // Present when the notification is tied to a document (review target)
+    // Present when the notification is tied to a document (review target).
+    // Accept PascalCase (Go current) and snake_case for compatibility.
     DocumentID:         z.string().uuid().nullish(),
+    document_id:        z.string().uuid().nullish(),
     Filename:           z.string().optional().default(''),
     DocumentType:       z.string().optional().default(''),
     CreatedBy:          z.string().optional().default(''),
-    DocumentStatus:     documentStatus.or(z.literal('')).optional().default(''),
-    DocumentUpdatedAt:  z.string().datetime({ offset: true }).nullish(),
+    DocumentStatus:     z.string().optional().default(''),
+    DocumentUpdatedAt:  z.string().nullish(),
     ServiceCode:        z.string().optional().default(''),
     StandardCode:       z.string().optional().default(''),
     AssessmentCode:     z.string().optional().default(''),
-})
+}).transform((n) => ({
+    ...n,
+    DocumentID: n.DocumentID ?? n.document_id ?? null,
+}))
 
 // ─────────────────────────────────────────────
 // Path param schemas

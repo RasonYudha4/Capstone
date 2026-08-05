@@ -44,13 +44,6 @@ func DocumentRoute(r *gin.Engine, documentHandler *api.DocumentHandler, jwtSecre
 	)
 
 	documentsRoute.GET(
-		"/documents/groups/:group",
-		middleware.Extract_JWT_data(jwtSecret),
-		middleware.AllowedRole("master-admin", "admin"),
-		documentHandler.Get_document_by_group_handler,
-	)
-
-	documentsRoute.GET(
 		"/documents/services/:service",
 		middleware.Extract_JWT_data(jwtSecret),
 		middleware.AllowedRole("master-admin", "admin"),

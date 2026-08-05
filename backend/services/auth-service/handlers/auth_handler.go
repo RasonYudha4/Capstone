@@ -170,7 +170,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 		return
 	}
 
-	h.auditService.Log(services.AuditActionDelete, "user logged out", &userID, config.AuditSourceClient)
+	h.auditService.Log(services.AuditActionDelete, "user logout", &userID, config.AuditSourceClient)
 	respondSuccess(c, "Logged out successfully.", nil)
 }
 

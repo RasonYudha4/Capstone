@@ -52,7 +52,7 @@ func main() {
 	authHandler := handlers.NewAuthHandler(
 		authService, userService, groupService, emailService, jwtService, refreshService, auditService,
 	)
-	documentHandler := handlers.NewDocumentHandler()
+
 	groupHandler := handlers.NewGroupHandler(groupService)
 
 	// router
@@ -145,21 +145,6 @@ func main() {
 		protected.GET("/groups",
 			middleware.RequireRoles(config.RoleMasterAdmin),
 			groupHandler.ListGroups,
-		)
-
-		// document listing — accessible by ALL authenticated roles.
-		protected.GET("/documents", documentHandler.ListDocuments)
-
-		// document upload — only "admin" and "master-admin" can upload.
-		protected.POST("/upload",
-			middleware.RequireRoles(config.RoleAdmin, config.RoleMasterAdmin),
-			documentHandler.UploadDocument,
-		)
-
-		// document approval — only "master-admin" can approve.
-		protected.POST("/approve",
-			middleware.RequireRoles(config.RoleMasterAdmin),
-			documentHandler.ApproveDocument,
 		)
 	}
 
