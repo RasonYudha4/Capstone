@@ -55,14 +55,11 @@ export default function VerifyOTP() {
         setIsLoading(true);
         setServerError(null);
         try {
-            const tokens = await authService.verifyOtp(data.email, data.otp, preAuthToken!);
-
-            // Store tokens temporarily so the /auth/me call has a valid Bearer token
-            localStorage.setItem("accessToken", tokens.access_token);
-            localStorage.setItem("refreshToken", tokens.refresh_token);
+            // verifyOtp sets HttpOnly auth cookies; session via /auth/me
+            await authService.verifyOtp(data.email, data.otp, preAuthToken!);
 
             const user = await authService.me();
-            login(user, tokens.access_token, tokens.refresh_token);
+            login(user);
             navigate("/dashboard", { replace: true });
         } catch (error) {
             if (error instanceof AxiosError && error.response?.data) {

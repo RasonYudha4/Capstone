@@ -12,24 +12,14 @@ import (
 
 func Extract_JWT_data(secretKey string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
+		tokenString := accessTokenFromRequest(c)
+		if tokenString == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"message": "Missing authorization header",
+				"message": "Authentication required",
 			})
 			return
 		}
 
-		// Properly validate "Bearer <token>" format.
-		parts := strings.SplitN(authHeader, " ", 2)
-		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"message": "Authorization header must be: Bearer <token>",
-			})
-			return
-		}
-
-		tokenString := parts[1]
 		token, err := jwt.ParseWithClaims(tokenString, &schemas.Claims{}, func(t *jwt.Token) (any, error) {
 			// Prevent algorithm confusion attacks (e.g. "none" or RSA→HMAC).
 			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -71,4 +61,18 @@ func AllowedRole(allowedRoles ...string) gin.HandlerFunc {
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 			"message": "Unauthorized"})
 	}
+}
+
+// accessTokenFromRequest prefers the HttpOnly cookie, then Authorization Bearer.
+func accessTokenFromRequest(c *gin.Context) string {
+	if token, err := c.Cookie("access_token"); err == nil && token != "" {
+		return token
+	}
+
+	authHeader := c.GetHeader("Authorization")
+	parts := strings.SplitN(authHeader, " ", 2)
+	if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
+		return parts[1]
+	}
+	return ""
 }

@@ -2,28 +2,39 @@ import axios, { type AxiosInstance, type AxiosResponse, type InternalAxiosReques
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
+/** Auth routes that must not trigger silent token refresh (login flow / refresh itself). */
+const NO_REFRESH_PATHS = [
+    '/auth/login',
+    '/auth/verify-otp',
+    '/auth/resend-otp',
+    '/auth/refresh',
+    '/auth/logout',
+    '/auth/complete-invitation',
+    '/auth/forgot-password',
+    '/auth/reset-password',
+];
+
+function shouldSkipRefresh(url?: string): boolean {
+    if (!url) return true;
+    return NO_REFRESH_PATHS.some((path) => url === path || url.startsWith(`${path}?`));
+}
+
 export const axioHandler: AxiosInstance = axios.create({
     baseURL: API_BASE_URL,
     headers: {
         'Content-Type': 'application/json'
     },
+    // Send HttpOnly auth cookies on cross-origin API calls.
+    withCredentials: true,
 });
 
-axioHandler.interceptors.request.use(
-    (config: InternalAxiosRequestConfig) => {
-        const token = localStorage.getItem('accessToken');
+let refreshPromise: Promise<void> | null = null;
 
-        if (token && config.headers) {
-            config.headers.Authorization = `Bearer ${token}`;
-        }
-        return config;
-    },
-    (error) => {
-        return Promise.reject(error);
-    }
-);
-
-let refreshPromise: Promise<string> | null = null;
+function clearLegacyTokenStorage() {
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('user');
+}
 
 axioHandler.interceptors.response.use(
     (response: AxiosResponse) => {
@@ -31,64 +42,46 @@ axioHandler.interceptors.response.use(
     },
 
     async (error) => {
-        const originalRequest = error.config;
-
-        // Don't intercept auth endpoints to prevent loops
-        const isAuthEndpoint = originalRequest?.url?.startsWith('/auth/');
+        const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
         if (
             error.response?.status === 401 &&
-            !isAuthEndpoint &&
-            !originalRequest._retry
+            originalRequest &&
+            !originalRequest._retry &&
+            !shouldSkipRefresh(originalRequest.url)
         ) {
             originalRequest._retry = true;
 
-            const refreshToken = localStorage.getItem('refreshToken');
-            const accessToken = localStorage.getItem('accessToken');
-            
-            if (refreshToken) {
-                if (!refreshPromise) {
-                    refreshPromise = axios.post(
+            if (!refreshPromise) {
+                refreshPromise = axios
+                    .post(
                         `${API_BASE_URL}/auth/refresh`,
-                        { refresh_token: refreshToken }
-                    ).then((res) => {
-                        const newAccessToken = res.data.data.access_token;
-                        const newRefreshToken = res.data.data.refresh_token;
-                        localStorage.setItem('accessToken', newAccessToken);
-                        if (newRefreshToken) {
-                            localStorage.setItem('refreshToken', newRefreshToken);
-                        }
+                        {},
+                        { withCredentials: true },
+                    )
+                    .then(() => {
+                        // New tokens arrive only as Set-Cookie (HttpOnly).
                         refreshPromise = null;
-                        return newAccessToken;
-                    }).catch((err) => {
+                    })
+                    .catch((err) => {
                         refreshPromise = null;
-                        localStorage.removeItem('accessToken');
-                        localStorage.removeItem('refreshToken');
-                        localStorage.removeItem('user');
+                        clearLegacyTokenStorage();
                         throw err;
                     });
-                }
-
-                try {
-                    const newAccessToken = await refreshPromise;
-                    originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
-                    return axioHandler(originalRequest);
-                } catch (refreshError) {
-                    // Only redirect if not already on login page
-                    if (window.location.pathname !== '/login') {
-                        window.location.href = '/login';
-                    }
-                    return Promise.reject(refreshError);
-                }
             }
 
-            if (!accessToken && !refreshToken) {
-                return Promise.reject(error);
-            }
-
-            // Only redirect if not already on login page
-            if (window.location.pathname !== '/login') {
-                window.location.href = '/login';
+            try {
+                await refreshPromise;
+                return axioHandler(originalRequest);
+            } catch (refreshError) {
+                // /auth/me is the session probe — let AuthContext handle guest state without hard redirect.
+                const isSessionProbe =
+                    originalRequest.url === '/auth/me' ||
+                    originalRequest.url?.startsWith('/auth/me?');
+                if (!isSessionProbe && window.location.pathname !== '/login') {
+                    window.location.href = '/login';
+                }
+                return Promise.reject(refreshError);
             }
         }
 

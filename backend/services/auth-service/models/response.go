@@ -15,14 +15,14 @@ type OTPVerifyRequest struct {
 	PreAuthToken string `json:"pre_auth_token" binding:"required"`
 }
 
-// for POST /auth/refresh.
+// for POST /auth/refresh (optional when refresh_token cookie is present).
 type RefreshRequest struct {
-	RefreshToken string `json:"refresh_token" binding:"required"`
+	RefreshToken string `json:"refresh_token"`
 }
 
-// for POST /auth/logout.
+// for POST /auth/logout (optional when refresh_token cookie is present).
 type LogoutRequest struct {
-	RefreshToken string `json:"refresh_token" binding:"required"`
+	RefreshToken string `json:"refresh_token"`
 }
 
 // for POST /auth/resend-otp.
@@ -86,16 +86,17 @@ type LoginResponse struct {
 	ExpiresIn    string `json:"expires_in,omitempty"`
 }
 
-// carries the tokens returned after successful OTP verification.
+// returned after OTP verification / token refresh.
+// Tokens are delivered via HttpOnly cookies; fields are omitted from JSON by default.
 type TokenResponse struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
+	AccessToken  string `json:"access_token,omitempty"`
+	RefreshToken string `json:"refresh_token,omitempty"`
 	ExpiresIn    string `json:"expires_in"`
 }
 
-// carries the new access token from POST /auth/refresh.
+// carries expiry info after POST /auth/refresh (tokens are HttpOnly cookies).
 type RefreshResponse struct {
-	AccessToken string `json:"access_token"`
+	AccessToken string `json:"access_token,omitempty"`
 	ExpiresIn   string `json:"expires_in"`
 }
 

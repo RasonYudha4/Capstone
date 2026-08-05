@@ -54,8 +54,8 @@ export const useResendOtp = () => {
 export const useLogout = () => {
     const queryClient = useQueryClient()
 
-    return useMutation<void, Error, string>({
-        mutationFn: (refreshToken) => authService.logout(refreshToken),
+    return useMutation<void, Error, void>({
+        mutationFn: () => authService.logout(),
         onSuccess: () => {
             queryClient.removeQueries({ queryKey: authKeys.all })
         },

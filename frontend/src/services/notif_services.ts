@@ -75,13 +75,12 @@ export const notificationService = {
         const connect = async () => {
             try {
                 const baseUrl = axioHandler.defaults.baseURL ?? ''
-                const token = localStorage.getItem('accessToken') ?? ''
 
                 const response = await fetch(`${baseUrl}/notifications/events`, {
                     headers: {
-                        Authorization: `Bearer ${token}`,
                         Accept: 'text/event-stream',
                     },
+                    credentials: 'include',
                     signal: abortController.signal,
                 })
 

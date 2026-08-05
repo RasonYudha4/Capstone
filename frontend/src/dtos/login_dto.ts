@@ -100,17 +100,17 @@ export const loginResponseSchema = z.object({
     expires_in: z.string().optional(),
 });
 
-// POST /auth/verify-otp
+// POST /auth/verify-otp (tokens delivered as HttpOnly cookies)
 export const tokenResponseSchema = z.object({
-    access_token: z.string(),
-    refresh_token: z.string(),
+    access_token: z.string().optional(),
+    refresh_token: z.string().optional(),
     expires_in: z.string(),
 });
 
-// POST /auth/refresh
+// POST /auth/refresh (tokens delivered as HttpOnly cookies)
 export const refreshResponseSchema = z.object({
-    access_token: z.string(),
-    refresh_token: z.string(),
+    access_token: z.string().optional(),
+    refresh_token: z.string().optional(),
     expires_in: z.string(),
 });
 

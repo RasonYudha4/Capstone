@@ -4,53 +4,49 @@ import type { AuthContextType, User } from './types'
 
 const AuthContext = createContext<AuthContextType | null>(null)
 
+function clearLegacyTokenStorage() {
+    localStorage.removeItem('user')
+    localStorage.removeItem('accessToken')
+    localStorage.removeItem('refreshToken')
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null)
     const [loading, setLoading] = useState<boolean>(true)
 
     const clearSession = useCallback(() => {
         setUser(null)
-        localStorage.removeItem('user')
-        localStorage.removeItem('accessToken')
-        localStorage.removeItem('refreshToken')
+        clearLegacyTokenStorage()
     }, [])
 
     const logout = useCallback(async () => {
-        const refreshToken = localStorage.getItem('refreshToken')
-        if (refreshToken) {
-            try {
-                await authService.logout(refreshToken)
-            } catch {
-                // Still clear local session if revoke fails (e.g. token already expired).
-            }
+        try {
+            await authService.logout()
+        } catch {
+            // Still clear local session if revoke fails (e.g. token already expired).
         }
         clearSession()
     }, [clearSession])
 
     useEffect(() => {
-        const stored = localStorage.getItem('user')
-        const refreshToken = localStorage.getItem('refreshToken')
-        if (stored && refreshToken) {
-            authService.me().then((userData) => {
-                setUser(userData);
-                localStorage.setItem('user', JSON.stringify(userData));
-            }).catch(() => {
-                clearSession();
-            }).finally(() => {
-                setLoading(false);
-            });
-        } else {
-            setLoading(false);
-        }
-    }, [clearSession])
+        // Drop any tokens previously stored in localStorage (XSS surface).
+        clearLegacyTokenStorage()
 
-    const login = (userData: User, accessToken: string, refreshToken?: string) => {
+        // Session lives in HttpOnly cookies — bootstrap by calling /auth/me.
+        authService.me()
+            .then((userData) => {
+                setUser(userData)
+            })
+            .catch(() => {
+                setUser(null)
+            })
+            .finally(() => {
+                setLoading(false)
+            })
+    }, [])
+
+    const login = (userData: User) => {
         setUser(userData)
-        localStorage.setItem('user', JSON.stringify(userData))
-        localStorage.setItem('accessToken', accessToken)
-        if (refreshToken) {
-            localStorage.setItem('refreshToken', refreshToken)
-        }
     }
 
     return (

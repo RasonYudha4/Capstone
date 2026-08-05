@@ -44,11 +44,9 @@ export const authService = {
         }
     },
 
-    // POST /auth/refresh
-    refresh: async (refreshToken: string): Promise<RefreshResponse> => {
-        const { data } = await axioHandler.post('/auth/refresh', {
-            refresh_token: refreshToken,
-        })
+    // POST /auth/refresh (refresh_token read from HttpOnly cookie)
+    refresh: async (): Promise<RefreshResponse> => {
+        const { data } = await axioHandler.post('/auth/refresh', {})
         const parsed = apiResponseSchema(refreshResponseSchema).parse(data)
         if (!parsed.success) {
             throw new Error(parsed.message)
@@ -56,9 +54,9 @@ export const authService = {
         return refreshResponseSchema.parse(parsed.data)
     },
 
-    // POST /auth/logout
-    logout: async (refreshToken: string): Promise<void> => {
-        const { data } = await axioHandler.post('/auth/logout', { refresh_token: refreshToken })
+    // POST /auth/logout (refresh_token read from HttpOnly cookie)
+    logout: async (): Promise<void> => {
+        const { data } = await axioHandler.post('/auth/logout', {})
         const parsed = voidApiResponseSchema.parse(data)
         if (!parsed.success) {
             throw new Error(parsed.message)

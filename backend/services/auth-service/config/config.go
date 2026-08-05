@@ -40,6 +40,13 @@ var (
 
 	// FrontendURL is used to build invitation and password-reset links in emails.
 	FrontendURL = getEnv("FRONTEND_URL", "http://localhost:5173")
+
+	// CookieSecure should be true in production (HTTPS). Required when SameSite=None.
+	CookieSecure = strings.EqualFold(getEnv("COOKIE_SECURE", "false"), "true")
+
+	// CookieSameSite: Lax (default), Strict, or None.
+	// Use None only for true cross-site frontends (requires HTTPS / COOKIE_SECURE=true).
+	CookieSameSite = getEnv("COOKIE_SAMESITE", "Lax")
 )
 
 // requireEnv reads an environment variable or terminates.

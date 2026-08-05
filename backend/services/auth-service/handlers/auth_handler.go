@@ -59,11 +59,14 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	// Staff login issues tokens as HttpOnly cookies (not in JSON body).
+	if !result.RequiresOTP && result.AccessToken != "" && result.RefreshToken != "" {
+		setAuthCookies(c, result.AccessToken, result.RefreshToken)
+	}
+
 	respondSuccess(c, result.Message, models.LoginResponse{
 		RequiresOTP:  result.RequiresOTP,
 		PreAuthToken: result.PreAuthToken,
-		AccessToken:  result.AccessToken,
-		RefreshToken: result.RefreshToken,
 		ExpiresIn:    result.ExpiresIn,
 	})
 }
@@ -81,10 +84,9 @@ func (h *AuthHandler) VerifyOTP(c *gin.Context) {
 		return
 	}
 
+	setAuthCookies(c, result.AccessToken, result.RefreshToken)
 	respondSuccess(c, result.Message, models.TokenResponse{
-		AccessToken:  result.AccessToken,
-		RefreshToken: result.RefreshToken,
-		ExpiresIn:    result.ExpiresIn,
+		ExpiresIn: result.ExpiresIn,
 	})
 }
 
@@ -109,20 +111,23 @@ func (h *AuthHandler) ResendOTP(c *gin.Context) {
 
 // Refresh handles POST /auth/refresh.
 func (h *AuthHandler) Refresh(c *gin.Context) {
-	var req models.RefreshRequest
-	if !bindJSON(c, &req) {
+	refreshToken := refreshTokenFromRequest(c)
+	if refreshToken == "" {
+		respondError(c, http.StatusUnauthorized, "Refresh token is required.")
 		return
 	}
 
-	newRefreshToken, userID, err := h.refreshService.RotateToken(req.RefreshToken)
+	newRefreshToken, userID, err := h.refreshService.RotateToken(refreshToken)
 	if err != nil {
 		log.Printf("⚠️  Refresh token rotation failed: %v", err)
+		clearAuthCookies(c)
 		respondError(c, http.StatusUnauthorized, "Invalid or expired refresh token.")
 		return
 	}
 
 	user, err := h.userService.GetByID(userID)
 	if err != nil || user == nil {
+		clearAuthCookies(c)
 		respondError(c, http.StatusUnauthorized, "User not found.")
 		return
 	}
@@ -131,6 +136,7 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 		if revokeErr := h.refreshService.RevokeAllUserTokens(user.UserID); revokeErr != nil {
 			log.Printf("⚠️  Failed to revoke tokens for inactive user %s: %v", user.UserID, revokeErr)
 		}
+		clearAuthCookies(c)
 		respondError(c, http.StatusUnauthorized, blockReason)
 		return
 	}
@@ -138,6 +144,7 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 		if revokeErr := h.refreshService.RevokeAllUserTokens(user.UserID); revokeErr != nil {
 			log.Printf("⚠️  Failed to revoke tokens for locked user %s: %v", user.UserID, revokeErr)
 		}
+		clearAuthCookies(c)
 		respondError(c, http.StatusTooManyRequests, "Account is locked. Try again later.")
 		return
 	}
@@ -148,25 +155,29 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 		return
 	}
 
+	setAuthCookies(c, accessToken, newRefreshToken)
 	h.auditService.Log(services.AuditActionUpdate, "token refreshed", &user.UserID, config.AuditSourceClient)
 	respondSuccess(c, "Token refreshed.", models.TokenResponse{
-		AccessToken:  accessToken,
-		RefreshToken: newRefreshToken,
-		ExpiresIn:    config.AccessTokenExpiry.String(),
+		ExpiresIn: config.AccessTokenExpiry.String(),
 	})
 }
 
 // Logout handles POST /auth/logout.
 func (h *AuthHandler) Logout(c *gin.Context) {
-	var req models.LogoutRequest
-	if !bindJSON(c, &req) {
+	refreshToken := refreshTokenFromRequest(c)
+	// Always clear cookies so the browser session ends even if revoke fails.
+	clearAuthCookies(c)
+
+	if refreshToken == "" {
+		respondSuccess(c, "Logged out successfully.", nil)
 		return
 	}
 
-	userID, err := h.refreshService.RevokeToken(req.RefreshToken)
+	userID, err := h.refreshService.RevokeToken(refreshToken)
 	if err != nil {
 		log.Printf("⚠️  Token revocation failed: %v", err)
-		respondError(c, http.StatusBadRequest, "Invalid or expired token.")
+		// Still report success — cookies are already cleared client-side.
+		respondSuccess(c, "Logged out successfully.", nil)
 		return
 	}
 

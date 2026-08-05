@@ -38,12 +38,9 @@ export default function Login() {
                 // Admin / master-admin → navigate to OTP verification
                 navigate("/verify", { state: { email: formData.email, preAuthToken: response.pre_auth_token } });
             } else {
-                // Staff → tokens returned immediately
-                localStorage.setItem("accessToken", response.access_token!);
-                localStorage.setItem("refreshToken", response.refresh_token!);
-
+                // Staff → HttpOnly cookies set by server; session via /auth/me
                 const user = await authService.me();
-                login(user, response.access_token!, response.refresh_token!);
+                login(user);
                 navigate("/dashboard", { replace: true });
             }
         } catch (error) {

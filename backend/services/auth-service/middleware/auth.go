@@ -15,32 +15,21 @@ import (
 // JWTAuth returns a Gin middleware that authenticates requests using JWT.
 //
 // How it works:
-//  1. Reads the "Authorization" header and expects the format "Bearer <token>".
+//  1. Reads access token from HttpOnly cookie "access_token", or Authorization: Bearer.
 //  2. Passes the raw token to JWTService.ValidateToken for signature + expiry checks.
 //  3. Reloads the user from the database and rejects inactive/locked accounts.
 //  4. Overwrites claims.Role/Email from the database so RBAC reflects demotions immediately.
 //  5. Stores the claims in the Gin context under config.ContextKeyUser.
 func JWTAuth(jwtService services.TokenValidator, userService services.UserLookup) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
+		tokenString := accessTokenFromRequest(c)
+		if tokenString == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, models.APIResponse{
 				Success: false,
-				Message: "Authorization header is required.",
+				Message: "Authentication required.",
 			})
 			return
 		}
-
-		parts := strings.SplitN(authHeader, " ", 2)
-		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, models.APIResponse{
-				Success: false,
-				Message: "Authorization header must be in the format: Bearer <token>.",
-			})
-			return
-		}
-
-		tokenString := parts[1]
 
 		claims, err := jwtService.ValidateToken(tokenString)
 		if err != nil {
@@ -83,4 +72,18 @@ func JWTAuth(jwtService services.TokenValidator, userService services.UserLookup
 
 		c.Next()
 	}
+}
+
+// accessTokenFromRequest prefers the HttpOnly cookie, then Authorization Bearer.
+func accessTokenFromRequest(c *gin.Context) string {
+	if token, err := c.Cookie("access_token"); err == nil && token != "" {
+		return token
+	}
+
+	authHeader := c.GetHeader("Authorization")
+	parts := strings.SplitN(authHeader, " ", 2)
+	if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
+		return parts[1]
+	}
+	return ""
 }
